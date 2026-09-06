@@ -375,13 +375,16 @@
               </td>
               <td class="py-2.5 pr-3">
                 <div class="flex justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
-                  <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--accent)]" title="Save as auto-categorisation rule"
-                    onclick={() => { rulingId = t.id; editingId = null; }}><Icon name="wand" size={14} /></button>
-                  <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]" title="Edit"
+                  <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--accent)]"
+                    data-tip="Save as rule" aria-label="Save as auto-categorisation rule"
+                    onclick={() => { rulingId = t.id; editingId = null; }}><Icon name="repeat" size={14} /></button>
+                  <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"
+                    data-tip="Edit" aria-label="Edit transaction"
                     onclick={() => { editingId = t.id; rulingId = null; }}><Icon name="edit" size={14} /></button>
                   <form method="POST" action="?/delete" use:enhance={() => deleteSubmit(t.id)}>
                     <input type="hidden" name="id" value={t.id} />
-                    <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete">
+                    <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"
+                      data-tip="Delete" aria-label="Delete transaction">
                       <Icon name="trash" size={14} />
                     </button>
                   </form>

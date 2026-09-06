@@ -303,6 +303,29 @@
     background-position: right 0.3rem center;
   }
 
+  /* hover tooltip — flies left so it stays inside overflow-hidden containers */
+  .tip { position: relative; }
+  .tip::after {
+    content: attr(data-tip);
+    position: absolute;
+    right: calc(100% + 6px);
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1;
+    padding: 0.28rem 0.45rem;
+    border-radius: 6px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+  }
+  .tip:hover::after,
+  .tip:focus-visible::after { opacity: 1; }
+
   /* compact select used in the import table's header row for column mapping */
   .head-sel {
     appearance: none;

@@ -13,28 +13,39 @@ import {
 export function load({ locals, url }) {
   const month = url.searchParams.get('month') || currentMonth();
   const rows = budgetStatus(locals.user.id, month);
+  const expenses = rows.filter((r) => r.kind === 'expense');
+  const withTarget = expenses.filter((e) => e.target != null);
   return {
     month,
     months: listMonths(locals.user.id),
-    expenses: rows.filter((r) => r.kind === 'expense'),
+    expenses,
     income: rows.filter((r) => r.kind === 'income'),
+    totals: {
+      count: withTarget.length,
+      target: withTarget.reduce((s, e) => s + e.target, 0),
+      actual: withTarget.reduce((s, e) => s + e.actual, 0)
+    },
     currency: locals.user.currency
   };
 }
 
 export const actions = {
-  set: async ({ request, locals }) => {
+  save: async ({ request, locals }) => {
     const f = await request.formData();
-    const categoryId = Number(f.get('category_id'));
-    const raw = String(f.get('amount') || '').trim();
-    if (!categoryId) return fail(400);
-    if (raw === '') {
-      deleteBudget(locals.user.id, categoryId);
-      return { saved: true };
+    for (const [key, val] of f.entries()) {
+      const m = key.match(/^amount_(\d+)$/);
+      if (!m) continue;
+      const categoryId = Number(m[1]);
+      const raw = String(val || '').trim();
+      if (raw === '') {
+        deleteBudget(locals.user.id, categoryId);
+        continue;
+      }
+      const amount = parseAmount(raw);
+      if (amount == null || amount < 0)
+        return fail(400, { error: 'Enter a positive amount for every target.' });
+      setBudget(locals.user.id, categoryId, Math.abs(amount));
     }
-    const amount = parseAmount(raw);
-    if (amount == null || amount < 0) return fail(400, { error: 'Enter a positive amount.' });
-    setBudget(locals.user.id, categoryId, Math.abs(amount));
     return { saved: true };
   },
 
