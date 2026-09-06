@@ -10,8 +10,12 @@ import {
   bulkCategorise,
   bulkDelete,
   applyRules,
-  categoriseByRules
+  categoriseByRules,
+  uncategorisedIds,
+  getUserAiCategorise
 } from '$lib/server/queries.js';
+import { aiEnabled } from '$lib/server/ai-settings.js';
+import { categoriseWithAI } from '$lib/server/ai.js';
 
 const num = (v) => {
   const n = parseAmount(String(v ?? ''));
@@ -63,7 +67,8 @@ export function load({ locals, url }) {
     categories: listCategories(userId),
     months: listMonths(userId),
     filters,
-    currency: locals.user.currency
+    currency: locals.user.currency,
+    aiCategorise: aiEnabled() && getUserAiCategorise(userId)
   };
 }
 
@@ -133,5 +138,24 @@ export const actions = {
     const onlyUncategorised = f.get('scope') !== 'all';
     const n = applyRules(locals.user.id, { onlyUncategorised });
     return { bulk: `Rules categorised ${n} transaction${n === 1 ? '' : 's'}.` };
+  },
+
+  aiCategorise: async ({ request, locals }) => {
+    if (!aiEnabled() || !getUserAiCategorise(locals.user.id))
+      return fail(403, { error: 'AI categorisation is not enabled for your account.' });
+    const f = await request.formData();
+    const selected = ids(f);
+    const target = selected.length ? selected : uncategorisedIds(locals.user.id);
+    if (!target.length) return { bulk: 'Nothing to categorise — everything already has a category.' };
+    try {
+      const r = await categoriseWithAI(locals.user.id, target);
+      const cost = r.costUsd >= 0.01 ? `~$${r.costUsd.toFixed(2)}` : '<$0.01';
+      return {
+        bulk: `AI categorised ${r.categorised} of ${r.considered} · ${cost}`,
+        aiDone: true
+      };
+    } catch (e) {
+      return fail(400, { error: `AI categorisation failed: ${e?.message || 'unknown error'}` });
+    }
   }
 };

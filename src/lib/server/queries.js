@@ -134,6 +134,25 @@ export function bulkDelete(userId, ids) {
   return Number(info.changes);
 }
 
+export function uncategorisedIds(userId, limit = 200) {
+  return db
+    .prepare(
+      `SELECT id FROM transactions
+       WHERE user_id = ? AND category_id IS NULL
+       ORDER BY date DESC, id DESC LIMIT ?`
+    )
+    .all(userId, limit)
+    .map((r) => r.id);
+}
+
+export function setUserAiCategorise(userId, on) {
+  db.prepare('UPDATE users SET ai_categorise = ? WHERE id = ?').run(on ? 1 : 0, userId);
+}
+
+export function getUserAiCategorise(userId) {
+  return !!db.prepare('SELECT ai_categorise FROM users WHERE id = ?').get(userId)?.ai_categorise;
+}
+
 export function uncategorisedCount(userId) {
   return Number(
     db

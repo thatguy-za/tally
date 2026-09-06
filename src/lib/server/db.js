@@ -99,12 +99,22 @@ db.exec(`
     active       INTEGER NOT NULL DEFAULT 1,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+  );
 `);
 
 // --- lightweight migrations for existing databases ---
 const txCols = db.prepare("PRAGMA table_info(transactions)").all().map((c) => c.name);
 if (!txCols.includes('recurring_id')) {
   db.exec('ALTER TABLE transactions ADD COLUMN recurring_id INTEGER REFERENCES recurring(id) ON DELETE SET NULL');
+}
+
+const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+if (!userCols.includes('ai_categorise')) {
+  db.exec('ALTER TABLE users ADD COLUMN ai_categorise INTEGER NOT NULL DEFAULT 0');
 }
 
 const DEFAULT_CATEGORIES = [

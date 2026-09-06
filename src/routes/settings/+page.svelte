@@ -6,7 +6,6 @@
   let { data, form } = $props();
 
   let newColor = $state('#7b8a5a');
-  let resettingUser = $state(null);
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
 
@@ -15,7 +14,7 @@
     category: 'Categories updated',
     rule: 'Rules updated',
     password: 'Password updated',
-    admin: 'Done'
+    aiuser: 'Preference saved'
   };
   let seenForm;
   $effect(() => {
@@ -150,6 +149,30 @@
     </form>
   </div>
 
+  <!-- AI categorisation opt-in (any user, when enabled) -->
+  {#if data.aiAvailable}
+    <div class="card rise rise-3">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg">
+            <Icon name="sparkle" size={16} class="text-[var(--accent)]" /> AI categorisation
+          </h2>
+          <p class="mt-1 max-w-lg text-[13px] text-[var(--ink-faint)]">
+            When on, you can ask Claude to sort your uncategorised transactions into
+            <em>your</em> categories from the Transactions page. Nothing is sent anywhere
+            until you press the button.
+          </p>
+        </div>
+        <form method="POST" action="?/aiCategorise" use:enhance>
+          <input type="hidden" name="on" value={data.aiCategorise ? '0' : '1'} />
+          <button class="btn {data.aiCategorise ? 'btn-primary' : 'btn-ghost'}">
+            {data.aiCategorise ? 'On' : 'Off'}
+          </button>
+        </form>
+      </div>
+    </div>
+  {/if}
+
   <!-- Password -->
   <div class="card rise rise-4">
     <h2 class="text-lg">Change password</h2>
@@ -166,52 +189,11 @@
     </form>
   </div>
 
-  <!-- Admin -->
   {#if data.isAdmin}
-    <div class="card rise rise-5">
-      <h2 class="text-lg">Users <span class="chip ml-1">admin</span></h2>
-      <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Reset a password, grant admin, or remove an account.</p>
-      {#if form?.section === 'admin' && form?.msg}
-        <p class="mb-3 text-sm" style="color:var(--positive)">{form.msg}</p>
-      {/if}
-      {#if err('admin')}<p class="mb-3 text-sm" style="color:var(--negative)">{err('admin')}</p>{/if}
-      <ul class="divide-y divide-[var(--border)]">
-        {#each data.users as u}
-          <li class="py-2.5 text-[13px]">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="font-medium">
-                {u.email}
-                {#if u.is_admin}<span class="chip chip-accent ml-1">admin</span>{/if}
-              </span>
-              <div class="flex items-center gap-3 text-xs">
-                <button class="text-[var(--ink-soft)] hover:underline"
-                  onclick={() => (resettingUser = resettingUser === u.id ? null : u.id)}>Reset password</button>
-                <form method="POST" action="?/setAdmin" use:enhance>
-                  <input type="hidden" name="id" value={u.id} />
-                  <input type="hidden" name="admin" value={u.is_admin ? '0' : '1'} />
-                  <button class="text-[var(--ink-soft)] hover:underline">{u.is_admin ? 'Revoke admin' : 'Make admin'}</button>
-                </form>
-                {#if u.id !== data.myId}
-                  <form method="POST" action="?/deleteUser" use:enhance
-                    onsubmit={(e) => { if (!confirm(`Delete ${u.email} and all their data?`)) e.preventDefault(); }}>
-                    <input type="hidden" name="id" value={u.id} />
-                    <button style="color:var(--negative)" class="hover:underline">Delete</button>
-                  </form>
-                {/if}
-              </div>
-            </div>
-            {#if resettingUser === u.id}
-              <form method="POST" action="?/resetUserPassword" use:enhance class="mt-2 flex gap-2"
-                onsubmit={() => (resettingUser = null)}>
-                <input type="hidden" name="id" value={u.id} />
-                <input class="input max-w-xs" name="new_password" type="text"
-                  placeholder="New password (min 8 chars)" minlength="8" required />
-                <button class="btn btn-primary btn-sm">Set</button>
-              </form>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    </div>
+    <a href="/settings/server" class="nudge rise rise-5">
+      <Icon name="settings" size={16} class="text-[var(--accent)]" />
+      <span>Server settings — users &amp; AI assistant</span>
+      <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />
+    </a>
   {/if}
 </div>

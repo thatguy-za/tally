@@ -8,9 +8,12 @@ import {
   listRules,
   createRule,
   deleteRule,
-  applyRules
+  applyRules,
+  setUserAiCategorise,
+  getUserAiCategorise
 } from '$lib/server/queries.js';
 import { verifyPassword, hashPassword } from '$lib/server/auth.js';
+import { aiEnabled } from '$lib/server/ai-settings.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
@@ -20,22 +23,16 @@ export function load({ locals }) {
     .all(userId);
   const countMap = Object.fromEntries(counts.map((c) => [c.category_id, c.n]));
 
-  const data = {
+  return {
     currencies: CURRENCIES,
     currency: locals.user.currency,
     email: locals.user.email,
-    myId: locals.user.id,
     isAdmin: !!locals.user.is_admin,
     categories: listCategories(userId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
-    rules: listRules(userId)
+    rules: listRules(userId),
+    aiAvailable: aiEnabled(),
+    aiCategorise: getUserAiCategorise(userId)
   };
-
-  if (locals.user.is_admin) {
-    data.users = db
-      .prepare('SELECT id, email, is_admin, currency, created_at FROM users ORDER BY id')
-      .all();
-  }
-  return data;
 }
 
 export const actions = {
@@ -93,6 +90,13 @@ export const actions = {
     return { section: 'rule', ok: true, applied };
   },
 
+  aiCategorise: async ({ request, locals }) => {
+    if (!aiEnabled()) return fail(400);
+    const f = await request.formData();
+    setUserAiCategorise(locals.user.id, f.get('on') === '1');
+    return { section: 'aiuser', ok: true };
+  },
+
   password: async ({ request, locals }) => {
     const f = await request.formData();
     const current = String(f.get('current') || '');
@@ -107,39 +111,5 @@ export const actions = {
       return fail(400, { section: 'password', error: 'New passwords do not match.' });
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), locals.user.id);
     return { section: 'password', ok: true };
-  },
-
-  resetUserPassword: async ({ request, locals }) => {
-    if (!locals.user.is_admin) return fail(403);
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    const next = String(f.get('new_password') || '');
-    if (next.length < 8)
-      return fail(400, { section: 'admin', error: 'Password must be at least 8 characters.' });
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), id);
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id); // force re-login
-    return { section: 'admin', ok: true, msg: 'Password reset. Their existing sessions were ended.' };
-  },
-
-  setAdmin: async ({ request, locals }) => {
-    if (!locals.user.is_admin) return fail(403);
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    const makeAdmin = f.get('admin') === '1' ? 1 : 0;
-    if (id === locals.user.id && !makeAdmin) {
-      const others = db.prepare('SELECT COUNT(*) AS n FROM users WHERE is_admin = 1 AND id != ?').get(id).n;
-      if (!Number(others)) return fail(400, { section: 'admin', error: 'You are the only admin.' });
-    }
-    db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(makeAdmin, id);
-    return { section: 'admin', ok: true };
-  },
-
-  deleteUser: async ({ request, locals }) => {
-    if (!locals.user.is_admin) return fail(403);
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    if (id === locals.user.id) return fail(400, { section: 'admin', error: "You can't delete yourself." });
-    db.prepare('DELETE FROM users WHERE id = ?').run(id);
-    return { section: 'admin', ok: true, msg: 'User and all their data deleted.' };
   }
 };

@@ -77,14 +77,18 @@
     };
   }
 
+  let aiRunning = $state(false);
+
   let seenForm;
   $effect(() => {
     if (form === seenForm) return;
     seenForm = form;
+    aiRunning = false;
     if (form?.added) { showAdd = false; toast('Transaction added'); }
     if (form?.updated) { editingId = null; toast('Transaction updated'); }
     if (form?.deleted) toast('Transaction deleted');
-    if (form?.bulk) { selected = new Set(); toast(form.bulk); }
+    if (form?.bulk) { selected = new Set(); catOverride = new Map(); toast(form.bulk); }
+    else if (form?.error) toast(form.error, { type: 'info' });
   });
 </script>
 
@@ -95,7 +99,24 @@
     <p class="kicker mb-2">Activity</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Transactions</h1>
   </div>
-  <div class="flex gap-2">
+  <div class="flex flex-wrap gap-2">
+    {#if data.aiCategorise}
+      <form method="POST" action="?/aiCategorise"
+        use:enhance={() => {
+          aiRunning = true;
+          return async ({ result, update }) => {
+            aiRunning = false;
+            if (result.type === 'error') { toast('AI categorisation failed.', { type: 'info' }); return; }
+            await update();
+          };
+        }}>
+        {#each [...selected] as id}<input type="hidden" name="id" value={id} />{/each}
+        <button class="btn btn-ghost" disabled={aiRunning}>
+          <Icon name="sparkle" size={14} class="text-[var(--accent)]" />
+          {aiRunning ? 'Categorising…' : selected.size ? `AI categorise ${selected.size}` : 'AI categorise'}
+        </button>
+      </form>
+    {/if}
     <button class="btn btn-ghost" onclick={() => (showFilters = !showFilters)}>
       <Icon name="filter" size={14} /> Filters{activeFilterCount ? ` · ${activeFilterCount}` : ''}
     </button>

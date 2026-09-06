@@ -6,6 +6,7 @@
   import Toaster from '$lib/components/Toaster.svelte';
   import LoadingBar from '$lib/components/LoadingBar.svelte';
   import CommandPalette from '$lib/components/CommandPalette.svelte';
+  import UserMenu from '$lib/components/UserMenu.svelte';
   import { theme, initTheme, toggleTheme } from '$lib/theme.svelte.js';
   import { openPalette } from '$lib/palette.svelte.js';
   let { data, children } = $props();
@@ -92,12 +93,7 @@
           <Icon name={effectiveDark ? 'sun' : 'moon'} size={16} />
         </button>
 
-        <div class="flex items-center gap-2.5">
-          <span class="hidden text-[13px] text-[var(--ink-faint)] lg:inline">{data.user.email}</span>
-          <form method="POST" action="/logout">
-            <button class="btn btn-ghost btn-sm" title="Sign out"><Icon name="logout" size={14} /></button>
-          </form>
-        </div>
+        <UserMenu user={data.user} />
       </div>
     </header>
 
