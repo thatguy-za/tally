@@ -1,18 +1,8 @@
 <script>
   import { enhance } from '$app/forms';
-  import { slide } from 'svelte/transition';
   import Icon from '$lib/components/Icon.svelte';
   import { parseCsv, parseAmount, parseDate, guessMapping, dupeKey } from '$lib/csv.js';
   let { data, form } = $props();
-
-  const FIELDS = [
-    ['date', 'Date', true],
-    ['description', 'Description', false],
-    ['amount', 'Amount', false],
-    ['debit', 'Money out', false],
-    ['credit', 'Money in', false],
-    ['category', 'Category', false]
-  ];
 
   // ---- raw parse ----------------------------------------------------------
   let allRows = $derived(form?.csv ? parseCsv(form.csv) : []);
@@ -175,7 +165,8 @@
   });
 
   async function runAiSuggest() {
-    const toSuggest = rows.filter((r) => !r.error && !/^\d+$/.test(String(r.catValue)));
+    // categorise every valid row, whatever the file said
+    const toSuggest = rows.filter((r) => !r.error);
     if (!toSuggest.length) {
       aiState = { loading: false, error: '', count: 0, cost: 0, ran: true };
       return;
@@ -210,13 +201,31 @@
     }
   }
 
-  let showColumns = $state(false);
-  const label = (i) => (i === '' || i == null ? '—' : headers[+i] || `Column ${+i + 1}`);
-  let columnSummary = $derived(
+  // ---- amount column: single signed, or split debit/credit ----
+  let amountSel = $derived(
     mapping.amount !== ''
-      ? `Amount: ${label(mapping.amount)}`
-      : `Out: ${label(mapping.debit)} · In: ${label(mapping.credit)}`
+      ? mapping.amount
+      : mapping.debit !== '' || mapping.credit !== ''
+        ? '__split'
+        : ''
   );
+  function chooseAmount(v) {
+    if (v === '__split') {
+      const g = guessMapping(headers);
+      mapping = {
+        ...mapping,
+        amount: '',
+        debit: mapping.debit || g.debit || '',
+        credit: mapping.credit || g.credit || ''
+      };
+    } else {
+      mapping = { ...mapping, amount: v, debit: '', credit: '' };
+    }
+  }
+  const DATE_ORDERS = ['dmy', 'mdy', 'ymd'];
+  function cycleDateOrder() {
+    dateOrder = DATE_ORDERS[(DATE_ORDERS.indexOf(dateOrder) + 1) % 3];
+  }
 </script>
 
 <svelte:head><title>Import · Tally</title></svelte:head>
@@ -316,70 +325,71 @@
       </div>
     {/if}
 
-    <!-- columns & options, tucked away -->
-    <div class="card mb-3">
-      <button type="button" class="flex w-full items-center justify-between text-[13px]"
-        onclick={() => (showColumns = !showColumns)}>
-        <span class="text-[var(--ink-soft)]">
-          <b>Columns:</b> {label(mapping.date)} · {columnSummary}
-          {#if mapping.category !== ''}· {label(mapping.category)}{/if}
-          <span class="ml-1 text-[var(--ink-faint)]">— {dateOrder.toUpperCase()}</span>
-        </span>
-        <span class="flex items-center gap-1 text-[var(--ink-faint)]">
-          {showColumns ? 'Hide' : 'Adjust'}
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
-            stroke-linecap="round" class="transition-transform {showColumns ? 'rotate-180' : ''}"><path d="M4 6l4 4 4-4" /></svg>
-        </span>
-      </button>
-
-      {#if showColumns}
-        <div transition:slide class="mt-4 border-t border-[var(--border)] pt-4">
-          <div class="grid gap-3 sm:grid-cols-3">
-            {#each FIELDS as [key, lbl, req]}
-              <div>
-                <label class="label" for={`m-${key}`}>{lbl}{req ? ' *' : ''}</label>
-                <select class="input" id={`m-${key}`} bind:value={mapping[key]}>
-                  <option value="">— none —</option>
-                  {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
-                </select>
-              </div>
-            {/each}
-          </div>
-          <div class="mt-3 grid gap-3 sm:grid-cols-3">
-            <div>
-              <label class="label" for="dateorder">Date order</label>
-              <select class="input" id="dateorder" bind:value={dateOrder}>
-                <option value="dmy">Day / Month / Year</option>
-                <option value="mdy">Month / Day / Year</option>
-                <option value="ymd">Year / Month / Day</option>
-              </select>
-            </div>
-            <div>
-              <label class="label" for="skiprows">Ignore rows at top</label>
-              <input class="input tnum" id="skiprows" type="number" min="0" max="20" bind:value={skipRows} />
-            </div>
-            <label class="flex items-end gap-2 pb-2 text-[13px]">
-              <input type="checkbox" bind:checked={hasHeader} /> First row is a header
-            </label>
-          </div>
-          <label class="mt-3 flex items-center gap-2 text-[13px]">
-            <input type="checkbox" bind:checked={invert} /> Flip signs (file lists spending as positive)
-          </label>
-        </div>
-      {/if}
+    <!-- thin format line -->
+    <div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-[var(--ink-faint)]">
+      <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={hasHeader} /> First row is a header</label>
+      <label class="flex items-center gap-1.5">
+        Ignore <input class="tnum w-12 rounded border border-[var(--border)] bg-transparent px-1 py-0.5 text-center"
+          type="number" min="0" max="20" bind:value={skipRows} /> rows at top
+      </label>
+      <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={invert} /> Flip signs</label>
     </div>
 
-    <!-- the table -->
+    <!-- the table (its header row maps the columns) -->
     <div class="card card-flush">
       <div class="overflow-x-auto">
         <table class="w-full text-[13px]">
           <thead>
-            <tr class="border-b border-[var(--border)] text-left">
+            <tr class="border-b border-[var(--border)] text-left align-bottom">
               <th class="w-9 py-2 pl-4"><input type="checkbox" checked={allChecked} onchange={toggleAll} /></th>
-              <th class="th py-2">Date</th>
-              <th class="th py-2">Description</th>
-              <th class="th py-2 text-right">Amount</th>
-              <th class="th py-2 pl-1">Category</th>
+              <th class="px-2 pb-2 pt-3">
+                <div class="th mb-1">Date <span style="color:var(--negative)">*</span></div>
+                <div class="flex items-center gap-1">
+                  <select class="head-sel min-w-[110px] {mapping.date === '' ? '!border-[var(--negative)]' : ''}" bind:value={mapping.date}>
+                    <option value="">— column —</option>
+                    {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                  </select>
+                  <button type="button" class="chip" title="Cycle date order" onclick={cycleDateOrder}>{dateOrder.toUpperCase()}</button>
+                </div>
+              </th>
+              <th class="px-2 pb-2 pt-3">
+                <div class="th mb-1">Description</div>
+                <select class="head-sel min-w-[130px]" bind:value={mapping.description}>
+                  <option value="">— column —</option>
+                  {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                </select>
+              </th>
+              <th class="px-2 pb-2 pt-3">
+                <div class="th mb-1">Amount</div>
+                {#if amountSel === '__split'}
+                  <div class="flex flex-wrap items-center gap-1">
+                    <select class="head-sel" bind:value={mapping.debit}>
+                      <option value="">out…</option>
+                      {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                    </select>
+                    <select class="head-sel" bind:value={mapping.credit}>
+                      <option value="">in…</option>
+                      {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                    </select>
+                    <button type="button" class="text-[11px] text-[var(--ink-faint)] hover:underline"
+                      onclick={() => (mapping = { ...mapping, debit: '', credit: '' })}>single</button>
+                  </div>
+                {:else}
+                  <select class="head-sel min-w-[110px]" value={amountSel}
+                    onchange={(e) => chooseAmount(e.currentTarget.value)}>
+                    <option value="">— column —</option>
+                    {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                    <option value="__split">↔ two columns</option>
+                  </select>
+                {/if}
+              </th>
+              <th class="px-2 pb-2 pt-3">
+                <div class="th mb-1">Category</div>
+                <select class="head-sel min-w-[120px]" bind:value={mapping.category}>
+                  <option value="">— none —</option>
+                  {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                </select>
+              </th>
             </tr>
           </thead>
           <tbody>
