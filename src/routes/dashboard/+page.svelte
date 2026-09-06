@@ -30,7 +30,7 @@
   {/if}
   {#if data.uncategorised > 0}
     <a href="/transactions?category=none" class="flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
-      <span>⚠️ {data.uncategorised} transaction{data.uncategorised === 1 ? '' : 's'} still need a category</span>
+      <span>⚠️ {data.uncategorised} transaction{data.uncategorised === 1 ? '' : 's'} still need{data.uncategorised === 1 ? 's' : ''} a category</span>
       <span class="font-semibold">Review →</span>
     </a>
   {/if}
