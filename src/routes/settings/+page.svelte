@@ -2,12 +2,28 @@
   import { enhance } from '$app/forms';
   import { formatMoney } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
+  import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
   let newColor = $state('#7b8a5a');
   let resettingUser = $state(null);
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
+
+  const messages = {
+    currency: 'Currency saved',
+    category: 'Categories updated',
+    rule: 'Rules updated',
+    password: 'Password updated',
+    admin: 'Done'
+  };
+  let seenForm;
+  $effect(() => {
+    if (form === seenForm) return;
+    seenForm = form;
+    if (form?.ok) toast(form.msg || messages[form.section] || 'Saved');
+    else if (form?.error) toast(form.error, { type: 'info' });
+  });
 </script>
 
 <svelte:head><title>Settings · Tally</title></svelte:head>

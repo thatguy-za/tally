@@ -4,6 +4,7 @@
   import MonthPicker from '$lib/components/MonthPicker.svelte';
   import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
   let { data } = $props();
 
   let net = $derived(data.monthTotals.incoming - data.monthTotals.outgoing);
@@ -160,8 +161,13 @@
       {/each}
     </ul>
   {:else}
-    <p class="border-t border-[var(--border)] px-5 py-10 text-center text-sm text-[var(--ink-faint)]">
-      Nothing here yet. <a href="/transactions" class="link-accent">Add a transaction</a>.
-    </p>
+    <div class="border-t border-[var(--border)]">
+      <EmptyState
+        icon="wallet"
+        title="No activity this month"
+        hint="Once you add or import transactions they'll show up here."
+        cta={{ href: '/transactions?new=1', label: 'Add a transaction' }}
+      />
+    </div>
   {/if}
 </div>

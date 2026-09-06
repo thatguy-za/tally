@@ -1,10 +1,13 @@
 <script>
+  import { Tween } from 'svelte/motion';
+  import { cubicOut } from 'svelte/easing';
   import { formatMoney } from '$lib/currency.js';
+
   /**
    * @type {{
    *   value: number, currency: string, class?: string,
-   *   countUp?: boolean, colour?: 'auto' | 'none' | 'positive' | 'muted',
-   *   abs?: boolean, size?: string
+   *   countUp?: boolean, colour?: 'auto' | 'none' | 'positive' | 'muted' | 'ink',
+   *   abs?: boolean, animate?: boolean
    * }}
    */
   let {
@@ -14,38 +17,28 @@
     countUp = false,
     colour = 'none',
     abs = false,
-    size = ''
+    animate = true
   } = $props();
 
-  let shown = $state(0);
+  const reduce =
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  const tw = new Tween(0, { duration: 600, easing: cubicOut });
+  let started = $state(false);
 
   $effect(() => {
-    if (!countUp) {
-      shown = value;
-      return;
+    const v = value ?? 0;
+    if (!animate || reduce) {
+      tw.set(v, { duration: 0 });
+    } else if (!started && !countUp) {
+      tw.set(v, { duration: 0 });
+    } else {
+      tw.target = v;
     }
-    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduce) {
-      shown = value;
-      return;
-    }
-    const from = 0;
-    const to = value;
-    const start = performance.now();
-    const dur = 620;
-    let raf;
-    const tick = (now) => {
-      const t = Math.min(1, (now - start) / dur);
-      const eased = 1 - Math.pow(1 - t, 3);
-      shown = from + (to - from) * eased;
-      if (t < 1) raf = requestAnimationFrame(tick);
-      else shown = to;
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    started = true;
   });
 
-  let display = $derived(abs ? Math.abs(shown) : shown);
+  let display = $derived(abs ? Math.abs(tw.current) : tw.current);
   let tone = $derived(
     colour === 'auto' ? (value > 0 ? 'positive' : value < 0 ? 'ink' : 'muted') : colour
   );
@@ -60,4 +53,4 @@
   );
 </script>
 
-<span class="tnum {size} {cls}" style={colourStyle}>{formatMoney(display, currency)}</span>
+<span class="tnum {cls}" style={colourStyle}>{formatMoney(display, currency)}</span>

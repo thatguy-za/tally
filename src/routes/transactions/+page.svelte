@@ -5,9 +5,11 @@
   import { fly, slide } from 'svelte/transition';
   import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
+  import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
-  let showAdd = $state(false);
+  let showAdd = $state($page.url.searchParams.has('new'));
   let showFilters = $state(false);
   let editingId = $state(null);
   let selected = $state(new Set());
@@ -33,10 +35,14 @@
 
   let activeFilterCount = $derived(Object.entries(data.filters).filter(([, v]) => v).length);
 
+  let seenForm;
   $effect(() => {
-    if (form?.added) showAdd = false;
-    if (form?.updated) editingId = null;
-    if (form?.bulk) selected = new Set();
+    if (form === seenForm) return;
+    seenForm = form;
+    if (form?.added) { showAdd = false; toast('Transaction added'); }
+    if (form?.updated) { editingId = null; toast('Transaction updated'); }
+    if (form?.deleted) toast('Transaction deleted');
+    if (form?.bulk) { selected = new Set(); toast(form.bulk); }
   });
 </script>
 
@@ -57,11 +63,6 @@
     </button>
   </div>
 </div>
-
-{#if form?.bulk}
-  <p transition:slide class="mb-4 rounded-[9px] px-3 py-2 text-sm"
-    style="background:var(--accent-wash);color:var(--accent-strong)">{form.bulk}</p>
-{/if}
 
 {#if showAdd}
   <form transition:slide method="POST" action="?/add" use:enhance
@@ -270,6 +271,13 @@
       </tbody>
     </table>
   {:else}
-    <p class="px-5 py-14 text-center text-sm text-[var(--ink-faint)]">No transactions match these filters.</p>
+    <EmptyState
+      icon="transactions"
+      title={activeFilterCount ? 'Nothing matches those filters' : 'No transactions yet'}
+      hint={activeFilterCount
+        ? 'Try widening the date range or clearing a filter.'
+        : 'Add one by hand, or import a CSV from your bank.'}
+      cta={activeFilterCount ? { href: '/transactions', label: 'Clear filters' } : { href: '/transactions/import', label: 'Import CSV' }}
+    />
   {/if}
 </div>

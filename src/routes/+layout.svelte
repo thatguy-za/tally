@@ -3,6 +3,11 @@
   import { page } from '$app/stores';
   import { onNavigate } from '$app/navigation';
   import Icon from '$lib/components/Icon.svelte';
+  import Toaster from '$lib/components/Toaster.svelte';
+  import LoadingBar from '$lib/components/LoadingBar.svelte';
+  import CommandPalette from '$lib/components/CommandPalette.svelte';
+  import { theme, initTheme, toggleTheme } from '$lib/theme.svelte.js';
+  import { openPalette } from '$lib/palette.svelte.js';
   let { data, children } = $props();
 
   const nav = [
@@ -15,22 +20,20 @@
   ];
 
   let current = $derived($page.url.pathname);
+  let isMac = $state(true);
 
-  let theme = $state('system');
   $effect(() => {
-    try {
-      theme = localStorage.getItem('theme') || 'system';
-    } catch (e) {}
+    initTheme();
+    isMac = /mac/i.test(navigator.platform || navigator.userAgent);
   });
-  function cycleTheme() {
-    theme = theme === 'dark' ? 'light' : 'dark';
-    try {
-      localStorage.setItem('theme', theme);
-    } catch (e) {}
-    document.documentElement.dataset.theme = theme;
-  }
 
-  // Smooth cross-fade between pages.
+  let effectiveDark = $derived(
+    theme.value === 'dark' ||
+      (theme.value === 'system' &&
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-color-scheme: dark)').matches)
+  );
+
   onNavigate((navigation) => {
     if (!document.startViewTransition) return;
     return new Promise((resolve) => {
@@ -42,7 +45,11 @@
   });
 </script>
 
+<LoadingBar />
+<Toaster />
+
 {#if data.user}
+  <CommandPalette />
   <div class="shell flex min-h-full flex-col">
     <header class="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--paper)]/85 backdrop-blur-md">
       <div class="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
@@ -50,7 +57,7 @@
           <span class="grid h-8 w-8 place-items-center rounded-[9px] bg-[var(--accent)] text-[var(--accent-contrast)]">
             <Icon name="wallet" size={17} stroke={2} />
           </span>
-          <span class="font-display text-[17px] font-medium tracking-tight" style="font-family:var(--font-display)">Tally</span>
+          <span class="text-[17px] font-medium tracking-tight" style="font-family:var(--font-display)">Tally</span>
         </a>
 
         <nav class="ml-2 flex flex-1 items-center gap-0.5 overflow-x-auto">
@@ -69,16 +76,24 @@
         </nav>
 
         <button
-          onclick={cycleTheme}
+          onclick={openPalette}
+          class="hidden items-center gap-1.5 rounded-[9px] border border-[var(--border-strong)] px-2 py-1 text-[11px] text-[var(--ink-faint)] transition-colors hover:text-[var(--ink)] md:flex"
+          title="Command palette"
+        >
+          <span class="kbd">{isMac ? '⌘' : 'Ctrl'}</span><span class="kbd">K</span>
+        </button>
+
+        <button
+          onclick={toggleTheme}
           class="grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
           title="Toggle theme"
           aria-label="Toggle theme"
         >
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
+          <Icon name={effectiveDark ? 'sun' : 'moon'} size={16} />
         </button>
 
         <div class="flex items-center gap-2.5">
-          <span class="hidden text-[13px] text-[var(--ink-faint)] md:inline">{data.user.email}</span>
+          <span class="hidden text-[13px] text-[var(--ink-faint)] lg:inline">{data.user.email}</span>
           <form method="POST" action="/logout">
             <button class="btn btn-ghost btn-sm" title="Sign out"><Icon name="logout" size={14} /></button>
           </form>
@@ -91,7 +106,7 @@
     </main>
 
     <footer class="mx-auto w-full max-w-5xl px-4 py-6 text-[11px] text-[var(--ink-faint)]">
-      Tally · self-hosted budgeting
+      Tally · self-hosted budgeting · <span class="kbd">{isMac ? '⌘' : 'Ctrl'}</span> <span class="kbd">K</span> for commands
     </footer>
   </div>
 {:else}

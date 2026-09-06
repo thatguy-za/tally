@@ -347,8 +347,159 @@
   * { transition-duration: 0.01ms !important; }
 }
 
+.rise-6 { animation-delay: 0.24s; }
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
 /* view transitions */
-@keyframes vt-fade-in { from { opacity: 0; } }
-@keyframes vt-fade-out { to { opacity: 0; } }
-::view-transition-old(root) { animation: vt-fade-out 0.14s ease both; }
-::view-transition-new(root) { animation: vt-fade-in 0.22s ease both; }
+@keyframes vt-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+@keyframes vt-out {
+  to { opacity: 0; transform: translateY(-6px); }
+}
+::view-transition-old(root) { animation: vt-out 0.16s ease both; }
+::view-transition-new(root) { animation: vt-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+}
+
+/* ============================================================ scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 3px solid var(--paper);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+
+/* ========================================================= keyboard hint */
+kbd, .kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.3rem;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--border-strong);
+  font-family: ui-sans-serif, system-ui, -apple-system, var(--font-ui);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  line-height: 1;
+}
+
+/* ============================================================= overlays */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  padding: 12vh 1rem 1rem;
+  background: color-mix(in srgb, var(--ink) 28%, transparent);
+  backdrop-filter: blur(3px);
+  animation: overlay-in 0.14s ease both;
+}
+@keyframes overlay-in { from { opacity: 0; } }
+
+.palette {
+  width: 100%;
+  max-width: 34rem;
+  align-self: flex-start;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: palette-in 0.18s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes palette-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
+}
+.palette-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: 0.95rem 1rem;
+  font-size: 0.95rem;
+  color: var(--ink);
+  outline: none;
+}
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+  text-align: left;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+}
+.palette-item[data-active='true'] { background: var(--accent-wash); color: var(--ink); }
+.palette-item .pi-hint { margin-left: auto; color: var(--ink-faint); }
+
+/* ============================================================= toasts */
+.toaster {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 15rem;
+  max-width: 22rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.8125rem;
+  box-shadow: var(--shadow-lg);
+}
+.toast .t-mark {
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  flex: none;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* ========================================================= loading bar */
+.loadbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 80;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--accent-strong));
+  transform-origin: left;
+}

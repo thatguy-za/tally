@@ -3,7 +3,16 @@
   import { formatMoney, formatMonth } from '$lib/currency.js';
   import MonthPicker from '$lib/components/MonthPicker.svelte';
   import Money from '$lib/components/Money.svelte';
+  import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
+
+  let seenForm;
+  $effect(() => {
+    if (form === seenForm) return;
+    seenForm = form;
+    if (form?.saved) toast('Budget saved');
+    else if (form?.error) toast(form.error, { type: 'info' });
+  });
 
   let budgeted = $derived(data.expenses.filter((e) => e.target != null));
   let totalTarget = $derived(budgeted.reduce((s, e) => s + e.target, 0));

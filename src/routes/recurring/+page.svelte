@@ -3,6 +3,8 @@
   import { slide } from 'svelte/transition';
   import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
+  import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
   let showAdd = $state(false);
@@ -11,9 +13,17 @@
   const freqLabel = (r) =>
     r.interval_n > 1 ? `every ${r.interval_n} ${r.frequency.replace('ly', 's')}` : r.frequency;
 
+  let seenForm;
   $effect(() => {
-    if (form?.created) showAdd = false;
-    if (form?.updated) editingId = null;
+    if (form === seenForm) return;
+    seenForm = form;
+    if (form?.created) { showAdd = false; toast('Schedule created'); }
+    if (form?.updated) { editingId = null; toast('Schedule updated'); }
+    if (form?.deleted) toast('Schedule deleted');
+    if (form?.posted !== undefined) {
+      toast(typeof form.posted === 'number' ? `${form.posted} transaction(s) posted` : 'Posted');
+    }
+    if (form?.skipped) toast('Occurrence skipped');
   });
 </script>
 
@@ -169,8 +179,12 @@
       {/each}
     </ul>
   {:else}
-    <p class="border-t border-[var(--border)] px-5 py-12 text-center text-sm text-[var(--ink-faint)]">
-      No recurring transactions yet.
-    </p>
+    <div class="border-t border-[var(--border)]">
+      <EmptyState
+        icon="recurring"
+        title="No recurring transactions yet"
+        hint="Add rent, salary or a subscription once — Tally will queue each one for you to confirm."
+      />
+    </div>
   {/if}
 </div>

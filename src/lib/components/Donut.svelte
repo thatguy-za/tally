@@ -1,4 +1,6 @@
 <script>
+  import { Tween } from 'svelte/motion';
+  import { cubicOut } from 'svelte/easing';
   import { formatMoney } from '$lib/currency.js';
   /** @type {{ segments: {name:string,color:string,total:number}[], currency:string, label?:string }} */
   let { segments, currency, label = 'Total' } = $props();
@@ -16,6 +18,14 @@
     });
   });
 
+  const reduce =
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const draw = new Tween(0, { duration: 900, easing: cubicOut });
+  $effect(() => {
+    draw.set(reduce ? 1 : 0, { duration: 0 });
+    if (!reduce) draw.target = 1;
+  });
+
   let hover = $state(null);
   let centreTop = $derived(hover ? hover.name : label);
   let centreVal = $derived(
@@ -31,8 +41,8 @@
         cx="50" cy="50" r="42" fill="none" stroke={a.color}
         stroke-width={hover && hover.name === a.name ? 14 : 11}
         stroke-linecap="butt"
-        stroke-dasharray={`${Math.max(0, a.frac * C - 0.6)} ${C}`}
-        stroke-dashoffset={-a.offset * C}
+        stroke-dasharray={`${Math.max(0, a.frac * C * draw.current - 0.6)} ${C}`}
+        stroke-dashoffset={-a.offset * C * draw.current}
         class="cursor-pointer transition-[stroke-width] duration-200"
         opacity={hover && hover.name !== a.name ? 0.35 : 1}
         role="presentation"
