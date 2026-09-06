@@ -31,7 +31,7 @@ docker run -d --name tally \
   -p 3000:3000 \
   -e ORIGIN=http://localhost:3000 \
   -v tally-data:/data \
-  ghcr.io/YOUR_ORG/tally:latest
+  ghcr.io/thatguy-za/tally:latest
 ```
 
 Then open http://localhost:3000 and create the first account.

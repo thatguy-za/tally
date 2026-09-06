@@ -1,6 +1,6 @@
 services:
   tally:
-    image: ghcr.io/YOUR_ORG/tally:latest
+    image: ghcr.io/thatguy-za/tally:latest
     # Or build locally instead of pulling:
     # build: .
     container_name: tally
