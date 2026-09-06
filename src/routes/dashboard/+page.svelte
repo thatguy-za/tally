@@ -39,15 +39,8 @@
   <MonthPicker months={data.months} selected={data.month} />
 </div>
 
-{#if data.due.length || data.uncategorised > 0 || data.budgets.over > 0}
-  <div class="mb-6 grid gap-2 sm:grid-cols-3 rise rise-1">
-    {#if data.due.length}
-      <a href="/recurring" class="nudge">
-        <Icon name="recurring" size={16} class="text-[var(--accent)]" />
-        <span>{data.due.length} recurring due to confirm</span>
-        <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />
-      </a>
-    {/if}
+{#if data.uncategorised > 0 || data.budgets.over > 0}
+  <div class="mb-6 grid gap-2 sm:grid-cols-2 rise rise-1">
     {#if data.uncategorised > 0}
       <a href="/transactions?category=none" class="nudge">
         <Icon name="sparkle" size={16} class="text-[var(--gold)]" />

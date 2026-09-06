@@ -13,13 +13,9 @@
     currency: 'Currency saved',
     category: 'Categories updated',
     rule: 'Rules updated',
-    recurring: 'Recurring updated',
     password: 'Password updated',
     aiuser: 'Preference saved'
   };
-
-  const freqLabel = (r) =>
-    r.interval_n > 1 ? `every ${r.interval_n} ${r.frequency.replace('ly', 's')}` : r.frequency;
   let seenForm;
   $effect(() => {
     if (form === seenForm) return;
@@ -153,53 +149,6 @@
     </form>
   </div>
 
-  <!-- Recurring transactions -->
-  <div class="card rise rise-3">
-    <div class="mb-1 flex items-center justify-between">
-      <h2 class="flex items-center gap-2 text-lg">
-        <Icon name="recurring" size={16} class="text-[var(--accent)]" /> Recurring transactions
-      </h2>
-      {#if data.recurringDue}
-        <a href="/recurring" class="link-accent text-[13px]">{data.recurringDue} due to confirm →</a>
-      {/if}
-    </div>
-    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
-      Schedules you've created from a transaction (hover a row on the Transactions page and click the
-      <Icon name="recurring" size={12} class="inline text-[var(--accent)]" /> icon). Tally queues each one for you to confirm.
-    </p>
-    {#if data.recurring.length}
-      <ul class="divide-y divide-[var(--border)]">
-        {#each data.recurring as r}
-          <li class="flex flex-wrap items-center justify-between gap-2 py-2 text-[13px] {r.active ? '' : 'opacity-50'}">
-            <span class="flex items-center gap-2">
-              <span class="dot" style="background:{r.category_color || 'var(--ink-faint)'}"></span>
-              <span class="font-medium">{r.description || '—'}</span>
-              <span class="chip">{freqLabel(r)}</span>
-              {#if r.auto_post}<span class="chip chip-accent">auto</span>{/if}
-            </span>
-            <span class="flex items-center gap-3">
-              <span class="tnum text-[var(--ink-faint)]">
-                {formatMoney(r.amount, data.currency)} · next {r.next_date}
-              </span>
-              <form method="POST" action="?/toggleRecurring" use:enhance>
-                <input type="hidden" name="id" value={r.id} />
-                <input type="hidden" name="active" value={r.active ? '0' : '1'} />
-                <button class="text-xs text-[var(--ink-soft)] hover:underline">{r.active ? 'Pause' : 'Resume'}</button>
-              </form>
-              <form method="POST" action="?/deleteRecurring" use:enhance
-                onsubmit={(e) => { if (!confirm('Remove this recurring schedule?')) e.preventDefault(); }}>
-                <input type="hidden" name="id" value={r.id} />
-                <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]"><Icon name="trash" size={13} /></button>
-              </form>
-            </span>
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="text-[13px] text-[var(--ink-faint)]">No recurring transactions yet.</p>
-    {/if}
-  </div>
-
   <!-- AI categorisation opt-in (any user, when enabled) -->
   {#if data.aiAvailable}
     <div class="card rise rise-3">
@@ -210,8 +159,7 @@
           </h2>
           <p class="mt-1 max-w-lg text-[13px] text-[var(--ink-faint)]">
             On by default. Claude sorts transactions into <em>your</em> categories when you
-            import a CSV, and there's an <b>AI categorise</b> button on the Transactions
-            page. Turn it off to keep your data away from the API entirely.
+            import a CSV. Turn it off to keep your data away from the API entirely.
           </p>
         </div>
         <form method="POST" action="?/aiCategorise" use:enhance>

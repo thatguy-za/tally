@@ -499,46 +499,6 @@ kbd, .kbd {
 }
 @keyframes overlay-in { from { opacity: 0; } }
 
-.palette {
-  width: 100%;
-  max-width: 34rem;
-  align-self: flex-start;
-  background: var(--surface-raised);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  animation: palette-in 0.18s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
-@keyframes palette-in {
-  from { opacity: 0; transform: translateY(-8px) scale(0.985); }
-}
-.palette-input {
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  background: transparent;
-  padding: 0.95rem 1rem;
-  font-size: 0.95rem;
-  color: var(--ink);
-  outline: none;
-}
-.palette-item {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  width: 100%;
-  padding: 0.6rem 1rem;
-  font-size: 0.875rem;
-  color: var(--ink-soft);
-  text-align: left;
-  cursor: pointer;
-  border: 0;
-  background: transparent;
-}
-.palette-item[data-active='true'] { background: var(--accent-wash); color: var(--ink); }
-.palette-item .pi-hint { margin-left: auto; color: var(--ink-faint); }
-
 /* ============================================================= toasts */
 .toaster {
   position: fixed;

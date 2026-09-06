@@ -43,30 +43,25 @@ export function listTransactions(userId, f = {}) {
   if (f.amountMax != null) { where.push('abs(t.amount) <= @amountMax'); params.amountMax = f.amountMax; }
   if (f.direction === 'in') where.push('t.amount >= 0');
   else if (f.direction === 'out') where.push('t.amount < 0');
-  if (f.recurring === 'yes') where.push('t.recurring_id IS NOT NULL');
-  else if (f.recurring === 'no') where.push('t.recurring_id IS NULL');
 
   return db
     .prepare(
-      `SELECT t.*, c.name AS category_name, c.color AS category_color, c.kind AS category_kind,
-              rc.frequency AS rec_frequency, rc.interval_n AS rec_interval,
-              rc.next_date AS rec_next, rc.active AS rec_active
+      `SELECT t.*, c.name AS category_name, c.color AS category_color, c.kind AS category_kind
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
-       LEFT JOIN recurring rc ON rc.id = t.recurring_id
        WHERE ${where.join(' AND ')}
        ORDER BY t.date DESC, t.id DESC`
     )
     .all(params);
 }
 
-export function addTransaction(userId, { date, description, amount, category_id, recurring_id }) {
+export function addTransaction(userId, { date, description, amount, category_id }) {
   return db
     .prepare(
-      `INSERT INTO transactions (user_id, date, description, amount, category_id, recurring_id)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO transactions (user_id, date, description, amount, category_id)
+       VALUES (?, ?, ?, ?, ?)`
     )
-    .run(userId, date, description || '', amount, category_id || null, recurring_id || null);
+    .run(userId, date, description || '', amount, category_id || null);
 }
 
 const dupeKey = (r) =>
@@ -138,17 +133,6 @@ export function bulkDelete(userId, ids) {
     .prepare(`DELETE FROM transactions WHERE user_id = ? AND id IN (${placeholders})`)
     .run(userId, ...ids);
   return Number(info.changes);
-}
-
-export function uncategorisedIds(userId, limit = 200) {
-  return db
-    .prepare(
-      `SELECT id FROM transactions
-       WHERE user_id = ? AND category_id IS NULL
-       ORDER BY date DESC, id DESC LIMIT ?`
-    )
-    .all(userId, limit)
-    .map((r) => r.id);
 }
 
 // AI categorisation is opt-out — on unless the user has explicitly turned it off.
@@ -302,167 +286,6 @@ export function categoriseByRules(userId, description) {
   return null;
 }
 
-/* ------------------------------------------------------------------- recurring */
-
-export function advanceDate(dateStr, frequency, n = 1) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const base = new Date(Date.UTC(y, m - 1, d));
-  if (frequency === 'weekly') base.setUTCDate(base.getUTCDate() + 7 * n);
-  else if (frequency === 'yearly') base.setUTCFullYear(base.getUTCFullYear() + n);
-  else {
-    // monthly: keep day-of-month, clamp to end of shorter months
-    const targetMonth = base.getUTCMonth() + n;
-    const targetYear = base.getUTCFullYear() + Math.floor(targetMonth / 12);
-    const normMonth = ((targetMonth % 12) + 12) % 12;
-    const lastDay = new Date(Date.UTC(targetYear, normMonth + 1, 0)).getUTCDate();
-    base.setUTCFullYear(targetYear, normMonth, Math.min(d, lastDay));
-  }
-  return base.toISOString().slice(0, 10);
-}
-
-export function listRecurring(userId) {
-  return db
-    .prepare(
-      `SELECT r.*, c.name AS category_name, c.color AS category_color
-       FROM recurring r LEFT JOIN categories c ON c.id = r.category_id
-       WHERE r.user_id = ? ORDER BY r.active DESC, r.next_date`
-    )
-    .all(userId);
-}
-
-export function createRecurring(userId, r) {
-  return db
-    .prepare(
-      `INSERT INTO recurring
-         (user_id, description, amount, category_id, frequency, interval_n, next_date, end_date, auto_post)
-       VALUES (@userId, @description, @amount, @category_id, @frequency, @interval_n, @next_date, @end_date, @auto_post)`
-    )
-    .run({
-      userId,
-      description: r.description || '',
-      amount: r.amount,
-      category_id: r.category_id || null,
-      frequency: r.frequency || 'monthly',
-      interval_n: r.interval_n || 1,
-      next_date: r.next_date,
-      end_date: r.end_date || null,
-      auto_post: r.auto_post ? 1 : 0
-    });
-}
-
-export function updateRecurring(userId, id, fields) {
-  const allowed = [
-    'description', 'amount', 'category_id', 'frequency',
-    'interval_n', 'next_date', 'end_date', 'auto_post', 'active'
-  ];
-  const sets = [];
-  const params = { id, userId };
-  for (const k of allowed) if (k in fields) { sets.push(`${k} = @${k}`); params[k] = fields[k]; }
-  if (!sets.length) return;
-  db.prepare(`UPDATE recurring SET ${sets.join(', ')} WHERE id = @id AND user_id = @userId`).run(params);
-}
-
-export function deleteRecurring(userId, id) {
-  db.prepare('DELETE FROM recurring WHERE id = ? AND user_id = ?').run(id, userId);
-}
-
-/** Turn an existing transaction into a recurring schedule and link it. */
-export function makeTransactionRecurring(userId, txId, { frequency, interval_n, next_date, auto_post }) {
-  const t = db
-    .prepare('SELECT id, description, amount, category_id, date FROM transactions WHERE id = ? AND user_id = ?')
-    .get(txId, userId);
-  if (!t) return null;
-  return tx(() => {
-    const info = createRecurring(userId, {
-      description: t.description,
-      amount: t.amount,
-      category_id: t.category_id,
-      frequency,
-      interval_n: interval_n || 1,
-      next_date: next_date || advanceDate(t.date, frequency, interval_n || 1),
-      auto_post: auto_post ? 1 : 0
-    });
-    const rid = Number(info.lastInsertRowid);
-    db.prepare('UPDATE transactions SET recurring_id = ? WHERE id = ? AND user_id = ?').run(rid, txId, userId);
-    return rid;
-  });
-}
-
-export function recurringIdForTx(userId, txId) {
-  return (
-    db.prepare('SELECT recurring_id FROM transactions WHERE id = ? AND user_id = ?').get(txId, userId)
-      ?.recurring_id ?? null
-  );
-}
-
-export function deleteRecurringForTx(userId, txId) {
-  const rid = recurringIdForTx(userId, txId);
-  if (rid) deleteRecurring(userId, rid);
-}
-
-export function toggleRecurringForTx(userId, txId) {
-  const rid = recurringIdForTx(userId, txId);
-  if (!rid) return;
-  const r = db.prepare('SELECT active FROM recurring WHERE id = ? AND user_id = ?').get(rid, userId);
-  updateRecurring(userId, rid, { active: r?.active ? 0 : 1 });
-}
-
-/** Recurring entries with next_date on or before `asOf` (default today). */
-export function dueRecurring(userId, asOf = new Date().toISOString().slice(0, 10)) {
-  return db
-    .prepare(
-      `SELECT r.*, c.name AS category_name, c.color AS category_color
-       FROM recurring r LEFT JOIN categories c ON c.id = r.category_id
-       WHERE r.user_id = ? AND r.active = 1 AND r.next_date <= ?
-         AND (r.end_date IS NULL OR r.next_date <= r.end_date)
-       ORDER BY r.next_date`
-    )
-    .all(userId, asOf);
-}
-
-/** Post one occurrence of a recurring entry and roll next_date forward. */
-export function postRecurringOccurrence(userId, id) {
-  const r = db.prepare('SELECT * FROM recurring WHERE id = ? AND user_id = ?').get(id, userId);
-  if (!r) return null;
-  return tx(() => {
-    addTransaction(userId, {
-      date: r.next_date,
-      description: r.description,
-      amount: r.amount,
-      category_id: r.category_id,
-      recurring_id: r.id
-    });
-    const next = advanceDate(r.next_date, r.frequency, r.interval_n);
-    const active = r.end_date && next > r.end_date ? 0 : 1;
-    db.prepare('UPDATE recurring SET next_date = ?, active = ? WHERE id = ?').run(next, active, r.id);
-    return { date: r.next_date, next };
-  });
-}
-
-export function skipRecurringOccurrence(userId, id) {
-  const r = db.prepare('SELECT * FROM recurring WHERE id = ? AND user_id = ?').get(id, userId);
-  if (!r) return;
-  const next = advanceDate(r.next_date, r.frequency, r.interval_n);
-  const active = r.end_date && next > r.end_date ? 0 : 1;
-  db.prepare('UPDATE recurring SET next_date = ?, active = ? WHERE id = ?').run(next, active, r.id);
-}
-
-/** Auto-post everything currently due that is flagged auto_post. Returns count posted. */
-export function runAutoPost(userId) {
-  const due = dueRecurring(userId).filter((r) => r.auto_post);
-  let posted = 0;
-  for (const r of due) {
-    // guard against a huge backlog: cap at 24 catch-up postings per entry
-    for (let i = 0; i < 24; i++) {
-      const fresh = db.prepare('SELECT next_date, active FROM recurring WHERE id = ?').get(r.id);
-      if (!fresh.active || fresh.next_date > new Date().toISOString().slice(0, 10)) break;
-      postRecurringOccurrence(userId, r.id);
-      posted++;
-    }
-  }
-  return posted;
-}
-
 /* ----------------------------------------------------------------------- budgets */
 
 export function listBudgets(userId) {
@@ -512,4 +335,33 @@ export function budgetStatus(userId, month) {
       pct: target ? Math.min(999, Math.round((actual / target) * 100)) : null
     };
   });
+}
+
+/**
+ * Average monthly spend per expense category across all history.
+ * total spent in the category / number of distinct months the user has any data.
+ * @returns {{ id:number, name:string, average:number }[]}
+ */
+export function categoryMonthlyAverages(userId) {
+  const span = db
+    .prepare(
+      `SELECT COUNT(DISTINCT substr(date, 1, 7)) AS months FROM transactions WHERE user_id = ?`
+    )
+    .get(userId);
+  const months = Math.max(1, span?.months ?? 1);
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.name,
+              COALESCE(SUM(ABS(t.amount)), 0) AS total
+       FROM categories c
+       JOIN transactions t ON t.category_id = c.id AND t.user_id = c.user_id
+       WHERE c.user_id = @userId AND c.kind = 'expense'
+       GROUP BY c.id`
+    )
+    .all({ userId });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    average: Math.round((r.total / months) * 100) / 100
+  }));
 }

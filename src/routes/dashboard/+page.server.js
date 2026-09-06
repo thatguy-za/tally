@@ -5,8 +5,6 @@ import {
   listTransactions,
   categoryBreakdown,
   uncategorisedCount,
-  dueRecurring,
-  runAutoPost,
   budgetStatus,
   categorySparkData
 } from '$lib/server/queries.js';
@@ -14,9 +12,6 @@ import {
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals, url }) {
   const userId = locals.user.id;
-
-  // Auto-post any due recurring entries flagged for it (cheap; only runs when something is due).
-  runAutoPost(userId);
 
   const months = listMonths(userId);
   // default to the most recent month that actually has transactions
@@ -37,7 +32,6 @@ export function load({ locals, url }) {
     monthTotals: { incoming: forMonth.incoming || 0, outgoing: forMonth.outgoing || 0 },
     recent: listTransactions(userId, { month }).slice(0, 8),
     uncategorised: uncategorisedCount(userId),
-    due: dueRecurring(userId),
     breakdown: categoryBreakdown(userId, month).filter((b) => b.total < 0),
     spark,
     budgetRows: budgetRows

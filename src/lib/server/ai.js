@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { db, tx } from './db.js';
 import { getApiKey, getModel, AI_MODELS } from './ai-settings.js';
 import { listCategories } from './queries.js';
 
@@ -140,43 +139,6 @@ async function runCategorisation(categories, items) {
     }
   }
   return { byRef, usage };
-}
-
-/**
- * Categorise existing DB transactions in place (never overwrites a set category).
- * @param {number} userId @param {number[]} txIds
- */
-export async function categoriseWithAI(userId, txIds) {
-  const ids = [...new Set(txIds.map(Number).filter(Boolean))].slice(0, MAX_PER_RUN);
-  const empty = { categorised: 0, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
-  if (!ids.length) return empty;
-
-  const categories = listCategories(userId);
-  if (!categories.length) throw new Error('Add some categories first.');
-
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = db
-    .prepare(`SELECT id, date, description, amount FROM transactions WHERE user_id = ? AND id IN (${placeholders})`)
-    .all(userId, ...ids);
-  if (!rows.length) return empty;
-
-  const items = rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, description: r.description }));
-  const { byRef, usage } = await runCategorisation(categories, items);
-  const catId = new Map(categories.map((c) => [c.name, c.id]));
-
-  let categorised = 0;
-  const stmt = db.prepare(
-    'UPDATE transactions SET category_id = ? WHERE id = ? AND user_id = ? AND category_id IS NULL'
-  );
-  tx(() => {
-    for (const [ref, name] of byRef) {
-      const id = Number(ref);
-      const cid = catId.get(name);
-      if (id && cid) categorised += Number(stmt.run(cid, id, userId).changes);
-    }
-  });
-
-  return { categorised, considered: rows.length, usage, costUsd: estimateCost(usage, getModel()) };
 }
 
 /**

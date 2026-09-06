@@ -10,11 +10,7 @@ import {
   deleteRule,
   applyRules,
   setUserAiCategorise,
-  getUserAiCategorise,
-  listRecurring,
-  dueRecurring,
-  updateRecurring,
-  deleteRecurring
+  getUserAiCategorise
 } from '$lib/server/queries.js';
 import { verifyPassword, hashPassword } from '$lib/server/auth.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
@@ -34,8 +30,6 @@ export function load({ locals }) {
     isAdmin: !!locals.user.is_admin,
     categories: listCategories(userId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
     rules: listRules(userId),
-    recurring: listRecurring(userId),
-    recurringDue: dueRecurring(userId).length,
     aiAvailable: aiEnabled(),
     aiCategorise: getUserAiCategorise(userId)
   };
@@ -101,19 +95,6 @@ export const actions = {
     const f = await request.formData();
     setUserAiCategorise(locals.user.id, f.get('on') === '1');
     return { section: 'aiuser', ok: true };
-  },
-
-  toggleRecurring: async ({ request, locals }) => {
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    updateRecurring(locals.user.id, id, { active: f.get('active') === '1' ? 1 : 0 });
-    return { section: 'recurring', ok: true };
-  },
-
-  deleteRecurring: async ({ request, locals }) => {
-    const f = await request.formData();
-    deleteRecurring(locals.user.id, Number(f.get('id')));
-    return { section: 'recurring', ok: true };
   },
 
   password: async ({ request, locals }) => {

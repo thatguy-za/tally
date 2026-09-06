@@ -12,30 +12,42 @@
   let showAdd = $state($page.url.searchParams.has('new'));
   let showFilters = $state(false);
   let editingId = $state(null);
-  let recurringId = $state(null); // tx id whose recurring panel is open
+  let rulingId = $state(null);
   let selected = $state(new Set());
   const today = new Date().toISOString().slice(0, 10);
-
-  const freqLabel = (t) =>
-    t.rec_interval > 1
-      ? `every ${t.rec_interval} ${t.rec_frequency?.replace('ly', 's')}`
-      : t.rec_frequency;
-
-  /** default "next" date: advance a date string by one period */
-  function nextAfter(dateStr, frequency, n = 1) {
-    const [y, m, d] = String(dateStr || today).split('-').map(Number);
-    const base = new Date(Date.UTC(y, m - 1, d));
-    if (frequency === 'weekly') base.setUTCDate(base.getUTCDate() + 7 * n);
-    else if (frequency === 'yearly') base.setUTCFullYear(base.getUTCFullYear() + n);
-    else base.setUTCMonth(base.getUTCMonth() + n);
-    return base.toISOString().slice(0, 10);
-  }
 
   // optimistic UI state
   let catOverride = $state(new Map()); // id -> categoryId string ('' = uncategorised)
   let pendingCat = $state(new Set());
   let removed = $state(new Set());
   let visibleRows = $derived(data.transactions.filter((t) => !removed.has(t.id)));
+
+  // client-side column sort (null = keep server order: date desc)
+  let sortKey = $state(null);
+  let sortDir = $state('asc');
+  function setSort(key, dir) {
+    if (sortKey === key && sortDir === dir) { sortKey = null; return; }
+    sortKey = key;
+    sortDir = dir;
+  }
+  const sortVal = {
+    date: (t) => t.date,
+    description: (t) => (t.description || '').toLowerCase(),
+    category: (t) => (t.category_name || '').toLowerCase(),
+    amount: (t) => t.amount
+  };
+  let sortedRows = $derived.by(() => {
+    if (!sortKey) return visibleRows;
+    const f = sortVal[sortKey];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    return [...visibleRows].sort((a, b) => {
+      const av = f(a);
+      const bv = f(b);
+      if (av < bv) return -dir;
+      if (av > bv) return dir;
+      return 0;
+    });
+  });
 
   let allChecked = $derived(
     visibleRows.length > 0 && visibleRows.every((t) => selected.has(t.id))
@@ -93,17 +105,17 @@
     };
   }
 
-  let aiRunning = $state(false);
-
   let seenForm;
   $effect(() => {
     if (form === seenForm) return;
     seenForm = form;
-    aiRunning = false;
     if (form?.added) { showAdd = false; toast('Transaction added'); }
     if (form?.updated) { editingId = null; toast('Transaction updated'); }
+    if (form?.ruleSaved) {
+      rulingId = null;
+      toast(form.applied ? `Rule saved · ${form.applied} categorised` : 'Auto-categorisation rule saved');
+    }
     if (form?.deleted) toast('Transaction deleted');
-    if (form?.recurring) { recurringId = null; toast(form.recurring); }
     if (form?.bulk) { selected = new Set(); catOverride = new Map(); toast(form.bulk); }
     else if (form?.error) toast(form.error, { type: 'info' });
   });
@@ -117,23 +129,6 @@
     <h1 class="text-3xl" style="font-family:var(--font-display)">Transactions</h1>
   </div>
   <div class="flex flex-wrap gap-2">
-    {#if data.aiCategorise}
-      <form method="POST" action="?/aiCategorise"
-        use:enhance={() => {
-          aiRunning = true;
-          return async ({ result, update }) => {
-            aiRunning = false;
-            if (result.type === 'error') { toast('AI categorisation failed.', { type: 'info' }); return; }
-            await update();
-          };
-        }}>
-        {#each [...selected] as id}<input type="hidden" name="id" value={id} />{/each}
-        <button class="btn btn-ghost" disabled={aiRunning}>
-          <Icon name="sparkle" size={14} class="text-[var(--accent)]" />
-          {aiRunning ? 'Categorising…' : selected.size ? `AI categorise ${selected.size}` : 'AI categorise'}
-        </button>
-      </form>
-    {/if}
     <button class="btn btn-ghost" onclick={() => (showFilters = !showFilters)}>
       <Icon name="filter" size={14} /> Filters{activeFilterCount ? ` · ${activeFilterCount}` : ''}
     </button>
@@ -220,15 +215,6 @@
       </select>
     </div>
     <div>
-      <label class="label" for="f-rec">Recurring</label>
-      <select class="input" id="f-rec" value={data.filters.recurring}
-        onchange={(e) => setParam('recurring', e.currentTarget.value)}>
-        <option value="">Any</option>
-        <option value="yes">Recurring only</option>
-        <option value="no">One-off only</option>
-      </select>
-    </div>
-    <div>
       <label class="label" for="f-min">Min amount</label>
       <input class="input" id="f-min" inputmode="decimal" value={data.filters.amountMin}
         onchange={(e) => setParam('min', e.currentTarget.value)} />
@@ -284,21 +270,37 @@
   </div>
 {/if}
 
+{#snippet sortable(key, label, thClass, alignEnd = false)}
+  <th class={thClass}>
+    <span class="inline-flex items-center gap-1.5 {alignEnd ? 'w-full justify-end' : ''}">
+      <span>{label}</span>
+      <span class="inline-flex flex-col">
+        <button type="button" aria-label={`Sort by ${label}, ascending`}
+          class="block text-[8px] leading-[7px] {sortKey === key && sortDir === 'asc' ? 'text-[var(--accent)]' : 'text-[var(--ink-faint)] hover:text-[var(--ink)]'}"
+          onclick={() => setSort(key, 'asc')}>▲</button>
+        <button type="button" aria-label={`Sort by ${label}, descending`}
+          class="block text-[8px] leading-[7px] {sortKey === key && sortDir === 'desc' ? 'text-[var(--accent)]' : 'text-[var(--ink-faint)] hover:text-[var(--ink)]'}"
+          onclick={() => setSort(key, 'desc')}>▼</button>
+      </span>
+    </span>
+  </th>
+{/snippet}
+
 <div class="card card-flush rise rise-2">
   {#if data.transactions.length}
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-[var(--border)] text-left">
           <th class="w-10 py-2.5 pl-4"><input type="checkbox" checked={allChecked} onchange={toggleAll} /></th>
-          <th class="th py-2.5">Date</th>
-          <th class="th py-2.5">Description</th>
-          <th class="th py-2.5">Category</th>
-          <th class="th py-2.5 pr-4 text-right">Amount</th>
+          {@render sortable('date', 'Date', 'th py-2.5')}
+          {@render sortable('description', 'Description', 'th py-2.5')}
+          {@render sortable('category', 'Category', 'th py-2.5')}
+          {@render sortable('amount', 'Amount', 'th py-2.5 pr-4 text-right', true)}
           <th class="w-16"></th>
         </tr>
       </thead>
       <tbody>
-        {#each visibleRows as t (t.id)}
+        {#each sortedRows as t (t.id)}
           {#if editingId === t.id}
             <tr class="border-b border-[var(--border)]">
               <td colspan="6" class="p-3" style="background:var(--paper-sunk)">
@@ -318,61 +320,31 @@
                 </form>
               </td>
             </tr>
-          {:else if recurringId === t.id}
+          {:else if rulingId === t.id}
             <tr class="border-b border-[var(--border)]">
               <td colspan="6" class="p-3" style="background:var(--paper-sunk)">
-                {#if t.recurring_id}
-                  <div class="flex flex-wrap items-center gap-3 text-[13px]">
-                    <Icon name="recurring" size={15} class="text-[var(--accent)]" />
-                    <span>
-                      Repeats <b>{freqLabel(t)}</b> · next <span class="tnum">{t.rec_next}</span>
-                      {#if !t.rec_active}<span class="chip ml-1">paused</span>{/if}
-                    </span>
-                    <span class="ml-auto flex gap-2">
-                      <form method="POST" action="?/toggleRecurring" use:enhance>
-                        <input type="hidden" name="id" value={t.id} />
-                        <button class="btn btn-ghost btn-sm">{t.rec_active ? 'Pause' : 'Resume'}</button>
-                      </form>
-                      <form method="POST" action="?/removeRecurring" use:enhance
-                        onsubmit={(e) => { if (!confirm('Remove this recurring schedule?')) e.preventDefault(); }}>
-                        <input type="hidden" name="id" value={t.id} />
-                        <button class="btn btn-ghost btn-sm" style="color:var(--negative)">Remove</button>
-                      </form>
-                      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (recurringId = null)}>Close</button>
-                    </span>
+                <form method="POST" action="?/saveRule" use:enhance class="grid gap-2 sm:grid-cols-6">
+                  <div class="sm:col-span-3">
+                    <label class="label" for="rule-match-{t.id}">When description contains</label>
+                    <input class="input" id="rule-match-{t.id}" name="match_text" value={t.description} required />
                   </div>
-                {:else}
-                  <form method="POST" action="?/makeRecurring" use:enhance class="flex flex-wrap items-end gap-3 text-[13px]">
-                    <input type="hidden" name="id" value={t.id} />
-                    <span class="flex items-center gap-1.5 font-medium">
-                      <Icon name="recurring" size={15} class="text-[var(--accent)]" /> Make “{t.description || 'this'}” recurring
-                    </span>
-                    <label class="flex flex-col gap-1">
-                      <span class="label !mb-0">Every</span>
-                      <span class="flex gap-1">
-                        <input class="input tnum w-14" name="interval_n" type="number" min="1" value="1"
-                          oninput={(e) => { const fr = e.currentTarget.form.frequency.value; e.currentTarget.form.next_date.value = nextAfter(t.date, fr, +e.currentTarget.value || 1); }} />
-                        <select class="input" name="frequency"
-                          onchange={(e) => { e.currentTarget.form.next_date.value = nextAfter(t.date, e.currentTarget.value, +e.currentTarget.form.interval_n.value || 1); }}>
-                          <option value="weekly">week(s)</option>
-                          <option value="monthly" selected>month(s)</option>
-                          <option value="yearly">year(s)</option>
-                        </select>
-                      </span>
-                    </label>
-                    <label class="flex flex-col gap-1">
-                      <span class="label !mb-0">Next on</span>
-                      <input class="input" name="next_date" type="date" value={nextAfter(t.date, 'monthly', 1)} required />
-                    </label>
-                    <label class="flex items-center gap-2 pb-2">
-                      <input type="checkbox" name="auto_post" /> Post automatically
-                    </label>
-                    <div class="flex gap-2 pb-1">
-                      <button class="btn btn-primary btn-sm">Make recurring</button>
-                      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (recurringId = null)}>Cancel</button>
-                    </div>
-                  </form>
-                {/if}
+                  <div class="sm:col-span-2">
+                    <label class="label" for="rule-cat-{t.id}">Category</label>
+                    <select class="input" id="rule-cat-{t.id}" name="category_id" value={String(t.category_id ?? '')} required>
+                      <option value="">Choose…</option>
+                      {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="label" for="rule-pri-{t.id}">Priority</label>
+                    <input class="input tnum" id="rule-pri-{t.id}" name="priority" type="number" value="0" />
+                  </div>
+                  <div class="flex items-center gap-2 sm:col-span-6">
+                    <button class="btn btn-primary btn-sm">Save rule</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick={() => (rulingId = null)}>Cancel</button>
+                    <span class="text-[12px] text-[var(--ink-faint)]">Future imports and manual entries with this text get this category.</span>
+                  </div>
+                </form>
               </td>
             </tr>
           {:else}
@@ -382,17 +354,7 @@
                 <input type="checkbox" checked={selected.has(t.id)} onchange={() => toggle(t.id)} />
               </td>
               <td class="tnum whitespace-nowrap py-2.5 pr-3 text-[var(--ink-faint)]">{t.date}</td>
-              <td class="py-2.5 pr-3 font-medium">
-                <span class="flex items-center gap-1.5">
-                  {t.description || '—'}
-                  {#if t.recurring_id}
-                    <button type="button" title="Recurring — {freqLabel(t)}" onclick={() => (recurringId = t.id)}
-                      class="text-[var(--accent)] {t.rec_active ? '' : 'opacity-40'}">
-                      <Icon name="recurring" size={13} />
-                    </button>
-                  {/if}
-                </span>
-              </td>
+              <td class="py-2.5 pr-3 font-medium">{t.description || '—'}</td>
               <td class="py-2.5 pr-3">
                 <form method="POST" action="?/categorise"
                   use:enhance={({ formData }) =>
@@ -413,13 +375,10 @@
               </td>
               <td class="py-2.5 pr-3">
                 <div class="flex justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
-                  <button class="rounded p-1 {t.recurring_id ? 'text-[var(--accent)]' : 'text-[var(--ink-faint)] hover:text-[var(--ink)]'}"
-                    title={t.recurring_id ? 'Recurring schedule' : 'Make recurring'}
-                    onclick={() => (recurringId = recurringId === t.id ? null : t.id)}>
-                    <Icon name="recurring" size={14} />
-                  </button>
+                  <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--accent)]" title="Save as auto-categorisation rule"
+                    onclick={() => { rulingId = t.id; editingId = null; }}><Icon name="wand" size={14} /></button>
                   <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]" title="Edit"
-                    onclick={() => (editingId = t.id)}><Icon name="edit" size={14} /></button>
+                    onclick={() => { editingId = t.id; rulingId = null; }}><Icon name="edit" size={14} /></button>
                   <form method="POST" action="?/delete" use:enhance={() => deleteSubmit(t.id)}>
                     <input type="hidden" name="id" value={t.id} />
                     <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete">

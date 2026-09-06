@@ -11,6 +11,8 @@
     if (form === seenForm) return;
     seenForm = form;
     if (form?.saved) toast('Budget saved');
+    else if (form?.generated != null)
+      toast(form.generated ? `${form.generated} target${form.generated === 1 ? '' : 's'} generated` : 'No spending history yet');
     else if (form?.error) toast(form.error, { type: 'info' });
   });
 
@@ -29,7 +31,13 @@
     <p class="kicker mb-2">Budgets · {formatMonth(data.month)}</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Monthly targets</h1>
   </div>
-  <MonthPicker months={data.months} selected={data.month} />
+  <div class="flex flex-wrap items-center gap-2">
+    <form method="POST" action="?/generateTargets" use:enhance
+      onsubmit={(e) => { if (!confirm('Set every expense target to its average monthly spend so far? This overwrites existing targets.')) e.preventDefault(); }}>
+      <button class="btn btn-ghost">Generate targets</button>
+    </form>
+    <MonthPicker months={data.months} selected={data.month} />
+  </div>
 </div>
 
 {#if budgeted.length}

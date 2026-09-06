@@ -11,14 +11,9 @@ import {
   bulkDelete,
   applyRules,
   categoriseByRules,
-  uncategorisedIds,
-  getUserAiCategorise,
-  makeTransactionRecurring,
-  deleteRecurringForTx,
-  toggleRecurringForTx
+  createRule,
+  listRules
 } from '$lib/server/queries.js';
-import { aiEnabled } from '$lib/server/ai-settings.js';
-import { categoriseWithAI } from '$lib/server/ai.js';
 
 const num = (v) => {
   const n = parseAmount(String(v ?? ''));
@@ -40,8 +35,7 @@ export function load({ locals, url }) {
     search: q.get('q') || '',
     amountMin: q.get('min') || '',
     amountMax: q.get('max') || '',
-    direction: q.get('dir') || '',
-    recurring: q.get('recurring') || ''
+    direction: q.get('dir') || ''
   };
 
   const transactions = listTransactions(userId, {
@@ -53,8 +47,7 @@ export function load({ locals, url }) {
     search: filters.search || undefined,
     amountMin: filters.amountMin ? Number(filters.amountMin) : undefined,
     amountMax: filters.amountMax ? Number(filters.amountMax) : undefined,
-    direction: filters.direction || undefined,
-    recurring: filters.recurring || undefined
+    direction: filters.direction || undefined
   });
 
   const sum = transactions.reduce(
@@ -72,8 +65,7 @@ export function load({ locals, url }) {
     categories: listCategories(userId),
     months: listMonths(userId),
     filters,
-    currency: locals.user.currency,
-    aiCategorise: aiEnabled() && getUserAiCategorise(userId)
+    currency: locals.user.currency
   };
 }
 
@@ -124,35 +116,6 @@ export const actions = {
     return { deleted: true };
   },
 
-  makeRecurring: async ({ request, locals }) => {
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    const frequency = ['weekly', 'monthly', 'yearly'].includes(String(f.get('frequency')))
-      ? String(f.get('frequency'))
-      : 'monthly';
-    const interval_n = Math.max(1, Number(f.get('interval_n') || 1));
-    const next_date = String(f.get('next_date') || '');
-    const auto_post = f.get('auto_post') === 'on';
-    if (!id) return fail(400, { error: 'Missing transaction.' });
-    const rid = makeTransactionRecurring(locals.user.id, id, { frequency, interval_n, next_date, auto_post });
-    if (!rid) return fail(400, { error: 'Could not set up the schedule.' });
-    return { recurring: 'Recurring schedule created.' };
-  },
-
-  removeRecurring: async ({ request, locals }) => {
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    if (id) deleteRecurringForTx(locals.user.id, id);
-    return { recurring: 'Recurring schedule removed.' };
-  },
-
-  toggleRecurring: async ({ request, locals }) => {
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    if (id) toggleRecurringForTx(locals.user.id, id);
-    return { recurring: 'Recurring schedule updated.' };
-  },
-
   bulkCategorise: async ({ request, locals }) => {
     const f = await request.formData();
     const selected = ids(f);
@@ -167,29 +130,27 @@ export const actions = {
     return { bulk: `Deleted ${n} transaction${n === 1 ? '' : 's'}.` };
   },
 
+  saveRule: async ({ request, locals }) => {
+    const f = await request.formData();
+    const matchText = String(f.get('match_text') || '').trim();
+    const categoryId = Number(f.get('category_id'));
+    const priority = Number(f.get('priority')) || 0;
+    if (!matchText || !categoryId)
+      return fail(400, { error: 'A match phrase and category are required.' });
+    if (!listCategories(locals.user.id).some((c) => c.id === categoryId))
+      return fail(400, { error: 'Unknown category.' });
+    const dupe = listRules(locals.user.id).some(
+      (r) => r.match_text.toLowerCase() === matchText.toLowerCase() && r.category_id === categoryId
+    );
+    if (!dupe) createRule(locals.user.id, matchText, categoryId, priority);
+    const applied = applyRules(locals.user.id, { onlyUncategorised: true });
+    return { ruleSaved: matchText, applied };
+  },
+
   applyRules: async ({ request, locals }) => {
     const f = await request.formData();
     const onlyUncategorised = f.get('scope') !== 'all';
     const n = applyRules(locals.user.id, { onlyUncategorised });
     return { bulk: `Rules categorised ${n} transaction${n === 1 ? '' : 's'}.` };
-  },
-
-  aiCategorise: async ({ request, locals }) => {
-    if (!aiEnabled() || !getUserAiCategorise(locals.user.id))
-      return fail(403, { error: 'AI categorisation is not enabled for your account.' });
-    const f = await request.formData();
-    const selected = ids(f);
-    const target = selected.length ? selected : uncategorisedIds(locals.user.id);
-    if (!target.length) return { bulk: 'Nothing to categorise — everything already has a category.' };
-    try {
-      const r = await categoriseWithAI(locals.user.id, target);
-      const cost = r.costUsd >= 0.01 ? `~$${r.costUsd.toFixed(2)}` : '<$0.01';
-      return {
-        bulk: `AI categorised ${r.categorised} of ${r.considered} · ${cost}`,
-        aiDone: true
-      };
-    } catch (e) {
-      return fail(400, { error: `AI categorisation failed: ${e?.message || 'unknown error'}` });
-    }
   }
 };

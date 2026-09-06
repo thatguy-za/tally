@@ -61,7 +61,6 @@ db.exec(`
     description TEXT NOT NULL DEFAULT '',
     amount      REAL NOT NULL,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
-    recurring_id INTEGER REFERENCES recurring(id) ON DELETE SET NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -85,21 +84,6 @@ db.exec(`
     UNIQUE (user_id, category_id)
   );
 
-  CREATE TABLE IF NOT EXISTS recurring (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    description  TEXT NOT NULL DEFAULT '',
-    amount       REAL NOT NULL,
-    category_id  INTEGER REFERENCES categories(id) ON DELETE SET NULL,
-    frequency    TEXT NOT NULL DEFAULT 'monthly',
-    interval_n   INTEGER NOT NULL DEFAULT 1,
-    next_date    TEXT NOT NULL,
-    end_date     TEXT,
-    auto_post    INTEGER NOT NULL DEFAULT 0,
-    active       INTEGER NOT NULL DEFAULT 1,
-    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
   CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -107,11 +91,6 @@ db.exec(`
 `);
 
 // --- lightweight migrations for existing databases ---
-const txCols = db.prepare("PRAGMA table_info(transactions)").all().map((c) => c.name);
-if (!txCols.includes('recurring_id')) {
-  db.exec('ALTER TABLE transactions ADD COLUMN recurring_id INTEGER REFERENCES recurring(id) ON DELETE SET NULL');
-}
-
 const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
 if (!userCols.includes('ai_categorise')) {
   db.exec('ALTER TABLE users ADD COLUMN ai_categorise INTEGER NOT NULL DEFAULT 0');
