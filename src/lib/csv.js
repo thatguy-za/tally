@@ -159,7 +159,8 @@ export function guessMapping(headers) {
     date: find(['date', 'datum', 'booking', 'posted', 'transaction date']),
     description: find([
       'description', 'desc', 'narrative', 'details', 'memo', 'reference',
-      'payee', 'name', 'merchant', 'particulars', 'text'
+      'payee', 'name', 'merchant', 'particulars', 'counterparty', 'beneficiary',
+      'note', 'text', 'ref'
     ]),
     amount: find(['amount', 'value', 'bedrag', 'montant', 'betrag']),
     debit: find(['debit', 'withdrawal', 'paid out', 'money out', 'uit', ' af', 'outgoing']),

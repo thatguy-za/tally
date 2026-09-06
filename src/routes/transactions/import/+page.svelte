@@ -1,5 +1,6 @@
 <script>
   import { enhance } from '$app/forms';
+  import { slide } from 'svelte/transition';
   import Icon from '$lib/components/Icon.svelte';
   import { parseCsv, parseAmount, parseDate, guessMapping, dupeKey } from '$lib/csv.js';
   let { data, form } = $props();
@@ -25,7 +26,6 @@
   let runRules = $state(true);
   let createCategories = $state(true);
   let mapping = $state({ date: '', description: '', amount: '', debit: '', credit: '', category: '' });
-  let method = $state('manual'); // 'manual' | 'ai'
 
   let headerRow = $derived(hasHeader ? (allRows[skipRows] ?? []) : []);
   let bodyRows = $derived(allRows.slice(skipRows + (hasHeader ? 1 : 0)));
@@ -60,19 +60,19 @@
   }
 
   // ---- normalise --------------------------------------------------------
-  const cell = (raw, i) => (i === '' || i == null ? '' : String(raw[+i] ?? '').trim());
+  const cellOf = (raw, i) => (i === '' || i == null ? '' : String(raw[+i] ?? '').trim());
 
   function compute(raw) {
-    const date = parseDate(cell(raw, mapping.date), dateOrder);
+    const date = parseDate(cellOf(raw, mapping.date), dateOrder);
     let amount = null;
-    if (mapping.amount !== '') amount = parseAmount(cell(raw, mapping.amount));
+    if (mapping.amount !== '') amount = parseAmount(cellOf(raw, mapping.amount));
     else if (mapping.debit !== '' || mapping.credit !== '') {
-      const deb = parseAmount(cell(raw, mapping.debit)) || 0;
-      const cred = parseAmount(cell(raw, mapping.credit)) || 0;
+      const deb = parseAmount(cellOf(raw, mapping.debit)) || 0;
+      const cred = parseAmount(cellOf(raw, mapping.credit)) || 0;
       amount = Math.abs(cred) - Math.abs(deb);
     }
     if (amount != null && invert) amount = -amount;
-    return { date, amount, description: cell(raw, mapping.description), categoryName: cell(raw, mapping.category) };
+    return { date, amount, description: cellOf(raw, mapping.description), categoryName: cellOf(raw, mapping.category) };
   }
 
   let edits = $state(new Map());
@@ -113,6 +113,7 @@
     included: rows.filter((r) => r.included).length,
     errors: rows.filter((r) => r.error).length,
     dupes: rows.filter((r) => r.duplicate).length,
+    uncategorised: rows.filter((r) => r.included && !String(r.catValue)).length,
     incoming: rows.filter((r) => r.included && Number.isFinite(r.amount) && r.amount > 0).reduce((s, r) => s + r.amount, 0),
     outgoing: rows.filter((r) => r.included && Number.isFinite(r.amount) && r.amount < 0).reduce((s, r) => s - r.amount, 0)
   });
@@ -154,22 +155,32 @@
     })
   );
 
-  // ---- phases --------------------------------------------------------
-  let localPhase = $state(null);
-  let phase = $derived(
-    form?.imported !== undefined ? 'done' : !form?.analyzed ? 'upload' : (localPhase ?? 'setup')
-  );
-  const STEPS = ['Upload', 'Set up', 'Review', 'Done'];
-  let stepIdx = $derived({ upload: 0, setup: 1, review: 2, done: 3 }[phase]);
+  // ---- phases: upload → review → done ---------------------------------
+  let phase = $derived(form?.imported !== undefined ? 'done' : form?.analyzed ? 'review' : 'upload');
+  const STEPS = ['Upload', 'Review & approve', 'Done'];
+  let stepIdx = $derived({ upload: 0, review: 1, done: 2 }[phase]);
 
-  // ---- AI suggestions --------------------------------------------------
-  let aiState = $state({ loading: false, error: '', count: 0, cost: 0 });
+  // ---- AI categorisation (runs automatically on entering review) --------
+  let aiState = $state({ loading: false, error: '', count: 0, cost: 0, ran: false });
   let aiSuggested = $state(new Set());
+  let aiKick = '';
+
+  $effect(() => {
+    if (phase !== 'review' || !data.aiAvailable) return;
+    const key = form?.csv?.slice(0, 120) ?? '';
+    if (!key || key === aiKick || !bodyRows.length) return;
+    aiKick = key;
+    // let the auto-detect $effect settle the mapping first
+    queueMicrotask(() => runAiSuggest());
+  });
 
   async function runAiSuggest() {
     const toSuggest = rows.filter((r) => !r.error && !/^\d+$/.test(String(r.catValue)));
-    if (!toSuggest.length) { aiState = { loading: false, error: '', count: 0, cost: 0 }; return; }
-    aiState = { loading: true, error: '', count: 0, cost: 0 };
+    if (!toSuggest.length) {
+      aiState = { loading: false, error: '', count: 0, cost: 0, ran: true };
+      return;
+    }
+    aiState = { ...aiState, loading: true, error: '' };
     try {
       const res = await fetch('/transactions/import/suggest', {
         method: 'POST',
@@ -181,7 +192,7 @@
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.message || `HTTP ${res.status}`);
       const next = new Map(edits);
-      const suggested = new Set();
+      const suggested = new Set(aiSuggested);
       let n = 0;
       for (const [ref, name] of Object.entries(j.suggestions || {})) {
         const id = byName.get(String(name).trim().toLowerCase());
@@ -193,25 +204,19 @@
       }
       edits = next;
       aiSuggested = suggested;
-      aiState = { loading: false, error: '', count: n, cost: j.costUsd || 0 };
+      aiState = { loading: false, error: '', count: n, cost: j.costUsd || 0, ran: true };
     } catch (e) {
-      aiState = { loading: false, error: e?.message || 'AI suggestions failed.', count: 0, cost: 0 };
+      aiState = { loading: false, error: e?.message || 'AI categorisation failed.', count: 0, cost: 0, ran: true };
     }
   }
 
-  function toReview() {
-    localPhase = 'review';
-    if (method === 'ai') runAiSuggest();
-  }
-
-  let costHint = $derived.by(() => {
-    if (!data.aiPrice) return null;
-    const n = Math.min(300, bodyRows.length || 1);
-    const inTok = n * 55 + 400;
-    const outTok = n * 14;
-    const usd = (inTok / 1e6) * data.aiPrice.input + (outTok / 1e6) * data.aiPrice.output;
-    return usd < 0.01 ? '<$0.01' : `~$${usd.toFixed(2)}`;
-  });
+  let showColumns = $state(false);
+  const label = (i) => (i === '' || i == null ? '—' : headers[+i] || `Column ${+i + 1}`);
+  let columnSummary = $derived(
+    mapping.amount !== ''
+      ? `Amount: ${label(mapping.amount)}`
+      : `Out: ${label(mapping.debit)} · In: ${label(mapping.credit)}`
+  );
 </script>
 
 <svelte:head><title>Import · Tally</title></svelte:head>
@@ -226,9 +231,8 @@
   </div>
 </div>
 
-<!-- stepper -->
 <div class="mb-6 flex flex-wrap items-center gap-2 text-[13px]">
-  {#each STEPS as label, i}
+  {#each STEPS as name, i}
     <span class="flex items-center gap-2">
       <span class="grid h-5 w-5 place-items-center rounded-full text-[11px] font-semibold
         {stepIdx > i ? 'bg-[var(--accent)] text-[var(--accent-contrast)]'
@@ -236,7 +240,7 @@
           : 'bg-[var(--paper-sunk)] text-[var(--ink-faint)]'}">
         {stepIdx > i ? '✓' : i + 1}
       </span>
-      <span class={stepIdx === i ? 'font-medium' : 'text-[var(--ink-faint)]'}>{label}</span>
+      <span class={stepIdx === i ? 'font-medium' : 'text-[var(--ink-faint)]'}>{name}</span>
     </span>
     {#if i < STEPS.length - 1}<span class="h-px w-5 bg-[var(--border)]"></span>{/if}
   {/each}
@@ -246,7 +250,6 @@
   <p class="mb-4 rounded-[9px] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form.error}</p>
 {/if}
 
-<!-- DONE -->
 {#if phase === 'done'}
   <div class="card" style="border-color:var(--accent);background:var(--accent-wash)">
     <p class="font-semibold" style="color:var(--accent-strong)">
@@ -256,7 +259,7 @@
       {#if form.duplicates}<li>· {form.duplicates} duplicate(s) skipped.</li>{/if}
       {#if form.invalid}<li>· {form.invalid} row(s) skipped as invalid.</li>{/if}
       {#if form.categorisedByRules}<li>· {form.categorisedByRules} auto-categorised by your rules.</li>{/if}
-      {#if form.uncategorised}<li>· {form.uncategorised} transaction(s) still uncategorised.</li>{/if}
+      {#if form.uncategorised}<li>· {form.uncategorised} still uncategorised.</li>{/if}
     </ul>
     <div class="mt-3 flex gap-2">
       <a href="/transactions" class="btn btn-primary">View transactions</a>
@@ -264,7 +267,6 @@
     </div>
   </div>
 
-<!-- UPLOAD -->
 {:else if phase === 'upload'}
   <form method="POST" action="?/analyze" enctype="multipart/form-data" use:enhance class="card max-w-lg space-y-4">
     <div>
@@ -272,109 +274,18 @@
       <input class="input" id="file" name="file" type="file" accept=".csv,.tsv,.txt,text/csv" required />
       <p class="mt-1.5 text-xs text-[var(--ink-faint)]">
         Any bank export — comma, semicolon or tab separated, columns in any order. Max 8 MB.
+        {#if data.aiAvailable}Claude will categorise the rows for you on the next screen.{/if}
       </p>
     </div>
     <button class="btn btn-primary">Continue</button>
   </form>
 
-<!-- SET UP -->
-{:else if phase === 'setup'}
-  <div class="space-y-4">
-    <div class="card">
-      <div class="mb-4 flex items-baseline justify-between">
-        <h2 class="text-lg">Match the columns</h2>
-        <span class="text-[13px] text-[var(--ink-faint)]">
-          {bodyRows.length} rows{form.filename ? ` · ${form.filename}` : ''}
-        </span>
-      </div>
-      <div class="grid gap-3 sm:grid-cols-3">
-        {#each FIELDS as [key, label, req]}
-          <div>
-            <label class="label" for={`m-${key}`}>{label}{req ? ' *' : ''}</label>
-            <select class="input" id={`m-${key}`} bind:value={mapping[key]}>
-              <option value="">— none —</option>
-              {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
-            </select>
-          </div>
-        {/each}
-      </div>
-      <p class="mt-2 text-xs text-[var(--ink-faint)]">
-        Use <b>Amount</b> for one signed column, or <b>Money out</b> / <b>Money in</b> for two.
-      </p>
-
-      <div class="my-4 border-t border-[var(--border)]"></div>
-
-      <div class="grid gap-3 sm:grid-cols-3">
-        <div>
-          <label class="label" for="dateorder">Date order</label>
-          <select class="input" id="dateorder" bind:value={dateOrder}>
-            <option value="dmy">Day / Month / Year</option>
-            <option value="mdy">Month / Day / Year</option>
-            <option value="ymd">Year / Month / Day</option>
-          </select>
-        </div>
-        <div>
-          <label class="label" for="skiprows">Ignore rows at top</label>
-          <input class="input tnum" id="skiprows" type="number" min="0" max="20" bind:value={skipRows} />
-        </div>
-        <label class="flex items-end gap-2 pb-2 text-[13px]">
-          <input type="checkbox" bind:checked={hasHeader} /> First row is a header
-        </label>
-      </div>
-
-      <div class="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
-        <label class="flex items-center gap-2"><input type="checkbox" bind:checked={invert} /> Flip signs</label>
-        <label class="flex items-center gap-2"><input type="checkbox" bind:checked={skipDuplicates} /> Skip duplicates</label>
-        <label class="flex items-center gap-2"><input type="checkbox" bind:checked={runRules} /> Run my rules</label>
-        <label class="flex items-center gap-2"><input type="checkbox" bind:checked={createCategories} /> Create new categories</label>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2 class="text-lg">Categorising</h2>
-      {#if data.aiAvailable}
-        <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Choose how the transactions get their categories. You can adjust every row afterwards.</p>
-        <div class="grid gap-3 sm:grid-cols-2">
-          <button type="button" onclick={() => (method = 'manual')}
-            class="rounded-[11px] border p-4 text-left transition-colors"
-            style={method === 'manual' ? 'border-color:var(--accent);background:var(--accent-wash)' : 'border-color:var(--border)'}>
-            <p class="font-medium">Do it myself</p>
-            <p class="mt-0.5 text-[13px] text-[var(--ink-faint)]">Use the file's category column and your rules; set the rest by hand.</p>
-          </button>
-          <button type="button" onclick={() => (method = 'ai')}
-            class="rounded-[11px] border p-4 text-left transition-colors"
-            style={method === 'ai' ? 'border-color:var(--accent);background:var(--accent-wash)' : 'border-color:var(--border)'}>
-            <p class="flex items-center gap-1.5 font-medium">
-              <Icon name="sparkle" size={14} class="text-[var(--accent)]" /> Let Claude categorise
-            </p>
-            <p class="mt-0.5 text-[13px] text-[var(--ink-faint)]">
-              {data.aiModelLabel?.split(' — ')[0] ?? 'Claude'} picks from your categories for anything unmatched{costHint ? ` · est. ${costHint}` : ''}.
-            </p>
-          </button>
-        </div>
-      {:else}
-        <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
-          You'll set categories on the next step — from the file's category column, your rules, and by hand.
-          {#if data.categories.length}(AI categorisation can be enabled in Settings.){/if}
-        </p>
-      {/if}
-      <div class="mt-4 flex gap-2">
-        <button type="button" class="btn btn-primary" onclick={toReview}>Continue</button>
-        <a href="/transactions/import" class="btn btn-ghost">Start over</a>
-      </div>
-    </div>
-  </div>
-
-<!-- REVIEW -->
 {:else}
   <form method="POST" action="?/import" use:enhance>
     <input type="hidden" name="payload" value={payload} />
 
+    <!-- status strip -->
     <div class="card mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
-      <button type="button" class="text-[var(--ink-faint)] hover:text-[var(--ink)]" onclick={() => (localPhase = 'setup')}>
-        ‹ Set up
-      </button>
-      <span class="h-3.5 w-px bg-[var(--border)]"></span>
       <span><b class="tnum">{stats.included}</b> of {stats.total} will import</span>
       {#if stats.errors}
         <button type="button" class="rounded px-1.5 py-0.5" style="background:var(--negative-wash);color:var(--negative)"
@@ -387,24 +298,78 @@
       <span class="tnum ml-auto text-[var(--ink-faint)]">+{stats.incoming.toFixed(2)} / −{stats.outgoing.toFixed(2)}</span>
     </div>
 
-    {#if method === 'ai'}
+    {#if data.aiAvailable}
       <div class="card mb-3 flex flex-wrap items-center gap-2 text-[13px]">
         <Icon name="sparkle" size={14} class="text-[var(--accent)]" />
         {#if aiState.loading}
-          <span>Claude is reading your transactions…</span>
+          <span>Claude is categorising your transactions…</span>
         {:else if aiState.error}
-          <span style="color:var(--negative)">{aiState.error}</span>
+          <span style="color:var(--negative)">Couldn't categorise automatically — {aiState.error} Set the categories yourself below.</span>
         {:else if aiState.count}
-          <span>Claude suggested {aiState.count} categor{aiState.count === 1 ? 'y' : 'ies'}{aiState.cost ? ` · ${aiState.cost < 0.01 ? '<$0.01' : '~$' + aiState.cost.toFixed(2)}` : ''}. Check them below.</span>
-        {:else}
-          <span>Nothing needed a suggestion — everything already had a category.</span>
+          <span>Claude filled in {aiState.count} categor{aiState.count === 1 ? 'y' : 'ies'}{aiState.cost ? ` · ${aiState.cost < 0.01 ? '<$0.01' : '~$' + aiState.cost.toFixed(2)}` : ''}. Check the ✨ rows.</span>
+        {:else if aiState.ran}
+          <span>Every row already had a category from the file or your rules.</span>
         {/if}
         <button type="button" class="btn btn-ghost btn-sm ml-auto" disabled={aiState.loading} onclick={runAiSuggest}>
-          {aiState.loading ? 'Working…' : 'Re-run'}
+          {aiState.loading ? 'Working…' : aiState.ran ? 'Re-run' : 'Categorise'}
         </button>
       </div>
     {/if}
 
+    <!-- columns & options, tucked away -->
+    <div class="card mb-3">
+      <button type="button" class="flex w-full items-center justify-between text-[13px]"
+        onclick={() => (showColumns = !showColumns)}>
+        <span class="text-[var(--ink-soft)]">
+          <b>Columns:</b> {label(mapping.date)} · {columnSummary}
+          {#if mapping.category !== ''}· {label(mapping.category)}{/if}
+          <span class="ml-1 text-[var(--ink-faint)]">— {dateOrder.toUpperCase()}</span>
+        </span>
+        <span class="flex items-center gap-1 text-[var(--ink-faint)]">
+          {showColumns ? 'Hide' : 'Adjust'}
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+            stroke-linecap="round" class="transition-transform {showColumns ? 'rotate-180' : ''}"><path d="M4 6l4 4 4-4" /></svg>
+        </span>
+      </button>
+
+      {#if showColumns}
+        <div transition:slide class="mt-4 border-t border-[var(--border)] pt-4">
+          <div class="grid gap-3 sm:grid-cols-3">
+            {#each FIELDS as [key, lbl, req]}
+              <div>
+                <label class="label" for={`m-${key}`}>{lbl}{req ? ' *' : ''}</label>
+                <select class="input" id={`m-${key}`} bind:value={mapping[key]}>
+                  <option value="">— none —</option>
+                  {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                </select>
+              </div>
+            {/each}
+          </div>
+          <div class="mt-3 grid gap-3 sm:grid-cols-3">
+            <div>
+              <label class="label" for="dateorder">Date order</label>
+              <select class="input" id="dateorder" bind:value={dateOrder}>
+                <option value="dmy">Day / Month / Year</option>
+                <option value="mdy">Month / Day / Year</option>
+                <option value="ymd">Year / Month / Day</option>
+              </select>
+            </div>
+            <div>
+              <label class="label" for="skiprows">Ignore rows at top</label>
+              <input class="input tnum" id="skiprows" type="number" min="0" max="20" bind:value={skipRows} />
+            </div>
+            <label class="flex items-end gap-2 pb-2 text-[13px]">
+              <input type="checkbox" bind:checked={hasHeader} /> First row is a header
+            </label>
+          </div>
+          <label class="mt-3 flex items-center gap-2 text-[13px]">
+            <input type="checkbox" bind:checked={invert} /> Flip signs (file lists spending as positive)
+          </label>
+        </div>
+      {/if}
+    </div>
+
+    <!-- the table -->
     <div class="card card-flush">
       <div class="overflow-x-auto">
         <table class="w-full text-[13px]">
@@ -440,7 +405,7 @@
                     onchange={(e) => { const v = parseAmount(e.currentTarget.value); edit(r.i, { amount: v == null ? e.currentTarget.value : v }); }} />
                 </td>
                 <td class="py-1 pr-3">
-                  <div class="flex items-center gap-1" title={aiSuggested.has(r.i) ? 'Suggested by Claude' : ''}>
+                  <div class="flex items-center gap-1">
                     {#if aiSuggested.has(r.i)}<Icon name="sparkle" size={12} class="shrink-0 text-[var(--accent)]" />{/if}
                     <select class="cell min-w-[140px]" value={r.catValue}
                       onchange={(e) => { aiSuggested = new Set([...aiSuggested].filter((x) => x !== r.i)); edit(r.i, { category: e.currentTarget.value }); }}>
@@ -466,7 +431,7 @@
       {/if}
     </div>
 
-    <div class="mt-3 flex flex-wrap items-center gap-2">
+    <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
       <button class="btn btn-primary" disabled={stats.included === 0 || aiState.loading}>
         Import {stats.included} row{stats.included === 1 ? '' : 's'}
       </button>
@@ -477,6 +442,11 @@
           {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
         </select>
         <button type="button" class="btn btn-ghost btn-sm" onclick={applyBulkCat} disabled={bulkCat === '__none'}>Apply</button>
+      </span>
+      <span class="ml-auto flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-faint)]">
+        <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={skipDuplicates} /> Skip duplicates</label>
+        <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={runRules} /> Run rules</label>
+        <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={createCategories} /> Create categories</label>
       </span>
     </div>
   </form>
