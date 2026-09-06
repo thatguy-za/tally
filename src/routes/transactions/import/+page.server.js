@@ -6,15 +6,24 @@ import {
   applyRules,
   uncategorisedCount,
   existingDupeKeys,
-  createCategory
+  createCategory,
+  getUserAiCategorise
 } from '$lib/server/queries.js';
+import { aiEnabled, aiStatus } from '$lib/server/ai-settings.js';
 
 const MAX_ROWS = 5000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
-  return { categories: listCategories(locals.user.id) };
+  const canAi = aiEnabled() && getUserAiCategorise(locals.user.id);
+  const st = canAi ? aiStatus() : null;
+  return {
+    categories: listCategories(locals.user.id),
+    aiAvailable: canAi,
+    aiModelLabel: st?.models.find((m) => m.id === st.model)?.label ?? null,
+    aiPrice: st ? (st.models.find((m) => m.id === st.model) ?? null) : null
+  };
 }
 
 export const actions = {

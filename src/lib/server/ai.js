@@ -4,7 +4,7 @@ import { getApiKey, getModel, AI_MODELS } from './ai-settings.js';
 import { listCategories } from './queries.js';
 
 const BATCH_SIZE = 40;
-const MAX_TX_PER_RUN = 200;
+const MAX_PER_RUN = 300;
 
 function client() {
   const apiKey = getApiKey();
@@ -28,7 +28,7 @@ function friendlyError(e) {
 
 const CATEGORISE_TOOL = {
   name: 'submit_categorisation',
-  description: 'Record the chosen category for each transaction.',
+  description: 'Record the chosen category for each transaction by its ref.',
   input_schema: {
     type: 'object',
     additionalProperties: false,
@@ -39,12 +39,12 @@ const CATEGORISE_TOOL = {
         items: {
           type: 'object',
           additionalProperties: false,
-          required: ['id', 'category'],
+          required: ['ref', 'category'],
           properties: {
-            id: { type: 'integer' },
+            ref: { type: 'string' },
             category: {
               type: ['string', 'null'],
-              description: "Exact category name from the list, or null if genuinely unclear"
+              description: 'Exact category name from the list, or null if genuinely unclear'
             }
           }
         }
@@ -62,65 +62,47 @@ function requestParams(model) {
 }
 
 /** @param {{ input:number, output:number }} usage @param {string} model */
-function estimateCost(usage, model) {
+export function estimateCost(usage, model) {
   const m = AI_MODELS.find((x) => x.id === model);
   if (!m) return 0;
   return (usage.input / 1e6) * m.input + (usage.output / 1e6) * m.output;
 }
 
+const SYSTEM =
+  'You are a meticulous personal-finance bookkeeper. Assign every transaction to ' +
+  'exactly one of the user’s existing categories, matching the intent of the category ' +
+  'names. Use the sign of the amount (negative = money out, positive = money in) and ' +
+  'the description. Prefer a confident choice for well-known merchants and obvious ' +
+  'cases; only use null when it is genuinely ambiguous. Respond solely by calling ' +
+  'submit_categorisation with one assignment per transaction ref.';
+
 /**
- * Ask Claude to categorise the given transactions for a user.
- * Only assigns categories that exist for that user; never overwrites a category
- * that is already set (the caller decides which ids to pass).
- * @param {number} userId
- * @param {number[]} txIds
+ * Core loop: ask Claude to categorise `items` against `categories`.
+ * @param {{name:string,kind:string}[]} categories
+ * @param {{ref:string,date:string,amount:number,description:string}[]} items
+ * @returns {Promise<{ byRef: Map<string,string>, usage:{input:number,output:number} }>}
+ * `byRef` maps ref -> a category name that exists in `categories` (validated).
  */
-export async function categoriseWithAI(userId, txIds) {
-  const ids = [...new Set(txIds.map(Number).filter(Boolean))].slice(0, MAX_TX_PER_RUN);
-  if (!ids.length) return { categorised: 0, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
-
-  const categories = listCategories(userId);
-  if (!categories.length) throw new Error('Add some categories first.');
-
-  const placeholders = ids.map(() => '?').join(',');
-  const rows = db
-    .prepare(
-      `SELECT id, date, description, amount FROM transactions
-       WHERE user_id = ? AND id IN (${placeholders})`
-    )
-    .all(userId, ...ids);
-  if (!rows.length) return { categorised: 0, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
-
-  const model = getModel();
+async function runCategorisation(categories, items) {
   const anthropic = client();
-  const byName = new Map(categories.map((c) => [c.name.trim().toLowerCase(), c.id]));
+  const model = getModel();
+  const byName = new Map(categories.map((c) => [c.name.trim().toLowerCase(), c.name]));
+  const catList = categories.map((c) => `- ${c.name} (${c.kind})`).join('\n');
 
-  const system =
-    'You are a meticulous personal-finance bookkeeper. Assign every transaction to ' +
-    'exactly one of the user’s existing categories, matching the intent of the ' +
-    'category names. Use the sign of the amount (negative = money out, positive = ' +
-    'money in) and the description. Prefer a confident choice for well-known merchants ' +
-    'and obvious cases; only use null when it is genuinely ambiguous. Respond solely by ' +
-    'calling submit_categorisation with one assignment per transaction id.';
-
-  const catList = categories
-    .map((c) => `- ${c.name} (${c.kind})`)
-    .join('\n');
-
-  let categorised = 0;
+  const byRef = new Map();
   const usage = { input: 0, output: 0 };
 
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const batch = items.slice(i, i + BATCH_SIZE);
     const txList = batch
-      .map((t) => `${t.id}\t${t.date}\t${t.amount.toFixed(2)}\t${t.description || '(no description)'}`)
+      .map((t) => `${t.ref}\t${t.date}\t${Number(t.amount).toFixed(2)}\t${t.description || '(no description)'}`)
       .join('\n');
 
     let res;
     try {
       res = await anthropic.messages.create({
         ...requestParams(model),
-        system,
+        system: SYSTEM,
         tools: [CATEGORISE_TOOL],
         tool_choice: { type: 'auto' },
         messages: [
@@ -128,8 +110,8 @@ export async function categoriseWithAI(userId, txIds) {
             role: 'user',
             content:
               `Categories:\n${catList}\n\n` +
-              `Transactions (id, date, amount, description):\n${txList}\n\n` +
-              `Call submit_categorisation now with an assignment for each id above.`
+              `Transactions (ref, date, amount, description):\n${txList}\n\n` +
+              `Call submit_categorisation now with an assignment for every ref above.`
           }
         ]
       });
@@ -146,28 +128,80 @@ export async function categoriseWithAI(userId, txIds) {
     const assignments = call?.input?.assignments;
     if (!Array.isArray(assignments)) continue;
 
-    const updates = [];
+    const refs = new Set(batch.map((t) => String(t.ref)));
     for (const a of assignments) {
-      const catId = a?.category ? byName.get(String(a.category).trim().toLowerCase()) : null;
-      if (catId && batch.some((t) => t.id === Number(a.id))) {
-        updates.push({ id: Number(a.id), catId });
-      }
-    }
-    if (updates.length) {
-      const stmt = db.prepare(
-        'UPDATE transactions SET category_id = ? WHERE id = ? AND user_id = ? AND category_id IS NULL'
-      );
-      tx(() => {
-        for (const u of updates) categorised += Number(stmt.run(u.catId, u.id, userId).changes);
-      });
+      const name = a?.category ? byName.get(String(a.category).trim().toLowerCase()) : null;
+      if (name && refs.has(String(a.ref))) byRef.set(String(a.ref), name);
     }
   }
+  return { byRef, usage };
+}
 
+/**
+ * Categorise existing DB transactions in place (never overwrites a set category).
+ * @param {number} userId @param {number[]} txIds
+ */
+export async function categoriseWithAI(userId, txIds) {
+  const ids = [...new Set(txIds.map(Number).filter(Boolean))].slice(0, MAX_PER_RUN);
+  const empty = { categorised: 0, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
+  if (!ids.length) return empty;
+
+  const categories = listCategories(userId);
+  if (!categories.length) throw new Error('Add some categories first.');
+
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db
+    .prepare(`SELECT id, date, description, amount FROM transactions WHERE user_id = ? AND id IN (${placeholders})`)
+    .all(userId, ...ids);
+  if (!rows.length) return empty;
+
+  const items = rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, description: r.description }));
+  const { byRef, usage } = await runCategorisation(categories, items);
+  const catId = new Map(categories.map((c) => [c.name, c.id]));
+
+  let categorised = 0;
+  const stmt = db.prepare(
+    'UPDATE transactions SET category_id = ? WHERE id = ? AND user_id = ? AND category_id IS NULL'
+  );
+  tx(() => {
+    for (const [ref, name] of byRef) {
+      const id = Number(ref);
+      const cid = catId.get(name);
+      if (id && cid) categorised += Number(stmt.run(cid, id, userId).changes);
+    }
+  });
+
+  return { categorised, considered: rows.length, usage, costUsd: estimateCost(usage, getModel()) };
+}
+
+/**
+ * Suggest categories for parsed-but-not-yet-imported CSV rows.
+ * @param {number} userId
+ * @param {{ref:string,date:string,amount:number,description:string}[]} rows
+ * @returns {Promise<{ suggestions: Record<string,string>, considered:number, usage:object, costUsd:number }>}
+ */
+export async function suggestCategoriesForRows(userId, rows) {
+  const items = rows
+    .filter((r) => r && r.ref != null)
+    .slice(0, MAX_PER_RUN)
+    .map((r) => ({
+      ref: String(r.ref),
+      date: String(r.date || ''),
+      amount: Number(r.amount) || 0,
+      description: String(r.description || '')
+    }));
+  const empty = { suggestions: {}, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
+  if (!items.length) return empty;
+
+  const categories = listCategories(userId);
+  if (!categories.length) throw new Error('Add some categories first.');
+
+  const { byRef, usage } = await runCategorisation(categories, items);
   return {
-    categorised,
-    considered: rows.length,
+    suggestions: Object.fromEntries(byRef),
+    considered: items.length,
     usage,
-    costUsd: estimateCost(usage, model)
+    costUsd: estimateCost(usage, getModel())
   };
 }
 

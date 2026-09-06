@@ -273,6 +273,26 @@
     font-family: var(--font-ui);
   }
 
+  /* quiet inline table-cell input — border only on hover/focus */
+  .cell {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0.3rem 0.4rem;
+    font-size: 0.8125rem;
+    color: var(--ink);
+    transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+  }
+  .cell:hover { border-color: var(--border); }
+  .cell:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-wash);
+    background: var(--surface);
+  }
+  .cell.bad { border-color: var(--negative); }
+
   /* --- misc --- */
   .chip {
     display: inline-flex;
