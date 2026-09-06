@@ -1,52 +1,56 @@
 <script>
   import { enhance } from '$app/forms';
   import { formatMoney } from '$lib/currency.js';
+  import Icon from '$lib/components/Icon.svelte';
   let { data, form } = $props();
 
-  let newColor = $state('#64748b');
+  let newColor = $state('#7b8a5a');
   let resettingUser = $state(null);
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
 </script>
 
-<svelte:head><title>Settings · Budget</title></svelte:head>
+<svelte:head><title>Settings · Tally</title></svelte:head>
 
-<h1 class="mb-6 text-2xl font-bold">Settings</h1>
+<div class="mb-7 rise">
+  <p class="kicker mb-2">Settings</p>
+  <h1 class="text-3xl" style="font-family:var(--font-display)">Make it yours</h1>
+</div>
 
 <div class="space-y-4">
   <!-- Currency -->
-  <div class="card">
-    <h2 class="font-semibold">Currency</h2>
-    <p class="mb-4 text-sm text-slate-500">
-      Display formatting only (single currency per user). Preview: {formatMoney(1234.5, data.currency)}
+  <div class="card rise rise-1">
+    <h2 class="text-lg">Currency</h2>
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
+      Display formatting only (single currency per user). Preview: <span class="tnum">{formatMoney(1234.5, data.currency)}</span>
     </p>
-    <form method="POST" action="?/currency" use:enhance class="flex flex-wrap items-end gap-3">
+    <form method="POST" action="?/currency" use:enhance class="flex flex-wrap items-center gap-3">
       <select class="input max-w-xs" name="currency" value={data.currency}>
         {#each data.currencies as c}<option value={c.code}>{c.label}</option>{/each}
       </select>
-      <button class="btn-primary">Save</button>
-      {#if ok('currency')}<span class="text-sm text-emerald-600">Saved</span>{/if}
-      {#if err('currency')}<span class="text-sm text-rose-600">{err('currency')}</span>{/if}
+      <button class="btn btn-primary">Save</button>
+      {#if ok('currency')}<span class="text-sm" style="color:var(--positive)">Saved</span>{/if}
+      {#if err('currency')}<span class="text-sm" style="color:var(--negative)">{err('currency')}</span>{/if}
     </form>
   </div>
 
   <!-- Categories -->
-  <div class="card">
-    <h2 class="mb-4 font-semibold">Categories</h2>
-    <ul class="mb-4 divide-y divide-slate-100">
+  <div class="card rise rise-2">
+    <h2 class="mb-4 text-lg">Categories</h2>
+    <ul class="mb-4 divide-y divide-[var(--border)]">
       {#each data.categories as c}
-        <li class="flex items-center justify-between py-2 text-sm">
+        <li class="flex items-center justify-between py-2 text-[13px]">
           <span class="flex items-center gap-2">
-            <span class="h-3 w-3 rounded-full" style="background:{c.color}"></span>
+            <span class="dot" style="background:{c.color}"></span>
             {c.name}
-            <span class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{c.kind}</span>
+            <span class="chip">{c.kind}</span>
           </span>
           <span class="flex items-center gap-3">
-            <span class="text-xs text-slate-400">{c.count} tx</span>
+            <span class="text-xs text-[var(--ink-faint)]">{c.count} tx</span>
             <form method="POST" action="?/deleteCategory" use:enhance
               onsubmit={(e) => { if (c.count && !confirm(`${c.count} transactions will become uncategorised. Continue?`)) e.preventDefault(); }}>
               <input type="hidden" name="id" value={c.id} />
-              <button class="text-slate-400 hover:text-rose-600" title="Delete">🗑️</button>
+              <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete"><Icon name="trash" size={14} /></button>
             </form>
           </span>
         </li>
@@ -66,51 +70,51 @@
       </div>
       <div>
         <label class="label" for="c-color">Colour</label>
-        <input class="h-[38px] w-14 rounded-lg border border-slate-200 bg-white p-1"
+        <input class="h-[38px] w-14 rounded-[9px] border border-[var(--border-strong)] bg-[var(--surface)] p-1"
           id="c-color" name="color" type="color" bind:value={newColor} />
       </div>
-      <button class="btn-primary">Add</button>
-      {#if err('category')}<span class="text-sm text-rose-600">{err('category')}</span>{/if}
+      <button class="btn btn-primary">Add</button>
+      {#if err('category')}<span class="text-sm" style="color:var(--negative)">{err('category')}</span>{/if}
     </form>
   </div>
 
   <!-- Auto-categorisation rules -->
-  <div class="card">
+  <div class="card rise rise-3">
     <div class="mb-1 flex items-center justify-between">
-      <h2 class="font-semibold">Auto-categorisation rules</h2>
+      <h2 class="text-lg">Auto-categorisation rules</h2>
       <form method="POST" action="?/applyRules" use:enhance>
         <input type="hidden" name="scope" value="uncategorised" />
-        <button class="btn-ghost !py-1.5 text-xs">Run on uncategorised</button>
+        <button class="btn btn-ghost btn-sm">Run on uncategorised</button>
       </form>
     </div>
-    <p class="mb-4 text-sm text-slate-500">
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       If a description contains the text, the transaction gets that category — applied on import,
       on manual entry, and whenever you run them. Higher priority wins.
     </p>
     {#if ok('rule')}
-      <p class="mb-3 text-sm text-emerald-600">
+      <p class="mb-3 text-sm" style="color:var(--positive)">
         Saved{form?.applied ? ` · ${form.applied} transaction(s) categorised` : ''}
       </p>
     {/if}
-    <ul class="mb-4 divide-y divide-slate-100">
+    <ul class="mb-4 divide-y divide-[var(--border)]">
       {#each data.rules as r}
-        <li class="flex items-center justify-between py-2 text-sm">
+        <li class="flex items-center justify-between py-2 text-[13px]">
           <span>
             “{r.match_text}” →
             <span class="font-medium" style="color:{r.category_color}">{r.category_name}</span>
-            {#if r.priority}<span class="ml-1 text-xs text-slate-400">p{r.priority}</span>{/if}
+            {#if r.priority}<span class="ml-1 text-xs text-[var(--ink-faint)]">p{r.priority}</span>{/if}
           </span>
           <form method="POST" action="?/deleteRule" use:enhance>
             <input type="hidden" name="id" value={r.id} />
-            <button class="text-slate-400 hover:text-rose-600">🗑️</button>
+            <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]"><Icon name="trash" size={14} /></button>
           </form>
         </li>
       {:else}
-        <li class="py-2 text-sm text-slate-400">No rules yet.</li>
+        <li class="py-2 text-sm text-[var(--ink-faint)]">No rules yet.</li>
       {/each}
     </ul>
     <form method="POST" action="?/addRule" use:enhance class="flex flex-wrap items-end gap-3">
-      <div class="flex-1 min-w-[160px]">
+      <div class="min-w-[160px] flex-1">
         <label class="label" for="r-match">Description contains</label>
         <input class="input" id="r-match" name="match_text" placeholder="e.g. SPAR" required />
       </div>
@@ -123,61 +127,59 @@
       </div>
       <div class="w-20">
         <label class="label" for="r-pri">Priority</label>
-        <input class="input" id="r-pri" name="priority" type="number" value="0" />
+        <input class="input tnum" id="r-pri" name="priority" type="number" value="0" />
       </div>
-      <button class="btn-primary">Add rule</button>
-      {#if err('rule')}<span class="text-sm text-rose-600">{err('rule')}</span>{/if}
+      <button class="btn btn-primary">Add rule</button>
+      {#if err('rule')}<span class="text-sm" style="color:var(--negative)">{err('rule')}</span>{/if}
     </form>
   </div>
 
   <!-- Password -->
-  <div class="card">
-    <h2 class="font-semibold">Change password</h2>
-    <p class="mb-4 text-sm text-slate-500">Signed in as {data.email}</p>
+  <div class="card rise rise-4">
+    <h2 class="text-lg">Change password</h2>
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Signed in as {data.email}</p>
     <form method="POST" action="?/password" use:enhance class="grid max-w-md gap-3">
       <input class="input" name="current" type="password" placeholder="Current password" autocomplete="current-password" required />
       <input class="input" name="next" type="password" placeholder="New password" autocomplete="new-password" minlength="8" required />
       <input class="input" name="confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" minlength="8" required />
       <div class="flex items-center gap-3">
-        <button class="btn-primary">Update password</button>
-        {#if ok('password')}<span class="text-sm text-emerald-600">Password updated</span>{/if}
-        {#if err('password')}<span class="text-sm text-rose-600">{err('password')}</span>{/if}
+        <button class="btn btn-primary">Update password</button>
+        {#if ok('password')}<span class="text-sm" style="color:var(--positive)">Password updated</span>{/if}
+        {#if err('password')}<span class="text-sm" style="color:var(--negative)">{err('password')}</span>{/if}
       </div>
     </form>
   </div>
 
   <!-- Admin -->
   {#if data.isAdmin}
-    <div class="card">
-      <h2 class="mb-1 font-semibold">Users <span class="text-xs font-normal text-slate-400">(admin)</span></h2>
-      <p class="mb-4 text-sm text-slate-500">Reset a password, grant admin, or remove an account.</p>
+    <div class="card rise rise-5">
+      <h2 class="text-lg">Users <span class="chip ml-1">admin</span></h2>
+      <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Reset a password, grant admin, or remove an account.</p>
       {#if form?.section === 'admin' && form?.msg}
-        <p class="mb-3 text-sm text-emerald-600">{form.msg}</p>
+        <p class="mb-3 text-sm" style="color:var(--positive)">{form.msg}</p>
       {/if}
-      {#if err('admin')}<p class="mb-3 text-sm text-rose-600">{err('admin')}</p>{/if}
-      <ul class="divide-y divide-slate-100">
+      {#if err('admin')}<p class="mb-3 text-sm" style="color:var(--negative)">{err('admin')}</p>{/if}
+      <ul class="divide-y divide-[var(--border)]">
         {#each data.users as u}
-          <li class="py-2.5 text-sm">
+          <li class="py-2.5 text-[13px]">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="font-medium">
                 {u.email}
-                {#if u.is_admin}<span class="ml-1 rounded bg-brand-50 px-1.5 py-0.5 text-xs text-brand-700">admin</span>{/if}
+                {#if u.is_admin}<span class="chip chip-accent ml-1">admin</span>{/if}
               </span>
               <div class="flex items-center gap-3 text-xs">
-                <button class="text-slate-500 hover:underline"
-                  onclick={() => (resettingUser = resettingUser === u.id ? null : u.id)}>
-                  Reset password
-                </button>
+                <button class="text-[var(--ink-soft)] hover:underline"
+                  onclick={() => (resettingUser = resettingUser === u.id ? null : u.id)}>Reset password</button>
                 <form method="POST" action="?/setAdmin" use:enhance>
                   <input type="hidden" name="id" value={u.id} />
                   <input type="hidden" name="admin" value={u.is_admin ? '0' : '1'} />
-                  <button class="text-slate-500 hover:underline">{u.is_admin ? 'Revoke admin' : 'Make admin'}</button>
+                  <button class="text-[var(--ink-soft)] hover:underline">{u.is_admin ? 'Revoke admin' : 'Make admin'}</button>
                 </form>
                 {#if u.id !== data.myId}
                   <form method="POST" action="?/deleteUser" use:enhance
                     onsubmit={(e) => { if (!confirm(`Delete ${u.email} and all their data?`)) e.preventDefault(); }}>
                     <input type="hidden" name="id" value={u.id} />
-                    <button class="text-rose-600 hover:underline">Delete</button>
+                    <button style="color:var(--negative)" class="hover:underline">Delete</button>
                   </form>
                 {/if}
               </div>
@@ -188,7 +190,7 @@
                 <input type="hidden" name="id" value={u.id} />
                 <input class="input max-w-xs" name="new_password" type="text"
                   placeholder="New password (min 8 chars)" minlength="8" required />
-                <button class="btn-primary !py-1.5">Set</button>
+                <button class="btn btn-primary btn-sm">Set</button>
               </form>
             {/if}
           </li>

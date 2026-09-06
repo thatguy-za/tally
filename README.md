@@ -1,6 +1,6 @@
-# Budget
+# Tally
 
-A lightweight, self-hosted multi-user budgeting app. Import your bank transactions,
+Tally is a lightweight, self-hosted, multi-user budgeting app. Import your bank transactions,
 categorise them, and see where your money goes each month.
 
 ## Features
@@ -27,11 +27,11 @@ Images are built and published to GitHub Container Registry by the included GitH
 on every push to `main`.
 
 ```bash
-docker run -d --name budget \
+docker run -d --name tally \
   -p 3000:3000 \
   -e ORIGIN=http://localhost:3000 \
-  -v budget-data:/data \
-  ghcr.io/OWNER/REPO:latest
+  -v tally-data:/data \
+  ghcr.io/tally-app/tally:latest
 ```
 
 Then open http://localhost:3000 and create the first account.
@@ -47,7 +47,7 @@ docker compose up -d
 | Variable             | Default                  | Purpose                                              |
 |----------------------|--------------------------|-----------------------------------------------------|
 | `PORT`               | `3000`                   | HTTP port                                            |
-| `DATABASE_PATH`      | `/data/budget.sqlite`    | SQLite file location (mount a volume here)           |
+| `DATABASE_PATH`      | `/data/tally.sqlite`    | SQLite file location (mount a volume here)           |
 | `ORIGIN`             | –                        | Public URL, required by SvelteKit for form POSTs    |
 | `ALLOW_REGISTRATION` | `true`                   | Set to `false` once your accounts exist to lock signup |
 
@@ -59,7 +59,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The database is created automatically at `DATABASE_PATH` (default `./data/budget.sqlite`).
+The database is created automatically at `DATABASE_PATH` (default `./data/tally.sqlite`).
 
 ## CSV format
 
@@ -71,4 +71,4 @@ or separate debit/credit columns.
 ## Backups
 
 Everything lives in the SQLite file. Back up the `/data` volume (or copy
-`budget.sqlite`, `budget.sqlite-wal`, `budget.sqlite-shm` while the app is stopped).
+`tally.sqlite`, `tally.sqlite-wal`, `tally.sqlite-shm` while the app is stopped).

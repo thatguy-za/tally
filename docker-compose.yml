@@ -1,19 +1,19 @@
 services:
-  budget:
-    image: ghcr.io/OWNER/REPO:latest
+  tally:
+    image: ghcr.io/tally-app/tally:latest
     # Or build locally instead of pulling:
     # build: .
-    container_name: budget
+    container_name: tally
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       PORT: 3000
-      DATABASE_PATH: /data/budget.sqlite
+      DATABASE_PATH: /data/tally.sqlite
       ALLOW_REGISTRATION: "true"
       ORIGIN: http://localhost:3000
     volumes:
-      - budget-data:/data
+      - tally-data:/data
 
 volumes:
-  budget-data:
+  tally-data:

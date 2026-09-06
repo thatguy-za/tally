@@ -15,7 +15,7 @@ FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV DATABASE_PATH=/data/budget.sqlite
+ENV DATABASE_PATH=/data/tally.sqlite
 RUN mkdir -p /data && chown node:node /data
 COPY --from=build /app/build ./build
 COPY --from=build /app/node_modules ./node_modules

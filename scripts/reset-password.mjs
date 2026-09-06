@@ -4,8 +4,8 @@
  *
  *   node scripts/reset-password.mjs <email> <new-password>
  *
- * Respects DATABASE_PATH (defaults to ./data/budget.sqlite). Run it on the host
- * or inside the container: `docker exec -it budget node scripts/reset-password.mjs ...`
+ * Respects DATABASE_PATH (defaults to ./data/tally.sqlite). Run it on the host
+ * or inside the container: `docker exec -it tally node scripts/reset-password.mjs ...`
  */
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, scryptSync } from 'node:crypto';
@@ -20,7 +20,7 @@ if (password.length < 8) {
   process.exit(1);
 }
 
-const DB_PATH = process.env.DATABASE_PATH || './data/budget.sqlite';
+const DB_PATH = process.env.DATABASE_PATH || './data/tally.sqlite';
 const db = new DatabaseSync(DB_PATH);
 
 const salt = randomBytes(16).toString('hex');

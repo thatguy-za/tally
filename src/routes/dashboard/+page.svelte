@@ -1,138 +1,167 @@
 <script>
   import { formatMoney, formatMonth } from '$lib/currency.js';
-  import MonthBars from '$lib/components/MonthBars.svelte';
+  import TrendChart from '$lib/components/TrendChart.svelte';
   import MonthPicker from '$lib/components/MonthPicker.svelte';
+  import Money from '$lib/components/Money.svelte';
+  import Icon from '$lib/components/Icon.svelte';
   let { data } = $props();
 
   let net = $derived(data.monthTotals.incoming - data.monthTotals.outgoing);
-  let topSpend = $derived(
-    [...data.breakdown].sort((a, b) => a.total - b.total).slice(0, 5)
-  );
+  let topSpend = $derived([...data.breakdown].sort((a, b) => a.total - b.total).slice(0, 6));
   let spendMax = $derived(Math.max(1, ...topSpend.map((c) => Math.abs(c.total))));
+  let monthName = $derived(formatMonth(data.month).split(' ')[0]);
+  let savedRate = $derived(
+    data.monthTotals.incoming > 0 ? Math.round((net / data.monthTotals.incoming) * 100) : null
+  );
 </script>
 
-<svelte:head><title>Dashboard · Budget</title></svelte:head>
+<svelte:head><title>Dashboard · Tally</title></svelte:head>
 
-<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+<div class="mb-8 flex flex-wrap items-end justify-between gap-4 rise">
   <div>
-    <h1 class="text-2xl font-bold">Dashboard</h1>
-    <p class="text-sm text-slate-500">{formatMonth(data.month)}</p>
+    <p class="kicker mb-2">Dashboard</p>
+    <h1 class="text-3xl leading-tight" style="font-family:var(--font-display)">
+      {#if net > 0}
+        In {monthName} you set aside
+        <span class="tnum" style="color:var(--positive)">{formatMoney(net, data.currency)}</span>.
+      {:else if net < 0}
+        In {monthName} you spent
+        <span class="tnum" style="color:var(--negative)">{formatMoney(-net, data.currency)}</span>
+        more than you earned.
+      {:else}
+        {monthName} is a clean slate.
+      {/if}
+    </h1>
   </div>
   <MonthPicker months={data.months} selected={data.month} />
 </div>
 
-<div class="mb-6 space-y-2">
-  {#if data.due.length}
-    <a href="/recurring" class="flex items-center justify-between rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-800 ring-1 ring-brand-200">
-      <span>🔁 {data.due.length} recurring transaction{data.due.length === 1 ? '' : 's'} due to confirm</span>
-      <span class="font-semibold">Review →</span>
-    </a>
-  {/if}
-  {#if data.uncategorised > 0}
-    <a href="/transactions?category=none" class="flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
-      <span>⚠️ {data.uncategorised} transaction{data.uncategorised === 1 ? '' : 's'} still need{data.uncategorised === 1 ? 's' : ''} a category</span>
-      <span class="font-semibold">Review →</span>
-    </a>
-  {/if}
-  {#if data.budgets.over > 0}
-    <a href="/budgets" class="flex items-center justify-between rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800 ring-1 ring-rose-200">
-      <span>🎯 {data.budgets.over} categor{data.budgets.over === 1 ? 'y is' : 'ies are'} over budget this month</span>
-      <span class="font-semibold">Review →</span>
-    </a>
-  {/if}
+{#if data.due.length || data.uncategorised > 0 || data.budgets.over > 0}
+  <div class="mb-6 grid gap-2 sm:grid-cols-3 rise rise-1">
+    {#if data.due.length}
+      <a href="/recurring" class="nudge">
+        <Icon name="recurring" size={16} class="text-[var(--accent)]" />
+        <span>{data.due.length} recurring due to confirm</span>
+        <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />
+      </a>
+    {/if}
+    {#if data.uncategorised > 0}
+      <a href="/transactions?category=none" class="nudge">
+        <Icon name="sparkle" size={16} class="text-[var(--gold)]" />
+        <span>{data.uncategorised} to categorise</span>
+        <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />
+      </a>
+    {/if}
+    {#if data.budgets.over > 0}
+      <a href="/budgets" class="nudge">
+        <Icon name="alert" size={16} class="text-[var(--negative)]" />
+        <span>{data.budgets.over} over budget</span>
+        <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />
+      </a>
+    {/if}
+  </div>
+{/if}
+
+<div class="grid gap-4 sm:grid-cols-3 rise rise-2">
+  <div class="card">
+    <p class="kicker">Incoming</p>
+    <Money value={data.monthTotals.incoming} currency={data.currency} countUp colour="positive"
+      class="mt-2 block stat-value text-[26px]" />
+  </div>
+  <div class="card">
+    <p class="kicker">Outgoing</p>
+    <Money value={data.monthTotals.outgoing} currency={data.currency} countUp colour="ink"
+      class="mt-2 block stat-value text-[26px]" />
+  </div>
+  <div class="card">
+    <p class="kicker">Net {#if savedRate !== null}· {savedRate}% saved{/if}</p>
+    <Money value={net} currency={data.currency} countUp colour={net < 0 ? 'ink' : 'positive'}
+      class="mt-2 block stat-value text-[26px]" />
+  </div>
 </div>
 
-<div class="grid gap-4 sm:grid-cols-3">
-  <div class="card">
-    <p class="text-sm font-medium text-slate-500">Incoming</p>
-    <p class="mt-1 text-2xl font-bold text-emerald-600">{formatMoney(data.monthTotals.incoming, data.currency)}</p>
-  </div>
-  <div class="card">
-    <p class="text-sm font-medium text-slate-500">Outgoing</p>
-    <p class="mt-1 text-2xl font-bold text-rose-600">{formatMoney(data.monthTotals.outgoing, data.currency)}</p>
-  </div>
-  <div class="card">
-    <p class="text-sm font-medium text-slate-500">Net</p>
-    <p class="mt-1 text-2xl font-bold {net >= 0 ? 'text-slate-900' : 'text-rose-600'}">
-      {formatMoney(net, data.currency)}
-    </p>
-  </div>
-</div>
-
-<div class="mt-4 grid gap-4 lg:grid-cols-5">
+<div class="mt-4 grid gap-4 lg:grid-cols-5 rise rise-3">
   <div class="card lg:col-span-3">
-    <h2 class="mb-4 font-semibold">Last 12 months</h2>
+    <div class="mb-4 flex items-baseline justify-between">
+      <h2 class="text-lg">Twelve-month rhythm</h2>
+      <span class="kicker">income vs spending</span>
+    </div>
     {#if data.totals.length}
-      <MonthBars data={data.totals} currency={data.currency} />
+      <TrendChart data={data.totals} currency={data.currency} />
     {:else}
-      <p class="py-8 text-center text-sm text-slate-400">No transactions yet.</p>
+      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">No transactions yet.</p>
     {/if}
   </div>
 
   <div class="card lg:col-span-2">
-    <h2 class="mb-4 font-semibold">Top spending</h2>
+    <h2 class="mb-4 text-lg">Where it went</h2>
     {#if topSpend.length}
-      <ul class="space-y-3">
+      <ul class="space-y-3.5">
         {#each topSpend as c}
           <li>
-            <div class="mb-1 flex justify-between text-sm">
-              <span class="flex items-center gap-2">
-                <span class="h-2.5 w-2.5 rounded-full" style="background:{c.color}"></span>{c.name}
+            <div class="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
+              <span class="flex min-w-0 items-center gap-2">
+                <span class="dot" style="background:{c.color}"></span>
+                <span class="truncate">{c.name}</span>
               </span>
-              <span class="font-medium">{formatMoney(Math.abs(c.total), data.currency)}</span>
+              <span class="tnum shrink-0 font-medium">{formatMoney(Math.abs(c.total), data.currency)}</span>
             </div>
-            <div class="h-1.5 rounded-full bg-slate-100">
-              <div class="h-1.5 rounded-full" style="width:{(Math.abs(c.total) / spendMax) * 100}%;background:{c.color}"></div>
+            <div class="h-1.5 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+              <div class="h-full rounded-full transition-[width] duration-700"
+                style="width:{(Math.abs(c.total) / spendMax) * 100}%;background:{c.color}"></div>
             </div>
           </li>
         {/each}
       </ul>
     {:else}
-      <p class="py-8 text-center text-sm text-slate-400">No spending this month.</p>
+      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">No spending this month.</p>
     {/if}
   </div>
 </div>
 
 {#if data.budgets.count > 0}
-  <a href="/budgets" class="card mt-4 block hover:ring-slate-300">
-    <div class="mb-2 flex items-center justify-between">
-      <h2 class="font-semibold">Budget this month</h2>
-      <span class="text-sm text-slate-500">
-        {formatMoney(data.budgets.actual, data.currency)} / {formatMoney(data.budgets.target, data.currency)}
+  {@const pct = Math.min(100, (data.budgets.actual / (data.budgets.target || 1)) * 100)}
+  {@const over = data.budgets.actual > data.budgets.target}
+  <a href="/budgets" class="card mt-4 block transition-colors hover:border-[var(--border-strong)] rise rise-4">
+    <div class="mb-2.5 flex items-baseline justify-between">
+      <h2 class="text-lg">Budget this month</h2>
+      <span class="tnum text-sm text-[var(--ink-soft)]">
+        {formatMoney(data.budgets.actual, data.currency)}
+        <span class="text-[var(--ink-faint)]">of {formatMoney(data.budgets.target, data.currency)}</span>
       </span>
     </div>
-    <div class="h-2 rounded-full bg-slate-100">
-      <div class="h-2 rounded-full {data.budgets.actual > data.budgets.target ? 'bg-rose-500' : 'bg-emerald-500'}"
-        style="width:{Math.min(100, (data.budgets.actual / (data.budgets.target || 1)) * 100)}%"></div>
+    <div class="h-2.5 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+      <div class="h-full rounded-full transition-[width] duration-700"
+        style="width:{pct}%;background:{over ? 'var(--negative)' : 'var(--accent)'}"></div>
     </div>
   </a>
 {/if}
 
-<div class="card mt-4">
-  <div class="mb-4 flex items-center justify-between">
-    <h2 class="font-semibold">Recent transactions</h2>
-    <a href="/transactions" class="text-sm font-semibold text-brand-600 hover:underline">View all</a>
+<div class="card card-flush mt-4 rise rise-4">
+  <div class="flex items-center justify-between px-5 py-4">
+    <h2 class="text-lg">Latest activity</h2>
+    <a href="/transactions" class="link-accent text-[13px]">View all</a>
   </div>
   {#if data.recent.length}
-    <ul class="divide-y divide-slate-100">
-      {#each data.recent as t}
-        <li class="flex items-center justify-between py-2.5 text-sm">
-          <div class="min-w-0">
-            <p class="truncate font-medium">{t.description || '—'}</p>
-            <p class="text-xs text-slate-400">
-              {t.date}
-              {#if t.category_name}· <span style="color:{t.category_color}">{t.category_name}</span>{/if}
-            </p>
+    <ul>
+      {#each data.recent as t, i (t.id)}
+        <li class="flex items-center justify-between gap-3 border-t border-[var(--border)] px-5 py-3 text-sm">
+          <div class="flex min-w-0 items-center gap-3">
+            <span class="dot" style="background:{t.category_color || 'var(--ink-faint)'}"></span>
+            <div class="min-w-0">
+              <p class="truncate font-medium">{t.description || '—'}</p>
+              <p class="text-xs text-[var(--ink-faint)]">
+                {t.date}{#if t.category_name} · {t.category_name}{/if}
+              </p>
+            </div>
           </div>
-          <span class="shrink-0 font-semibold {t.amount >= 0 ? 'text-emerald-600' : 'text-slate-700'}">
-            {formatMoney(t.amount, data.currency)}
-          </span>
+          <Money value={t.amount} currency={data.currency} colour="auto" class="shrink-0 font-medium" />
         </li>
       {/each}
     </ul>
   {:else}
-    <p class="py-8 text-center text-sm text-slate-400">
-      Nothing here yet. <a href="/transactions" class="font-semibold text-brand-600">Add a transaction</a>.
+    <p class="border-t border-[var(--border)] px-5 py-10 text-center text-sm text-[var(--ink-faint)]">
+      Nothing here yet. <a href="/transactions" class="link-accent">Add a transaction</a>.
     </p>
   {/if}
 </div>

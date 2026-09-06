@@ -1,5 +1,6 @@
 <script>
   import { enhance } from '$app/forms';
+  import Icon from '$lib/components/Icon.svelte';
   let { data, form } = $props();
 
   let headers = $derived(form?.headers ?? []);
@@ -13,33 +14,36 @@
   ];
 </script>
 
-<svelte:head><title>Import CSV · Budget</title></svelte:head>
+<svelte:head><title>Import · Tally</title></svelte:head>
 
-<div class="mb-6 flex items-center gap-3">
-  <a href="/transactions" class="text-slate-400 hover:text-slate-700">←</a>
-  <h1 class="text-2xl font-bold">Import transactions</h1>
+<div class="mb-7 flex items-center gap-3 rise">
+  <a href="/transactions" class="text-[var(--ink-faint)] hover:text-[var(--ink)]"><Icon name="arrowRight" size={18} class="rotate-180" /></a>
+  <div>
+    <p class="kicker mb-1">Transactions</p>
+    <h1 class="text-3xl" style="font-family:var(--font-display)">Import from CSV</h1>
+  </div>
 </div>
 
 {#if form?.imported !== undefined}
-  <div class="card mb-4 bg-emerald-50 ring-emerald-200">
-    <p class="font-semibold text-emerald-800">
+  <div class="card mb-4" style="border-color:var(--accent);background:var(--accent-wash)">
+    <p class="font-semibold" style="color:var(--accent-strong)">
       Imported {form.imported} transaction{form.imported === 1 ? '' : 's'}.
     </p>
-    <ul class="mt-1 text-sm text-emerald-700">
-      {#if form.duplicates}<li>{form.duplicates} duplicate row(s) skipped (same date, amount &amp; description).</li>{/if}
-      {#if form.skipped}<li>{form.skipped} row(s) skipped (unparseable date or amount).</li>{/if}
-      {#if form.categorisedByRules}<li>{form.categorisedByRules} auto-categorised by your rules.</li>{/if}
-      {#if form.uncategorised}<li>{form.uncategorised} transaction(s) still uncategorised.</li>{/if}
+    <ul class="mt-1.5 space-y-0.5 text-[13px]" style="color:var(--accent-strong)">
+      {#if form.duplicates}<li>· {form.duplicates} duplicate row(s) skipped (same date, amount &amp; description).</li>{/if}
+      {#if form.skipped}<li>· {form.skipped} row(s) skipped (unparseable date or amount).</li>{/if}
+      {#if form.categorisedByRules}<li>· {form.categorisedByRules} auto-categorised by your rules.</li>{/if}
+      {#if form.uncategorised}<li>· {form.uncategorised} transaction(s) still uncategorised.</li>{/if}
     </ul>
     <div class="mt-3 flex gap-2">
-      <a href="/transactions" class="btn-primary">View transactions</a>
-      <a href="/transactions/import" class="btn-ghost">Import another file</a>
+      <a href="/transactions" class="btn btn-primary">View transactions</a>
+      <a href="/transactions/import" class="btn btn-ghost">Import another</a>
     </div>
   </div>
 {/if}
 
 {#if form?.error}
-  <p class="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{form.error}</p>
+  <p class="mb-4 rounded-[9px] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form.error}</p>
 {/if}
 
 {#if !form?.analyzed && form?.imported === undefined}
@@ -47,11 +51,11 @@
     <div>
       <label class="label" for="file">CSV file</label>
       <input class="input" id="file" name="file" type="file" accept=".csv,text/csv" required />
-      <p class="mt-1.5 text-xs text-slate-400">
+      <p class="mt-1.5 text-xs text-[var(--ink-faint)]">
         Most bank exports work. You'll map the columns on the next step. Max 5 MB.
       </p>
     </div>
-    <button class="btn-primary">Continue</button>
+    <button class="btn btn-primary">Continue</button>
   </form>
 {/if}
 
@@ -60,8 +64,8 @@
     <input type="hidden" name="csv" value={form.csv} />
 
     <div class="card">
-      <h2 class="mb-1 font-semibold">Map columns</h2>
-      <p class="mb-4 text-sm text-slate-500">{form.rowCount} data rows found.</p>
+      <h2 class="text-lg">Map columns</h2>
+      <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">{form.rowCount} data rows found.</p>
       <div class="grid gap-3 sm:grid-cols-2">
         {#each colFields as [key, label, required]}
           <div>
@@ -91,45 +95,46 @@
         </div>
       </div>
 
-      <div class="mt-4 space-y-2 text-sm">
+      <div class="mt-4 space-y-2.5 text-[13px]">
         <label class="flex items-center gap-2">
-          <input type="checkbox" name="invert" class="rounded" />
-          Flip signs (my export lists spending as positive)
+          <input type="checkbox" name="invert" /> Flip signs (my export lists spending as positive)
         </label>
         <label class="flex items-center gap-2">
-          <input type="checkbox" name="skip_duplicates" class="rounded" checked value="on" />
+          <input type="checkbox" name="skip_duplicates" checked value="on" />
           Skip rows that duplicate an existing transaction (same date, amount &amp; description)
         </label>
         <label class="flex items-center gap-2">
-          <input type="checkbox" name="run_rules" class="rounded" checked />
-          Apply my auto-categorisation rules after import
+          <input type="checkbox" name="run_rules" checked /> Apply my auto-categorisation rules after import
         </label>
         <label class="flex items-center gap-2">
-          <input type="checkbox" name="auto_create" class="rounded" checked />
-          Create categories found in the file that don't exist yet
+          <input type="checkbox" name="auto_create" checked /> Create categories found in the file that don't exist yet
         </label>
       </div>
     </div>
 
-    <div class="card overflow-x-auto">
-      <h2 class="mb-3 font-semibold">Preview</h2>
-      <table class="w-full text-xs">
-        <thead>
-          <tr class="text-left text-slate-400">
-            {#each headers as h, i}<th class="px-2 py-1">{h || `Col ${i + 1}`}</th>{/each}
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-100">
-          {#each form.preview as row}
-            <tr>{#each headers as _, i}<td class="whitespace-nowrap px-2 py-1">{row[i] ?? ''}</td>{/each}</tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="card card-flush">
+      <h2 class="px-5 pb-3 pt-4 text-lg">Preview</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="border-y border-[var(--border)] text-left">
+              {#each headers as h, i}<th class="th whitespace-nowrap px-3 py-2">{h || `Col ${i + 1}`}</th>{/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each form.preview as row}
+              <tr class="border-b border-[var(--border)] last:border-0">
+                {#each headers as _, i}<td class="tnum whitespace-nowrap px-3 py-1.5">{row[i] ?? ''}</td>{/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <div class="flex gap-2">
-      <button class="btn-primary">Import {form.rowCount} rows</button>
-      <a href="/transactions/import" class="btn-ghost">Start over</a>
+      <button class="btn btn-primary">Import {form.rowCount} rows</button>
+      <a href="/transactions/import" class="btn btn-ghost">Start over</a>
     </div>
   </form>
 {/if}

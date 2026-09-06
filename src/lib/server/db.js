@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { env } from '$env/dynamic/private';
 
-const DB_PATH = env.DATABASE_PATH || './data/budget.sqlite';
+const DB_PATH = env.DATABASE_PATH || './data/tally.sqlite';
 
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
