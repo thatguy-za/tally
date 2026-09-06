@@ -29,14 +29,13 @@ on every push to `main`.
 ```bash
 docker run -d --name tally \
   -p 3000:3000 \
-  -e ORIGIN=http://localhost:3000 \
   -v tally-data:/data \
   ghcr.io/thatguy-za/tally:latest
 ```
 
-Then open http://localhost:3000 and create the first account.
+Then open `http://<host>:3000` and create the first account (it becomes the admin).
 
-Or use Docker Compose (edit the image / `ORIGIN` first):
+Or use Docker Compose:
 
 ```bash
 docker compose up -d
@@ -44,12 +43,16 @@ docker compose up -d
 
 ### Environment variables
 
-| Variable             | Default                  | Purpose                                              |
-|----------------------|--------------------------|-----------------------------------------------------|
-| `PORT`               | `3000`                   | HTTP port                                            |
-| `DATABASE_PATH`      | `/data/tally.sqlite`    | SQLite file location (mount a volume here)           |
-| `ORIGIN`             | –                        | Public URL, required by SvelteKit for form POSTs    |
-| `ALLOW_REGISTRATION` | `true`                   | Set to `false` once your accounts exist to lock signup |
+| Variable             | Default               | Purpose                                                        |
+|----------------------|-----------------------|---------------------------------------------------------------|
+| `PORT`               | `3000`                | HTTP port                                                      |
+| `DATABASE_PATH`      | `/data/tally.sqlite`  | SQLite file location (mount a volume here)                     |
+| `ALLOW_REGISTRATION` | `true`                | Set to `false` once your accounts exist to lock signup        |
+| `ORIGIN`             | –                     | Only for reverse-proxy setups: the public URL, e.g. `https://tally.example.com`. Direct `http://<host>:port` access needs nothing. |
+| `BODY_SIZE_LIMIT`    | `8M`                  | Max request body (large CSV imports)                           |
+
+Behind a proxy you can instead pass `X-Forwarded-Proto` and `X-Forwarded-Host`
+and set the matching `PROTOCOL_HEADER` / `HOST_HEADER` env vars.
 
 ## Local development
 

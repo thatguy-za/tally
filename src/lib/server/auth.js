@@ -69,18 +69,45 @@ export function deleteSession(sessionId) {
   if (sessionId) db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
 }
 
-export function setSessionCookie(cookies, session) {
-  cookies.set(SESSION_COOKIE, session.id, {
+/**
+ * Is the browser actually on HTTPS? adapter-node assumes `https` for
+ * `event.url` when ORIGIN is unset, so we can't trust that. The `Origin` header
+ * (always sent by browsers on same-origin form POSTs) and `x-forwarded-proto`
+ * are reliable; fall back to the resolved URL.
+ * @param {import('@sveltejs/kit').RequestEvent} event
+ */
+function servedOverHttps(event) {
+  const fwd = event.request.headers.get('x-forwarded-proto');
+  if (fwd) return fwd.split(',')[0].trim() === 'https';
+  const origin = event.request.headers.get('origin');
+  if (origin) {
+    try {
+      return new URL(origin).protocol === 'https:';
+    } catch {
+      /* ignore */
+    }
+  }
+  return event.url.protocol === 'https:';
+}
+
+/**
+ * @param {import('@sveltejs/kit').RequestEvent} event
+ * @param {{ id: string, expires: Date }} session
+ */
+export function setSessionCookie(event, session) {
+  event.cookies.set(SESSION_COOKIE, session.id, {
     path: '/',
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // A Secure cookie is silently dropped by the browser over plain HTTP, which
+    // is how many self-hosted deploys run — so only set it on real HTTPS.
+    secure: servedOverHttps(event),
     expires: session.expires
   });
 }
 
-export function clearSessionCookie(cookies) {
-  cookies.delete(SESSION_COOKIE, { path: '/' });
+export function clearSessionCookie(event) {
+  event.cookies.delete(SESSION_COOKIE, { path: '/', secure: servedOverHttps(event) });
 }
 
 export { SESSION_COOKIE };

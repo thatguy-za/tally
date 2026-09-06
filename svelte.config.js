@@ -5,7 +5,10 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    adapter: adapter()
+    adapter: adapter(),
+    // Replaced by a scheme-agnostic host check in src/hooks.server.js so a
+    // plain-http self-hosted deploy works on any hostname without setting ORIGIN.
+    csrf: { checkOrigin: false }
   }
 };
 

@@ -9,9 +9,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # ORIGIN is required by SvelteKit for form POSTs — set it to the URL you browse to
-      ORIGIN: http://localhost:3000
       ALLOW_REGISTRATION: "true"
+      # Direct access (http://<host>:3000) needs no extra config. Behind a
+      # reverse proxy, set ORIGIN to the public URL, e.g.:
+      # ORIGIN: https://tally.example.com
+      # (or pass through X-Forwarded-Proto / X-Forwarded-Host from the proxy)
     volumes:
       - tally-data:/data
 

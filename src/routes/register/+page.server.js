@@ -12,9 +12,9 @@ export function load() {
 }
 
 export const actions = {
-  default: async ({ request, cookies }) => {
+  default: async (event) => {
     if (!registrationOpen()) return fail(403, { error: 'Registration is disabled.' });
-    const form = await request.formData();
+    const form = await event.request.formData();
     const email = String(form.get('email') || '').trim();
     const password = String(form.get('password') || '');
     const confirm = String(form.get('confirm') || '');
@@ -27,7 +27,7 @@ export const actions = {
     if (getUserByEmail(email)) return fail(400, { error: 'That email is already registered.', email });
 
     const user = createUser(email, password);
-    setSessionCookie(cookies, createSession(user.id));
+    setSessionCookie(event, createSession(user.id));
     throw redirect(303, '/dashboard');
   }
 };
