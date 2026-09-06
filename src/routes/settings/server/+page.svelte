@@ -91,7 +91,7 @@
             <span class="flex items-center gap-2 font-medium">
               {u.email}
               {#if u.is_admin}<span class="chip chip-accent">admin</span>{/if}
-              {#if u.ai_categorise}<span class="chip">AI on</span>{/if}
+              {#if data.ai.configured && u.ai_off}<span class="chip">AI off</span>{/if}
               <span class="text-xs font-normal text-[var(--ink-faint)]">{u.tx_count} tx</span>
             </span>
             <div class="flex items-center gap-3 text-xs">

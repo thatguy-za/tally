@@ -116,6 +116,10 @@ const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name)
 if (!userCols.includes('ai_categorise')) {
   db.exec('ALTER TABLE users ADD COLUMN ai_categorise INTEGER NOT NULL DEFAULT 0');
 }
+// AI categorisation is opt-OUT: on for everyone once an admin adds a key.
+if (!userCols.includes('ai_off')) {
+  db.exec('ALTER TABLE users ADD COLUMN ai_off INTEGER NOT NULL DEFAULT 0');
+}
 
 const DEFAULT_CATEGORIES = [
   { name: 'Salary', kind: 'income', color: '#16a34a' },

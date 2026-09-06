@@ -145,12 +145,13 @@ export function uncategorisedIds(userId, limit = 200) {
     .map((r) => r.id);
 }
 
+// AI categorisation is opt-out — on unless the user has explicitly turned it off.
 export function setUserAiCategorise(userId, on) {
-  db.prepare('UPDATE users SET ai_categorise = ? WHERE id = ?').run(on ? 1 : 0, userId);
+  db.prepare('UPDATE users SET ai_off = ? WHERE id = ?').run(on ? 0 : 1, userId);
 }
 
 export function getUserAiCategorise(userId) {
-  return !!db.prepare('SELECT ai_categorise FROM users WHERE id = ?').get(userId)?.ai_categorise;
+  return !db.prepare('SELECT ai_off FROM users WHERE id = ?').get(userId)?.ai_off;
 }
 
 export function uncategorisedCount(userId) {

@@ -158,9 +158,9 @@
             <Icon name="sparkle" size={16} class="text-[var(--accent)]" /> AI categorisation
           </h2>
           <p class="mt-1 max-w-lg text-[13px] text-[var(--ink-faint)]">
-            When on, you can ask Claude to sort your uncategorised transactions into
-            <em>your</em> categories from the Transactions page. Nothing is sent anywhere
-            until you press the button.
+            On by default. Claude sorts transactions into <em>your</em> categories when you
+            import a CSV, and there's an <b>AI categorise</b> button on the Transactions
+            page. Turn it off to keep your data away from the API entirely.
           </p>
         </div>
         <form method="POST" action="?/aiCategorise" use:enhance>

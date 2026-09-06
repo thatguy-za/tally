@@ -396,6 +396,36 @@
   100% { transform: translateX(100%); }
 }
 
+/* per-row "Claude is thinking" placeholder in the import table */
+.ai-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: var(--paper-sunk);
+  border: 1px solid var(--border);
+}
+.ai-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 14%, transparent), transparent);
+  animation: shimmer 1.1s infinite;
+}
+.ai-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: ai-pulse 1s ease-in-out infinite;
+}
+@keyframes ai-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-shimmer::after, .ai-dot { animation: none; }
+}
+
 /* view transitions */
 @keyframes vt-in {
   from { opacity: 0; transform: translateY(8px); }

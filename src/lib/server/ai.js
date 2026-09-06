@@ -104,14 +104,16 @@ async function runCategorisation(categories, items) {
         ...requestParams(model),
         system: SYSTEM,
         tools: [CATEGORISE_TOOL],
-        tool_choice: { type: 'auto' },
+        // force the tool — all models in the picker (Opus 5 / Sonnet 5 / Haiku 4.5)
+        // support forced tool_choice, and `auto` was letting Claude reply in prose
+        tool_choice: { type: 'tool', name: 'submit_categorisation' },
         messages: [
           {
             role: 'user',
             content:
               `Categories:\n${catList}\n\n` +
               `Transactions (ref, date, amount, description):\n${txList}\n\n` +
-              `Call submit_categorisation now with an assignment for every ref above.`
+              `Assign a category to every ref above.`
           }
         ]
       });
@@ -126,7 +128,10 @@ async function runCategorisation(categories, items) {
       (b) => b.type === 'tool_use' && b.name === 'submit_categorisation'
     );
     const assignments = call?.input?.assignments;
-    if (!Array.isArray(assignments)) continue;
+    if (!Array.isArray(assignments)) {
+      console.warn('[ai] no assignments in response:', JSON.stringify(res.content).slice(0, 300));
+      continue;
+    }
 
     const refs = new Set(batch.map((t) => String(t.ref)));
     for (const a of assignments) {

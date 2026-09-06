@@ -150,77 +150,85 @@
   const STEPS = ['Upload', 'Review & approve', 'Done'];
   let stepIdx = $derived({ upload: 0, review: 1, done: 2 }[phase]);
 
-  // ---- AI categorisation (runs automatically on entering review) --------
-  let aiState = $state({ loading: false, error: '', count: 0, cost: 0, ran: false });
-  let aiSuggested = $state(new Set());
+  // ---- AI categorisation — streams top-down, chunk by chunk -----------
+  const AI_CHUNK = 20;
+  const AI_MAX = 400;
+  let aiState = $state({ running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: false });
+  let aiSuggested = $state(new Set()); // rows Claude set
+  let aiPending = $state(new Set()); // rows currently being categorised
   let aiKick = '';
 
   $effect(() => {
     if (phase !== 'review' || !data.aiAvailable) return;
     const key = form?.csv?.slice(0, 120) ?? '';
-    if (!key || key === aiKick || !bodyRows.length) return;
+    if (!key || key === aiKick) return;
+    // wait until the auto-detect $effect has settled a usable mapping
+    if (!rows.length || rows.every((r) => r.error)) return;
     aiKick = key;
-    // let the auto-detect $effect settle the mapping first
-    queueMicrotask(() => runAiSuggest());
+    runAiSuggest();
   });
 
   async function runAiSuggest() {
-    // categorise every valid row, whatever the file said
-    const toSuggest = rows.filter((r) => !r.error);
-    if (!toSuggest.length) {
-      aiState = { loading: false, error: '', count: 0, cost: 0, ran: true };
+    const targets = rows.filter((r) => !r.error).slice(0, AI_MAX);
+    if (!targets.length) {
+      aiState = { running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: true };
       return;
     }
-    aiState = { ...aiState, loading: true, error: '' };
-    try {
-      const res = await fetch('/transactions/import/suggest', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          rows: toSuggest.map((r) => ({ ref: String(r.i), date: r.date, description: r.description, amount: r.amount }))
-        })
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.message || `HTTP ${res.status}`);
-      const next = new Map(edits);
-      const suggested = new Set(aiSuggested);
-      let n = 0;
-      for (const [ref, name] of Object.entries(j.suggestions || {})) {
-        const id = byName.get(String(name).trim().toLowerCase());
-        if (id) {
-          next.set(Number(ref), { ...(next.get(Number(ref)) || {}), category: String(id) });
-          suggested.add(Number(ref));
-          n++;
+    aiState = { running: true, error: '', done: 0, total: targets.length, count: 0, cost: 0, ran: true };
+    aiSuggested = new Set();
+    let cost = 0;
+    let count = 0;
+
+    for (let i = 0; i < targets.length; i += AI_CHUNK) {
+      const chunk = targets.slice(i, i + AI_CHUNK);
+      aiPending = new Set(chunk.map((r) => r.i));
+      try {
+        const res = await fetch('/transactions/import/suggest', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            rows: chunk.map((r) => ({ ref: String(r.i), date: r.date, description: r.description, amount: r.amount }))
+          })
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j?.message || `HTTP ${res.status}`);
+        const next = new Map(edits);
+        const suggested = new Set(aiSuggested);
+        for (const [ref, name] of Object.entries(j.suggestions || {})) {
+          const id = byName.get(String(name).trim().toLowerCase());
+          if (id) {
+            next.set(Number(ref), { ...(next.get(Number(ref)) || {}), category: String(id) });
+            suggested.add(Number(ref));
+            count++;
+          }
         }
+        edits = next;
+        aiSuggested = suggested;
+        cost += j.costUsd || 0;
+      } catch (e) {
+        aiPending = new Set();
+        aiState = { ...aiState, running: false, error: e?.message || 'AI categorisation failed.', count, cost };
+        return;
       }
-      edits = next;
-      aiSuggested = suggested;
-      aiState = { loading: false, error: '', count: n, cost: j.costUsd || 0, ran: true };
-    } catch (e) {
-      aiState = { loading: false, error: e?.message || 'AI categorisation failed.', count: 0, cost: 0, ran: true };
+      aiPending = new Set();
+      aiState = { ...aiState, done: Math.min(targets.length, i + chunk.length), count, cost };
     }
+    aiState = { ...aiState, running: false, count, cost };
   }
 
-  // ---- amount column: single signed, or split debit/credit ----
-  let amountSel = $derived(
-    mapping.amount !== ''
-      ? mapping.amount
-      : mapping.debit !== '' || mapping.credit !== ''
-        ? '__split'
-        : ''
-  );
-  function chooseAmount(v) {
-    if (v === '__split') {
-      const g = guessMapping(headers);
-      mapping = {
-        ...mapping,
-        amount: '',
-        debit: mapping.debit || g.debit || '',
-        credit: mapping.credit || g.credit || ''
-      };
-    } else {
-      mapping = { ...mapping, amount: v, debit: '', credit: '' };
-    }
+  let aiPct = $derived(aiState.total ? Math.round((aiState.done / aiState.total) * 100) : 0);
+
+  // ---- amount column: single signed (common), or split debit/credit ----
+  let splitMode = $state(false);
+  let amountSplit = $derived(splitMode || (mapping.amount === '' && (mapping.debit !== '' || mapping.credit !== '')));
+  function useSplit() {
+    const g = guessMapping(headers);
+    splitMode = true;
+    mapping = { ...mapping, amount: '', debit: mapping.debit || g.debit || '', credit: mapping.credit || g.credit || '' };
+  }
+  function useSingle() {
+    splitMode = false;
+    mapping = { ...mapping, debit: '', credit: '' };
   }
   const DATE_ORDERS = ['dmy', 'mdy', 'ymd'];
   function cycleDateOrder() {
@@ -308,20 +316,32 @@
     </div>
 
     {#if data.aiAvailable}
-      <div class="card mb-3 flex flex-wrap items-center gap-2 text-[13px]">
-        <Icon name="sparkle" size={14} class="text-[var(--accent)]" />
-        {#if aiState.loading}
-          <span>Claude is categorising your transactions…</span>
-        {:else if aiState.error}
-          <span style="color:var(--negative)">Couldn't categorise automatically — {aiState.error} Set the categories yourself below.</span>
-        {:else if aiState.count}
-          <span>Claude filled in {aiState.count} categor{aiState.count === 1 ? 'y' : 'ies'}{aiState.cost ? ` · ${aiState.cost < 0.01 ? '<$0.01' : '~$' + aiState.cost.toFixed(2)}` : ''}. Check the ✨ rows.</span>
-        {:else if aiState.ran}
-          <span>Every row already had a category from the file or your rules.</span>
+      {@const costTxt = aiState.cost ? ` · ${aiState.cost < 0.01 ? '<$0.01' : '~$' + aiState.cost.toFixed(2)}` : ''}
+      <div class="card mb-3 text-[13px]">
+        <div class="flex flex-wrap items-center gap-2">
+          <Icon name="sparkle" size={14} class="text-[var(--accent)]" />
+          {#if aiState.running}
+            <span>Claude is categorising… <b class="tnum">{aiPct}%</b>
+              <span class="text-[var(--ink-faint)]">({aiState.done}/{aiState.total})</span></span>
+          {:else if aiState.error}
+            <span style="color:var(--negative)">
+              Couldn't finish — {aiState.error}{#if aiState.count} {aiState.count} row(s) were done first.{/if}
+            </span>
+          {:else if aiState.ran && aiState.count}
+            <span>Claude categorised {aiState.count} of {aiState.total} row(s){costTxt}. Check the ✨ picks.</span>
+          {:else if aiState.ran}
+            <span>Claude didn't find confident matches — set the categories below.</span>
+          {/if}
+          <button type="button" class="btn btn-ghost btn-sm ml-auto" disabled={aiState.running} onclick={runAiSuggest}>
+            {aiState.running ? 'Working…' : aiState.ran ? 'Re-run' : 'Categorise'}
+          </button>
+        </div>
+        {#if aiState.running || (aiState.total && aiState.done < aiState.total && !aiState.error)}
+          <div class="mt-2 h-1 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+            <div class="h-full rounded-full transition-[width] duration-300"
+              style="width:{aiPct}%;background:var(--accent)"></div>
+          </div>
         {/if}
-        <button type="button" class="btn btn-ghost btn-sm ml-auto" disabled={aiState.loading} onclick={runAiSuggest}>
-          {aiState.loading ? 'Working…' : aiState.ran ? 'Re-run' : 'Categorise'}
-        </button>
       </div>
     {/if}
 
@@ -361,26 +381,30 @@
               </th>
               <th class="px-2 pb-2 pt-3">
                 <div class="th mb-1">Amount</div>
-                {#if amountSel === '__split'}
-                  <div class="flex flex-wrap items-center gap-1">
-                    <select class="head-sel" bind:value={mapping.debit}>
-                      <option value="">out…</option>
-                      {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
-                    </select>
-                    <select class="head-sel" bind:value={mapping.credit}>
-                      <option value="">in…</option>
-                      {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
-                    </select>
-                    <button type="button" class="text-[11px] text-[var(--ink-faint)] hover:underline"
-                      onclick={() => (mapping = { ...mapping, debit: '', credit: '' })}>single</button>
+                {#if amountSplit}
+                  <div class="flex flex-col gap-1">
+                    <div class="flex gap-1">
+                      <select class="head-sel" bind:value={mapping.debit}>
+                        <option value="">money out…</option>
+                        {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                      </select>
+                      <select class="head-sel" bind:value={mapping.credit}>
+                        <option value="">money in…</option>
+                        {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                      </select>
+                    </div>
+                    <button type="button" class="self-start text-[11px] text-[var(--ink-faint)] hover:underline"
+                      onclick={useSingle}>← one signed column</button>
                   </div>
                 {:else}
-                  <select class="head-sel min-w-[110px]" value={amountSel}
-                    onchange={(e) => chooseAmount(e.currentTarget.value)}>
-                    <option value="">— column —</option>
-                    {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
-                    <option value="__split">↔ two columns</option>
-                  </select>
+                  <div class="flex flex-col gap-0.5">
+                    <select class="head-sel min-w-[110px]" bind:value={mapping.amount}>
+                      <option value="">— column —</option>
+                      {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                    </select>
+                    <button type="button" class="self-start text-[11px] text-[var(--ink-faint)] hover:underline"
+                      onclick={useSplit}>separate debit / credit?</button>
+                  </div>
                 {/if}
               </th>
               <th class="px-2 pb-2 pt-3">
@@ -415,19 +439,25 @@
                     onchange={(e) => { const v = parseAmount(e.currentTarget.value); edit(r.i, { amount: v == null ? e.currentTarget.value : v }); }} />
                 </td>
                 <td class="py-1 pr-3">
-                  <div class="flex items-center gap-1">
-                    {#if aiSuggested.has(r.i)}<Icon name="sparkle" size={12} class="shrink-0 text-[var(--accent)]" />{/if}
-                    <select class="cell min-w-[140px]" value={r.catValue}
-                      onchange={(e) => { aiSuggested = new Set([...aiSuggested].filter((x) => x !== r.i)); edit(r.i, { category: e.currentTarget.value }); }}>
-                      <option value="">Uncategorised</option>
-                      {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
-                      {#if newCatNames.length}
-                        <optgroup label="New from file">
-                          {#each newCatNames as n}<option value={`new:${n}`}>{n}</option>{/each}
-                        </optgroup>
-                      {/if}
-                    </select>
-                  </div>
+                  {#if aiPending.has(r.i)}
+                    <span class="ai-shimmer flex h-[26px] min-w-[140px] items-center gap-1.5 rounded-md px-2 text-[12px] text-[var(--ink-faint)]">
+                      <span class="ai-dot"></span> Claude…
+                    </span>
+                  {:else}
+                    <div class="flex items-center gap-1">
+                      {#if aiSuggested.has(r.i)}<Icon name="sparkle" size={12} class="shrink-0 text-[var(--accent)]" />{/if}
+                      <select class="cell min-w-[140px]" value={r.catValue}
+                        onchange={(e) => { aiSuggested = new Set([...aiSuggested].filter((x) => x !== r.i)); edit(r.i, { category: e.currentTarget.value }); }}>
+                        <option value="">Uncategorised</option>
+                        {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
+                        {#if newCatNames.length}
+                          <optgroup label="New from file">
+                            {#each newCatNames as n}<option value={`new:${n}`}>{n}</option>{/each}
+                          </optgroup>
+                        {/if}
+                      </select>
+                    </div>
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -442,7 +472,7 @@
     </div>
 
     <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-      <button class="btn btn-primary" disabled={stats.included === 0 || aiState.loading}>
+      <button class="btn btn-primary" disabled={stats.included === 0 || aiState.running}>
         Import {stats.included} row{stats.included === 1 ? '' : 's'}
       </button>
       <span class="flex items-center gap-1.5">

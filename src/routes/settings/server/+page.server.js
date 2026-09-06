@@ -11,7 +11,7 @@ export function load({ locals }) {
     myId: locals.user.id,
     users: db
       .prepare(
-        `SELECT u.id, u.email, u.is_admin, u.currency, u.created_at, u.ai_categorise,
+        `SELECT u.id, u.email, u.is_admin, u.currency, u.created_at, u.ai_off,
                 (SELECT COUNT(*) FROM transactions t WHERE t.user_id = u.id) AS tx_count
          FROM users u ORDER BY u.id`
       )
