@@ -18,6 +18,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATABASE_PATH=/data/tally.sqlite
+# CSV imports post the reviewed rows as a JSON body; allow room for large statements
+ENV BODY_SIZE_LIMIT=8M
 RUN mkdir -p /data && chown node:node /data
 COPY --from=build /app/build ./build
 COPY --from=build /app/package.json ./package.json

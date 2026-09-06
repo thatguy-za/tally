@@ -5,13 +5,13 @@ services:
     # build: .
     container_name: tally
     restart: unless-stopped
+    # host:container — the container port is 3000 (set by the image)
     ports:
       - "3000:3000"
     environment:
-      PORT: 3000
-      DATABASE_PATH: /data/tally.sqlite
-      ALLOW_REGISTRATION: "true"
+      # ORIGIN is required by SvelteKit for form POSTs — set it to the URL you browse to
       ORIGIN: http://localhost:3000
+      ALLOW_REGISTRATION: "true"
     volumes:
       - tally-data:/data
 

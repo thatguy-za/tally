@@ -6,7 +6,7 @@ categorise them, and see where your money goes each month.
 ## Features
 
 - **Multi-user** — each person has their own login, categories, budgets, rules, currency and data, isolated at the query layer. The first account to register becomes the admin.
-- **CSV import** with a column-mapping step that handles most bank exports (single signed amount column, or separate debit/credit columns, day- or month-first dates, sign flipping) and **duplicate detection** (date + amount + description).
+- **CSV import** with a full **review table** — upload any bank export (columns in any order, comma/semicolon/tab delimited), then fix dates, amounts, descriptions and categories row-by-row before saving. Handles signed or debit/credit columns, many date and number formats, and flags likely **duplicates** (date + amount + description).
 - **Manual entry**, inline editing, and **bulk categorise / bulk delete**.
 - **Auto-categorisation rules** — "description contains X → category Y", applied on import, on manual entry, and re-runnable on demand.
 - **Recurring transactions** (weekly / monthly / yearly) — confirm or skip each occurrence, or let them auto-post when due.
@@ -61,12 +61,25 @@ npm run dev
 
 The database is created automatically at `DATABASE_PATH` (default `./data/tally.sqlite`).
 
-## CSV format
+## CSV import
 
-Any CSV with a date, an amount and (optionally) a description and category works —
-you map the columns after uploading. See [`static/sample-transactions.csv`](static/sample-transactions.csv)
-for an example. Amounts can be a single signed column (income positive, spending negative)
-or separate debit/credit columns.
+Upload any bank export — the columns can be in any order. Tally detects the
+delimiter (comma, semicolon, tab or pipe), guesses which column is which, and
+drops you into a **review table** where every row is editable before anything is
+saved:
+
+- fix a mis-parsed date, amount or description inline
+- set or change the category per row (unknown category names from the file can be
+  created on import)
+- tick rows in or out; rows with an unreadable date/amount and likely duplicates
+  are flagged and pre-excluded
+- one signed amount column *or* separate debit/credit columns; `dd/mm`, `mm/dd`,
+  ISO, `1 Jan 2026` and `YYYYMMDD` dates; `1.234,56` and `1,234.56` decimals;
+  `(123)` / `123 CR` / `123 DR` notations; a sign-flip toggle; "ignore N rows at
+  the top" for exports with preamble
+
+See [`static/sample-transactions.csv`](static/sample-transactions.csv) for a
+plain example.
 
 ## Backups
 
