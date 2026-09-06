@@ -18,7 +18,9 @@ export function load({ locals, url }) {
   // Auto-post any due recurring entries flagged for it (cheap; only runs when something is due).
   runAutoPost(userId);
 
-  const month = url.searchParams.get('month') || currentMonth();
+  const months = listMonths(userId);
+  // default to the most recent month that actually has transactions
+  const month = url.searchParams.get('month') || months[0] || currentMonth();
 
   const totals = monthlyTotals(userId, 12);
   const forMonth = totals.find((t) => t.ym === month) || { incoming: 0, outgoing: 0 };
@@ -30,7 +32,7 @@ export function load({ locals, url }) {
 
   return {
     month,
-    months: listMonths(userId),
+    months,
     totals,
     monthTotals: { incoming: forMonth.incoming || 0, outgoing: forMonth.outgoing || 0 },
     recent: listTransactions(userId, { month }).slice(0, 8),

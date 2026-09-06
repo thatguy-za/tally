@@ -43,11 +43,17 @@ export function listTransactions(userId, f = {}) {
   if (f.amountMax != null) { where.push('abs(t.amount) <= @amountMax'); params.amountMax = f.amountMax; }
   if (f.direction === 'in') where.push('t.amount >= 0');
   else if (f.direction === 'out') where.push('t.amount < 0');
+  if (f.recurring === 'yes') where.push('t.recurring_id IS NOT NULL');
+  else if (f.recurring === 'no') where.push('t.recurring_id IS NULL');
 
   return db
     .prepare(
-      `SELECT t.*, c.name AS category_name, c.color AS category_color, c.kind AS category_kind
-       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+      `SELECT t.*, c.name AS category_name, c.color AS category_color, c.kind AS category_kind,
+              rc.frequency AS rec_frequency, rc.interval_n AS rec_interval,
+              rc.next_date AS rec_next, rc.active AS rec_active
+       FROM transactions t
+       LEFT JOIN categories c ON c.id = t.category_id
+       LEFT JOIN recurring rc ON rc.id = t.recurring_id
        WHERE ${where.join(' AND ')}
        ORDER BY t.date DESC, t.id DESC`
     )
@@ -358,6 +364,47 @@ export function updateRecurring(userId, id, fields) {
 
 export function deleteRecurring(userId, id) {
   db.prepare('DELETE FROM recurring WHERE id = ? AND user_id = ?').run(id, userId);
+}
+
+/** Turn an existing transaction into a recurring schedule and link it. */
+export function makeTransactionRecurring(userId, txId, { frequency, interval_n, next_date, auto_post }) {
+  const t = db
+    .prepare('SELECT id, description, amount, category_id, date FROM transactions WHERE id = ? AND user_id = ?')
+    .get(txId, userId);
+  if (!t) return null;
+  return tx(() => {
+    const info = createRecurring(userId, {
+      description: t.description,
+      amount: t.amount,
+      category_id: t.category_id,
+      frequency,
+      interval_n: interval_n || 1,
+      next_date: next_date || advanceDate(t.date, frequency, interval_n || 1),
+      auto_post: auto_post ? 1 : 0
+    });
+    const rid = Number(info.lastInsertRowid);
+    db.prepare('UPDATE transactions SET recurring_id = ? WHERE id = ? AND user_id = ?').run(rid, txId, userId);
+    return rid;
+  });
+}
+
+export function recurringIdForTx(userId, txId) {
+  return (
+    db.prepare('SELECT recurring_id FROM transactions WHERE id = ? AND user_id = ?').get(txId, userId)
+      ?.recurring_id ?? null
+  );
+}
+
+export function deleteRecurringForTx(userId, txId) {
+  const rid = recurringIdForTx(userId, txId);
+  if (rid) deleteRecurring(userId, rid);
+}
+
+export function toggleRecurringForTx(userId, txId) {
+  const rid = recurringIdForTx(userId, txId);
+  if (!rid) return;
+  const r = db.prepare('SELECT active FROM recurring WHERE id = ? AND user_id = ?').get(rid, userId);
+  updateRecurring(userId, rid, { active: r?.active ? 0 : 1 });
 }
 
 /** Recurring entries with next_date on or before `asOf` (default today). */

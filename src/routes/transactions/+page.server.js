@@ -12,7 +12,10 @@ import {
   applyRules,
   categoriseByRules,
   uncategorisedIds,
-  getUserAiCategorise
+  getUserAiCategorise,
+  makeTransactionRecurring,
+  deleteRecurringForTx,
+  toggleRecurringForTx
 } from '$lib/server/queries.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
 import { categoriseWithAI } from '$lib/server/ai.js';
@@ -37,7 +40,8 @@ export function load({ locals, url }) {
     search: q.get('q') || '',
     amountMin: q.get('min') || '',
     amountMax: q.get('max') || '',
-    direction: q.get('dir') || ''
+    direction: q.get('dir') || '',
+    recurring: q.get('recurring') || ''
   };
 
   const transactions = listTransactions(userId, {
@@ -49,7 +53,8 @@ export function load({ locals, url }) {
     search: filters.search || undefined,
     amountMin: filters.amountMin ? Number(filters.amountMin) : undefined,
     amountMax: filters.amountMax ? Number(filters.amountMax) : undefined,
-    direction: filters.direction || undefined
+    direction: filters.direction || undefined,
+    recurring: filters.recurring || undefined
   });
 
   const sum = transactions.reduce(
@@ -117,6 +122,35 @@ export const actions = {
     const id = Number(f.get('id'));
     if (id) deleteTransaction(locals.user.id, id);
     return { deleted: true };
+  },
+
+  makeRecurring: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    const frequency = ['weekly', 'monthly', 'yearly'].includes(String(f.get('frequency')))
+      ? String(f.get('frequency'))
+      : 'monthly';
+    const interval_n = Math.max(1, Number(f.get('interval_n') || 1));
+    const next_date = String(f.get('next_date') || '');
+    const auto_post = f.get('auto_post') === 'on';
+    if (!id) return fail(400, { error: 'Missing transaction.' });
+    const rid = makeTransactionRecurring(locals.user.id, id, { frequency, interval_n, next_date, auto_post });
+    if (!rid) return fail(400, { error: 'Could not set up the schedule.' });
+    return { recurring: 'Recurring schedule created.' };
+  },
+
+  removeRecurring: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    if (id) deleteRecurringForTx(locals.user.id, id);
+    return { recurring: 'Recurring schedule removed.' };
+  },
+
+  toggleRecurring: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    if (id) toggleRecurringForTx(locals.user.id, id);
+    return { recurring: 'Recurring schedule updated.' };
   },
 
   bulkCategorise: async ({ request, locals }) => {

@@ -14,7 +14,6 @@
   const nav = [
     { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
     { href: '/transactions', label: 'Transactions', icon: 'transactions' },
-    { href: '/recurring', label: 'Recurring', icon: 'recurring' },
     { href: '/budgets', label: 'Budgets', icon: 'budgets' },
     { href: '/reports', label: 'Reports', icon: 'reports' }
   ];

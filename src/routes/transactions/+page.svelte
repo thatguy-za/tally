@@ -12,8 +12,24 @@
   let showAdd = $state($page.url.searchParams.has('new'));
   let showFilters = $state(false);
   let editingId = $state(null);
+  let recurringId = $state(null); // tx id whose recurring panel is open
   let selected = $state(new Set());
   const today = new Date().toISOString().slice(0, 10);
+
+  const freqLabel = (t) =>
+    t.rec_interval > 1
+      ? `every ${t.rec_interval} ${t.rec_frequency?.replace('ly', 's')}`
+      : t.rec_frequency;
+
+  /** default "next" date: advance a date string by one period */
+  function nextAfter(dateStr, frequency, n = 1) {
+    const [y, m, d] = String(dateStr || today).split('-').map(Number);
+    const base = new Date(Date.UTC(y, m - 1, d));
+    if (frequency === 'weekly') base.setUTCDate(base.getUTCDate() + 7 * n);
+    else if (frequency === 'yearly') base.setUTCFullYear(base.getUTCFullYear() + n);
+    else base.setUTCMonth(base.getUTCMonth() + n);
+    return base.toISOString().slice(0, 10);
+  }
 
   // optimistic UI state
   let catOverride = $state(new Map()); // id -> categoryId string ('' = uncategorised)
@@ -87,6 +103,7 @@
     if (form?.added) { showAdd = false; toast('Transaction added'); }
     if (form?.updated) { editingId = null; toast('Transaction updated'); }
     if (form?.deleted) toast('Transaction deleted');
+    if (form?.recurring) { recurringId = null; toast(form.recurring); }
     if (form?.bulk) { selected = new Set(); catOverride = new Map(); toast(form.bulk); }
     else if (form?.error) toast(form.error, { type: 'info' });
   });
@@ -203,6 +220,15 @@
       </select>
     </div>
     <div>
+      <label class="label" for="f-rec">Recurring</label>
+      <select class="input" id="f-rec" value={data.filters.recurring}
+        onchange={(e) => setParam('recurring', e.currentTarget.value)}>
+        <option value="">Any</option>
+        <option value="yes">Recurring only</option>
+        <option value="no">One-off only</option>
+      </select>
+    </div>
+    <div>
       <label class="label" for="f-min">Min amount</label>
       <input class="input" id="f-min" inputmode="decimal" value={data.filters.amountMin}
         onchange={(e) => setParam('min', e.currentTarget.value)} />
@@ -292,6 +318,63 @@
                 </form>
               </td>
             </tr>
+          {:else if recurringId === t.id}
+            <tr class="border-b border-[var(--border)]">
+              <td colspan="6" class="p-3" style="background:var(--paper-sunk)">
+                {#if t.recurring_id}
+                  <div class="flex flex-wrap items-center gap-3 text-[13px]">
+                    <Icon name="recurring" size={15} class="text-[var(--accent)]" />
+                    <span>
+                      Repeats <b>{freqLabel(t)}</b> · next <span class="tnum">{t.rec_next}</span>
+                      {#if !t.rec_active}<span class="chip ml-1">paused</span>{/if}
+                    </span>
+                    <span class="ml-auto flex gap-2">
+                      <form method="POST" action="?/toggleRecurring" use:enhance>
+                        <input type="hidden" name="id" value={t.id} />
+                        <button class="btn btn-ghost btn-sm">{t.rec_active ? 'Pause' : 'Resume'}</button>
+                      </form>
+                      <form method="POST" action="?/removeRecurring" use:enhance
+                        onsubmit={(e) => { if (!confirm('Remove this recurring schedule?')) e.preventDefault(); }}>
+                        <input type="hidden" name="id" value={t.id} />
+                        <button class="btn btn-ghost btn-sm" style="color:var(--negative)">Remove</button>
+                      </form>
+                      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (recurringId = null)}>Close</button>
+                    </span>
+                  </div>
+                {:else}
+                  <form method="POST" action="?/makeRecurring" use:enhance class="flex flex-wrap items-end gap-3 text-[13px]">
+                    <input type="hidden" name="id" value={t.id} />
+                    <span class="flex items-center gap-1.5 font-medium">
+                      <Icon name="recurring" size={15} class="text-[var(--accent)]" /> Make “{t.description || 'this'}” recurring
+                    </span>
+                    <label class="flex flex-col gap-1">
+                      <span class="label !mb-0">Every</span>
+                      <span class="flex gap-1">
+                        <input class="input tnum w-14" name="interval_n" type="number" min="1" value="1"
+                          oninput={(e) => { const fr = e.currentTarget.form.frequency.value; e.currentTarget.form.next_date.value = nextAfter(t.date, fr, +e.currentTarget.value || 1); }} />
+                        <select class="input" name="frequency"
+                          onchange={(e) => { e.currentTarget.form.next_date.value = nextAfter(t.date, e.currentTarget.value, +e.currentTarget.form.interval_n.value || 1); }}>
+                          <option value="weekly">week(s)</option>
+                          <option value="monthly" selected>month(s)</option>
+                          <option value="yearly">year(s)</option>
+                        </select>
+                      </span>
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="label !mb-0">Next on</span>
+                      <input class="input" name="next_date" type="date" value={nextAfter(t.date, 'monthly', 1)} required />
+                    </label>
+                    <label class="flex items-center gap-2 pb-2">
+                      <input type="checkbox" name="auto_post" /> Post automatically
+                    </label>
+                    <div class="flex gap-2 pb-1">
+                      <button class="btn btn-primary btn-sm">Make recurring</button>
+                      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (recurringId = null)}>Cancel</button>
+                    </div>
+                  </form>
+                {/if}
+              </td>
+            </tr>
           {:else}
             <tr class="group border-b border-[var(--border)] last:border-0 transition-colors hover:bg-[var(--paper-sunk)]/60"
               style={selected.has(t.id) ? 'background:var(--accent-wash)' : ''}>
@@ -299,7 +382,17 @@
                 <input type="checkbox" checked={selected.has(t.id)} onchange={() => toggle(t.id)} />
               </td>
               <td class="tnum whitespace-nowrap py-2.5 pr-3 text-[var(--ink-faint)]">{t.date}</td>
-              <td class="py-2.5 pr-3 font-medium">{t.description || '—'}</td>
+              <td class="py-2.5 pr-3 font-medium">
+                <span class="flex items-center gap-1.5">
+                  {t.description || '—'}
+                  {#if t.recurring_id}
+                    <button type="button" title="Recurring — {freqLabel(t)}" onclick={() => (recurringId = t.id)}
+                      class="text-[var(--accent)] {t.rec_active ? '' : 'opacity-40'}">
+                      <Icon name="recurring" size={13} />
+                    </button>
+                  {/if}
+                </span>
+              </td>
               <td class="py-2.5 pr-3">
                 <form method="POST" action="?/categorise"
                   use:enhance={({ formData }) =>
@@ -320,6 +413,11 @@
               </td>
               <td class="py-2.5 pr-3">
                 <div class="flex justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
+                  <button class="rounded p-1 {t.recurring_id ? 'text-[var(--accent)]' : 'text-[var(--ink-faint)] hover:text-[var(--ink)]'}"
+                    title={t.recurring_id ? 'Recurring schedule' : 'Make recurring'}
+                    onclick={() => (recurringId = recurringId === t.id ? null : t.id)}>
+                    <Icon name="recurring" size={14} />
+                  </button>
                   <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]" title="Edit"
                     onclick={() => (editingId = t.id)}><Icon name="edit" size={14} /></button>
                   <form method="POST" action="?/delete" use:enhance={() => deleteSubmit(t.id)}>
