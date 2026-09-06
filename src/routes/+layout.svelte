@@ -16,8 +16,7 @@
     { href: '/transactions', label: 'Transactions', icon: 'transactions' },
     { href: '/recurring', label: 'Recurring', icon: 'recurring' },
     { href: '/budgets', label: 'Budgets', icon: 'budgets' },
-    { href: '/reports', label: 'Reports', icon: 'reports' },
-    { href: '/settings', label: 'Settings', icon: 'settings' }
+    { href: '/reports', label: 'Reports', icon: 'reports' }
   ];
 
   let current = $derived($page.url.pathname);
