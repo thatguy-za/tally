@@ -15,8 +15,14 @@
   let selected = $state(new Set());
   const today = new Date().toISOString().slice(0, 10);
 
+  // optimistic UI state
+  let catOverride = $state(new Map()); // id -> categoryId string ('' = uncategorised)
+  let pendingCat = $state(new Set());
+  let removed = $state(new Set());
+  let visibleRows = $derived(data.transactions.filter((t) => !removed.has(t.id)));
+
   let allChecked = $derived(
-    data.transactions.length > 0 && data.transactions.every((t) => selected.has(t.id))
+    visibleRows.length > 0 && visibleRows.every((t) => selected.has(t.id))
   );
   function toggle(id) {
     const next = new Set(selected);
@@ -24,7 +30,7 @@
     selected = next;
   }
   function toggleAll() {
-    selected = allChecked ? new Set() : new Set(data.transactions.map((t) => t.id));
+    selected = allChecked ? new Set() : new Set(visibleRows.map((t) => t.id));
   }
   function setParam(key, value) {
     const url = new URL($page.url);
@@ -34,6 +40,42 @@
   }
 
   let activeFilterCount = $derived(Object.entries(data.filters).filter(([, v]) => v).length);
+
+  const catColor = (id) =>
+    data.categories.find((c) => String(c.id) === String(id))?.color || 'var(--border-strong)';
+  const currentCat = (t) =>
+    catOverride.has(t.id) ? catOverride.get(t.id) : String(t.category_id ?? '');
+
+  function categoriseSubmit(t, newValue, prevValue) {
+    catOverride.set(t.id, newValue);
+    catOverride = new Map(catOverride);
+    pendingCat.add(t.id);
+    pendingCat = new Set(pendingCat);
+    return async ({ result }) => {
+      pendingCat.delete(t.id);
+      pendingCat = new Set(pendingCat);
+      if (result.type === 'failure' || result.type === 'error') {
+        catOverride.set(t.id, prevValue);
+        catOverride = new Map(catOverride);
+        toast('Could not update category', { type: 'info' });
+      }
+      // success: keep the optimistic value, skip invalidateAll
+    };
+  }
+
+  function deleteSubmit(id) {
+    removed.add(id);
+    removed = new Set(removed);
+    return async ({ result, update }) => {
+      if (result.type === 'failure' || result.type === 'error') {
+        removed.delete(id);
+        removed = new Set(removed);
+        toast('Could not delete', { type: 'info' });
+      } else {
+        await update();
+      }
+    };
+  }
 
   let seenForm;
   $effect(() => {
@@ -208,7 +250,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each data.transactions as t (t.id)}
+        {#each visibleRows as t (t.id)}
           {#if editingId === t.id}
             <tr class="border-b border-[var(--border)]">
               <td colspan="6" class="p-3" style="background:var(--paper-sunk)">
@@ -237,13 +279,15 @@
               <td class="tnum whitespace-nowrap py-2.5 pr-3 text-[var(--ink-faint)]">{t.date}</td>
               <td class="py-2.5 pr-3 font-medium">{t.description || '—'}</td>
               <td class="py-2.5 pr-3">
-                <form method="POST" action="?/categorise" use:enhance>
+                <form method="POST" action="?/categorise"
+                  use:enhance={({ formData }) =>
+                    categoriseSubmit(t, String(formData.get('category_id') ?? ''), currentCat(t))}>
                   <input type="hidden" name="id" value={t.id} />
-                  <div class="flex items-center gap-1.5">
-                    <span class="dot" style="background:{t.category_color || 'var(--border-strong)'}"></span>
+                  <div class="flex items-center gap-1.5 transition-opacity {pendingCat.has(t.id) ? 'opacity-50' : ''}">
+                    <span class="dot transition-colors" style="background:{catColor(currentCat(t))}"></span>
                     <select name="category_id"
                       class="max-w-[150px] rounded-md border-0 bg-transparent py-1 pr-5 text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)]"
-                      value={t.category_id ?? ''} onchange={(e) => e.currentTarget.form.requestSubmit()}>
+                      value={currentCat(t)} onchange={(e) => e.currentTarget.form.requestSubmit()}>
                       <option value="">Uncategorised</option>
                       {#each data.categories as c}<option value={c.id}>{c.name}</option>{/each}
                     </select>
@@ -257,7 +301,7 @@
                 <div class="flex justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
                   <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]" title="Edit"
                     onclick={() => (editingId = t.id)}><Icon name="edit" size={14} /></button>
-                  <form method="POST" action="?/delete" use:enhance>
+                  <form method="POST" action="?/delete" use:enhance={() => deleteSubmit(t.id)}>
                     <input type="hidden" name="id" value={t.id} />
                     <button class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete">
                       <Icon name="trash" size={14} />

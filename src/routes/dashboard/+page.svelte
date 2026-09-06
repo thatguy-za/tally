@@ -5,6 +5,8 @@
   import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
+  import Sparkline from '$lib/components/Sparkline.svelte';
+  import BudgetRing from '$lib/components/BudgetRing.svelte';
   let { data } = $props();
 
   let net = $derived(data.monthTotals.incoming - data.monthTotals.outgoing);
@@ -97,15 +99,18 @@
   <div class="card lg:col-span-2">
     <h2 class="mb-4 text-lg">Where it went</h2>
     {#if topSpend.length}
-      <ul class="space-y-3.5">
+      <ul class="space-y-3">
         {#each topSpend as c}
           <li>
-            <div class="mb-1.5 flex items-baseline justify-between gap-3 text-[13px]">
+            <div class="mb-1 flex items-baseline justify-between gap-3 text-[13px]">
               <span class="flex min-w-0 items-center gap-2">
                 <span class="dot" style="background:{c.color}"></span>
                 <span class="truncate">{c.name}</span>
               </span>
-              <span class="tnum shrink-0 font-medium">{formatMoney(Math.abs(c.total), data.currency)}</span>
+              <span class="flex shrink-0 items-center gap-2.5">
+                <Sparkline values={data.spark[c.id] ?? []} color={c.color} />
+                <span class="tnum w-[74px] text-right font-medium">{formatMoney(Math.abs(c.total), data.currency)}</span>
+              </span>
             </div>
             <div class="h-1.5 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
               <div class="h-full rounded-full transition-[width] duration-700"
@@ -121,19 +126,22 @@
 </div>
 
 {#if data.budgets.count > 0}
-  {@const pct = Math.min(100, (data.budgets.actual / (data.budgets.target || 1)) * 100)}
-  {@const over = data.budgets.actual > data.budgets.target}
+  {@const overallPct = (data.budgets.actual / (data.budgets.target || 1)) * 100}
   <a href="/budgets" class="card mt-4 block transition-colors hover:border-[var(--border-strong)] rise rise-4">
-    <div class="mb-2.5 flex items-baseline justify-between">
+    <div class="mb-4 flex items-baseline justify-between">
       <h2 class="text-lg">Budget this month</h2>
       <span class="tnum text-sm text-[var(--ink-soft)]">
         {formatMoney(data.budgets.actual, data.currency)}
         <span class="text-[var(--ink-faint)]">of {formatMoney(data.budgets.target, data.currency)}</span>
       </span>
     </div>
-    <div class="h-2.5 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
-      <div class="h-full rounded-full transition-[width] duration-700"
-        style="width:{pct}%;background:{over ? 'var(--negative)' : 'var(--accent)'}"></div>
+    <div class="flex flex-wrap items-start gap-x-6 gap-y-4">
+      <BudgetRing pct={overallPct} size={82} stroke={7} label="Overall"
+        sublabel={`${data.budgets.count} tracked`} />
+      {#each data.budgetRows.slice(0, 6) as b}
+        <BudgetRing pct={b.pct} color={b.color} label={b.name}
+          sublabel={formatMoney(b.actual, data.currency)} />
+      {/each}
     </div>
   </a>
 {/if}

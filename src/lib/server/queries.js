@@ -162,7 +162,8 @@ export function categoryBreakdown(userId, month) {
   if (month) { monthFilter = 'AND substr(t.date, 1, 7) = @month'; params.month = month; }
   return db
     .prepare(
-      `SELECT COALESCE(c.name, 'Uncategorised') AS name,
+      `SELECT c.id AS id,
+              COALESCE(c.name, 'Uncategorised') AS name,
               COALESCE(c.color, '#94a3b8') AS color,
               COALESCE(c.kind, 'expense') AS kind,
               SUM(t.amount) AS total,
@@ -173,6 +174,39 @@ export function categoryBreakdown(userId, month) {
        ORDER BY total ASC`
     )
     .all(params);
+}
+
+/**
+ * Per-category monthly spend magnitude for the last `months` calendar months.
+ * @returns {{ months: string[], byCategory: Record<string, number[]> }}
+ * arrays run oldest -> newest and align to `months`.
+ */
+export function categorySparkData(userId, months = 6) {
+  const now = new Date();
+  const list = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    list.push(d.toISOString().slice(0, 7));
+  }
+  const since = list[0] + '-01';
+  const rows = db
+    .prepare(
+      `SELECT category_id, substr(date, 1, 7) AS ym, SUM(amount) AS total
+       FROM transactions
+       WHERE user_id = ? AND date >= ? AND category_id IS NOT NULL
+       GROUP BY category_id, ym`
+    )
+    .all(userId, since);
+
+  const idx = Object.fromEntries(list.map((m, i) => [m, i]));
+  /** @type {Record<string, number[]>} */
+  const byCategory = {};
+  for (const r of rows) {
+    if (!(r.category_id in byCategory)) byCategory[r.category_id] = list.map(() => 0);
+    const i = idx[r.ym];
+    if (i != null) byCategory[r.category_id][i] = Math.max(0, -r.total);
+  }
+  return { months: list, byCategory };
 }
 
 /* ----------------------------------------------------------------------- rules */
