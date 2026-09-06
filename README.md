@@ -5,18 +5,21 @@ categorise them, and see where your money goes each month.
 
 ## Features
 
-- **Multi-user** — each person has their own login, categories, currency and data. The first account to register becomes the admin.
-- **CSV import** with a column-mapping step that handles most bank exports (single signed amount column, or separate debit/credit columns, day- or month-first dates, sign flipping).
-- **Manual entry** and inline editing of transactions.
-- **Per-transaction categorisation** straight from the transactions table.
-- **Dashboard** — total incoming vs outgoing for any month, 12-month trend, top spending.
-- **Reports** — spending and income broken down by category for a month or all time.
-- **Configurable currency**, default Euro (€).
-- **Tiny footprint** — a single Node process and a SQLite file. Idles at well under 100 MB RAM.
+- **Multi-user** — each person has their own login, categories, budgets, rules, currency and data, isolated at the query layer. The first account to register becomes the admin.
+- **CSV import** with a column-mapping step that handles most bank exports (single signed amount column, or separate debit/credit columns, day- or month-first dates, sign flipping) and **duplicate detection** (date + amount + description).
+- **Manual entry**, inline editing, and **bulk categorise / bulk delete**.
+- **Auto-categorisation rules** — "description contains X → category Y", applied on import, on manual entry, and re-runnable on demand.
+- **Recurring transactions** (weekly / monthly / yearly) — confirm or skip each occurrence, or let them auto-post when due.
+- **Budgets** — a monthly target per category, with target vs actual vs remaining and over-budget nudges.
+- **Dashboard** — incoming vs outgoing for any month, 12-month trend, top spending, budget progress, and nudges for due recurring / uncategorised / over budget.
+- **Reports** — spending and income by category (donut + numbers) for a month or all time.
+- **Configurable currency** (display formatting only), default Euro (€).
+- **Admin** — user list, grant/revoke admin, password reset, delete account; plus an offline `scripts/reset-password.mjs` for recovery.
+- **Tiny footprint** — a single Node process, the built-in `node:sqlite` (no native deps), and one SQLite file. Idles well under 100 MB RAM.
 
 ## Tech
 
-SvelteKit (Node adapter) · SQLite via `better-sqlite3` · Tailwind CSS. No external services.
+SvelteKit (Node adapter) · SQLite via the built-in `node:sqlite` (Node 24+) · Tailwind CSS. No external services, no native build step.
 
 ## Run with Docker
 
