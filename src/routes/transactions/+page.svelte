@@ -153,7 +153,7 @@
       <label class="label" for="a-cat">Category</label>
       <select class="input" id="a-cat" name="category_id">
         <option value="">Auto (rules) / uncategorised</option>
-        {#each data.categories as c}<option value={c.id}>{c.name}</option>{/each}
+        {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
       </select>
     </div>
     <div class="flex items-end gap-2 sm:col-span-3">
@@ -190,7 +190,7 @@
         onchange={(e) => setParam('category', e.currentTarget.value)}>
         <option value="">Any</option>
         <option value="none">Uncategorised</option>
-        {#each data.categories as c}<option value={c.id}>{c.name}</option>{/each}
+        {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
       </select>
     </div>
     <div>
@@ -242,9 +242,10 @@
     <form method="POST" action="?/bulkCategorise" use:enhance class="flex items-center gap-2">
       {#each [...selected] as id}<input type="hidden" name="id" value={id} />{/each}
       <select name="category_id"
-        class="rounded-md border-0 bg-white/15 px-2 py-1 text-[13px]" style="color:var(--paper)">
-        <option value="" style="color:#000">Uncategorised</option>
-        {#each data.categories as c}<option value={c.id} style="color:#000">{c.name}</option>{/each}
+        class="rounded-md border-0 bg-white/15 px-2 py-1 pr-6 text-[13px]"
+        style="color:var(--paper); appearance:none; background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M3 5.5l4 4 4-4'/%3E%3C/svg%3E&quot;); background-repeat:no-repeat; background-position:right 0.4rem center">
+        <option value="">Uncategorised</option>
+        {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
       </select>
       <button class="rounded-md bg-white/15 px-2.5 py-1 font-medium hover:bg-white/25">Apply</button>
     </form>
@@ -305,12 +306,11 @@
                     categoriseSubmit(t, String(formData.get('category_id') ?? ''), currentCat(t))}>
                   <input type="hidden" name="id" value={t.id} />
                   <div class="flex items-center gap-1.5 transition-opacity {pendingCat.has(t.id) ? 'opacity-50' : ''}">
-                    <span class="dot transition-colors" style="background:{catColor(currentCat(t))}"></span>
-                    <select name="category_id"
-                      class="max-w-[150px] rounded-md border-0 bg-transparent py-1 pr-5 text-[13px] text-[var(--ink-soft)] hover:text-[var(--ink)]"
+                    <span class="dot shrink-0 transition-colors" style="background:{catColor(currentCat(t))}"></span>
+                    <select name="category_id" class="cell max-w-[160px] text-[13px]"
                       value={currentCat(t)} onchange={(e) => e.currentTarget.form.requestSubmit()}>
                       <option value="">Uncategorised</option>
-                      {#each data.categories as c}<option value={c.id}>{c.name}</option>{/each}
+                      {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
                     </select>
                   </div>
                 </form>

@@ -293,6 +293,16 @@
   }
   .cell.bad { border-color: var(--negative); }
 
+  /* a <select class="cell"> — kill the native widget so our color always applies
+     (a transparent native select renders unreadable text in dark mode) */
+  select.cell {
+    appearance: none;
+    padding-right: 1.3rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%238c8474' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M3 5.5l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.3rem center;
+  }
+
   /* compact select used in the import table's header row for column mapping */
   .head-sel {
     appearance: none;

@@ -5,7 +5,6 @@
   import Donut from '$lib/components/Donut.svelte';
   import TrendChart from '$lib/components/TrendChart.svelte';
   import Money from '$lib/components/Money.svelte';
-  import Sparkline from '$lib/components/Sparkline.svelte';
   let { data } = $props();
 
   function setScope(v) {
@@ -47,10 +46,9 @@
                 <span class="truncate">{c.name}</span>
                 <span class="text-xs text-[var(--ink-faint)]">×{c.count}</span>
               </span>
-              <span class="flex shrink-0 items-center gap-2.5 text-right">
-                <Sparkline values={data.spark[c.id] ?? []} color={c.color} />
-                <span class="tnum w-[68px] text-right font-medium">{formatMoney(c.total, data.currency)}</span>
-                <span class="w-8 text-xs text-[var(--ink-faint)]">
+              <span class="flex shrink-0 items-baseline gap-2.5 text-right">
+                <span class="tnum font-medium">{formatMoney(c.total, data.currency)}</span>
+                <span class="w-9 text-xs text-[var(--ink-faint)]">
                   {Math.round((c.total / (data.expenseTotal || 1)) * 100)}%
                 </span>
               </span>

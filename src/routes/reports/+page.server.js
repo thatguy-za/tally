@@ -1,10 +1,5 @@
 import { currentMonth } from '$lib/currency.js';
-import {
-  categoryBreakdown,
-  listMonths,
-  monthlyTotals,
-  categorySparkData
-} from '$lib/server/queries.js';
+import { categoryBreakdown, listMonths, monthlyTotals } from '$lib/server/queries.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals, url }) {
@@ -30,7 +25,6 @@ export function load({ locals, url }) {
     expenseTotal: expense.reduce((s, b) => s + b.total, 0),
     incomeTotal: income.reduce((s, b) => s + b.total, 0),
     trend: monthlyTotals(userId, 12),
-    spark: categorySparkData(userId, 6).byCategory,
     currency: locals.user.currency
   };
 }
