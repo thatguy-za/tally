@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { formatMoney, formatMonth } from '$lib/currency.js';
 import { getApiKey, getModel, AI_MODELS } from './ai-settings.js';
 import { listCategories } from './queries.js';
 
@@ -169,6 +170,96 @@ export async function suggestCategoriesForRows(userId, rows) {
     considered: items.length,
     usage,
     costUsd: estimateCost(usage, getModel())
+  };
+}
+
+const SUMMARY_SYSTEM =
+  'You write a short monthly money summary for someone new to budgeting. ' +
+  'Use only the figures you are given: never calculate, estimate or invent a ' +
+  'number, and never name a category that is not in the list. Write two or ' +
+  'three short sentences of plain, warm, second-person English ("you spent…"), ' +
+  'then one concrete suggestion tied to a specific category or figure above. ' +
+  'No headings, no bullet points, no markdown, no preamble, no sign-off and no ' +
+  'disclaimers. Avoid generic advice such as "make a budget" or "track your ' +
+  'spending" — they are already doing that. If the month looks healthy, say so ' +
+  'plainly rather than manufacturing a problem.';
+
+/**
+ * The exact text sent to Claude for a month summary: every figure already
+ * formatted, so the model narrates rather than calculates. Exported so it is
+ * easy to audit what leaves the server — category names and totals, never an
+ * individual transaction.
+ *
+ * @param {ReturnType<import('./queries.js').monthInsights>} insights
+ * @param {string} currency
+ */
+export function buildMonthFacts(insights, currency) {
+  const money = (n) => formatMoney(n, currency);
+  const b = insights.baseline;
+  const lines = [];
+
+  lines.push(
+    insights.partial
+      ? `Month: ${formatMonth(insights.month)} — still in progress, ${Math.round(insights.share * 100)}% of it elapsed. ` +
+        'Figures below are "so far this month", and every "usual" figure has been scaled to the same share of a month so the comparison is fair.'
+      : `Month: ${formatMonth(insights.month)} (complete).`
+  );
+  lines.push(
+    `Earned: ${money(insights.earned)}` + (b?.earned != null ? ` (usual ${money(b.earned)})` : '')
+  );
+  lines.push(
+    `Spent: ${money(insights.spent)}` +
+      (b
+        ? ` (usual ${money(b.spent)} — ${money(Math.abs(insights.spent - b.spent))} ${insights.spent >= b.spent ? 'more' : 'less'})`
+        : '')
+  );
+  lines.push(
+    `Kept: ${money(insights.kept)}` +
+      (insights.rate != null ? ` — ${insights.rate}% of what came in` : '')
+  );
+  lines.push(
+    b
+      ? `"Usual" means this person's own average across ${b.months} earlier month${b.months === 1 ? '' : 's'}.`
+      : 'There is no earlier month to compare against yet.'
+  );
+
+  if (insights.movers.length) {
+    lines.push('', 'Biggest changes vs usual:');
+    for (const m of insights.movers) {
+      lines.push(
+        `- ${m.name}: ${money(m.spent)} (usual ${money(m.usual)} — ` +
+          `${money(Math.abs(m.delta))} ${m.delta > 0 ? 'more' : 'less'})`
+      );
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Turn the numbers from `monthInsights` into a plain-English read of the month.
+ * @param {ReturnType<import('./queries.js').monthInsights>} insights
+ * @param {string} currency
+ */
+export async function summariseMonth(insights, currency) {
+  const model = getModel();
+  let res;
+  try {
+    res = await client().messages.create({
+      ...requestParams(model),
+      max_tokens: 400,
+      system: SUMMARY_SYSTEM,
+      messages: [{ role: 'user', content: buildMonthFacts(insights, currency) }]
+    });
+  } catch (e) {
+    throw new Error(friendlyError(e));
+  }
+
+  const usage = { input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0 };
+  return {
+    text: res.content.find((x) => x.type === 'text')?.text?.trim() ?? '',
+    usage,
+    costUsd: estimateCost(usage, model)
   };
 }
 

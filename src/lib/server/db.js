@@ -88,6 +88,17 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT
   );
+
+  -- one cached AI summary per user per report scope; regenerated when the
+  -- fingerprint of the underlying numbers changes, so a page view is free.
+  CREATE TABLE IF NOT EXISTS insights (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    scope       TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, scope)
+  );
 `);
 
 // --- lightweight migrations for existing databases ---

@@ -365,3 +365,135 @@ export function categoryMonthlyAverages(userId) {
     average: Math.round((r.total / months) * 100) / 100
   }));
 }
+
+/* -------------------------------------------------------------------- insights */
+
+const ym = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+/** Share of `month` (YYYY-MM) already elapsed — 1 for any month that has ended. */
+function monthElapsed(month) {
+  const now = new Date();
+  const nowYm = ym(now);
+  if (month < nowYm) return 1;
+  if (month > nowYm) return 0;
+  const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return Math.min(1, now.getDate() / days);
+}
+
+/**
+ * A beginner-facing read of one month: earned / spent / kept measured against
+ * the user's own typical month, plus the categories that moved the most.
+ *
+ * Baselines come from the user's other months that have already finished. When
+ * `month` is still in progress they are scaled to the share of it elapsed, so
+ * the comparison reads "vs usual by this point" instead of pitting a part-month
+ * against whole ones. Income is lumpy (one salary date), so it is only compared
+ * across complete months.
+ *
+ * @param {number} userId
+ * @param {string} month YYYY-MM
+ */
+export function monthInsights(userId, month) {
+  const nowYm = ym(new Date());
+  const partial = month === nowYm;
+  const share = partial ? monthElapsed(month) : 1;
+
+  const totals = db
+    .prepare(
+      `SELECT substr(date, 1, 7) AS ym,
+              SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS incoming,
+              SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS outgoing
+       FROM transactions WHERE user_id = ?
+       GROUP BY ym`
+    )
+    .all(userId);
+
+  const current = totals.find((r) => r.ym === month) || { incoming: 0, outgoing: 0 };
+  const past = totals.filter((r) => r.ym !== month && r.ym !== nowYm);
+
+  const earned = current.incoming;
+  const spent = current.outgoing;
+
+  // Scaling a baseline by days elapsed assumes spending is spread evenly, which
+  // it isn't — rent lands on the 1st, salary near the end. In the first quarter
+  // of a month that noise swamps the signal, so hold the comparison back rather
+  // than show a shaky one.
+  const reason = !(earned || spent)
+    ? 'empty'
+    : !past.length
+      ? 'no-history'
+      : partial && share < 0.25
+        ? 'early'
+        : 'ok';
+  const comparable = reason === 'ok';
+
+  const baseline = comparable
+    ? {
+        months: past.length,
+        earned: partial ? null : past.reduce((s, r) => s + r.incoming, 0) / past.length,
+        spent: (past.reduce((s, r) => s + r.outgoing, 0) / past.length) * share
+      }
+    : null;
+
+  const catRows = db
+    .prepare(
+      `SELECT c.id, c.name, c.color, substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS total
+       FROM transactions t JOIN categories c ON c.id = t.category_id
+       WHERE t.user_id = ? AND t.amount < 0 AND c.kind = 'expense'
+       GROUP BY c.id, ym`
+    )
+    .all(userId);
+
+  const pastMonths = new Set(past.map((r) => r.ym));
+  const byCat = new Map();
+  for (const r of catRows) {
+    let e = byCat.get(r.id);
+    if (!e) {
+      e = { id: r.id, name: r.name, color: r.color, spent: 0, pastTotal: 0 };
+      byCat.set(r.id, e);
+    }
+    if (r.ym === month) e.spent = r.total;
+    else if (pastMonths.has(r.ym)) e.pastTotal += r.total;
+  }
+
+  const movers = comparable
+    ? [...byCat.values()]
+        .map((e) => {
+          const usual = (e.pastTotal / past.length) * share;
+          return { id: e.id, name: e.name, color: e.color, spent: e.spent, usual, delta: e.spent - usual };
+        })
+        .filter((e) => Math.abs(e.delta) >= 1 && (e.spent >= 1 || e.usual >= 1))
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        .slice(0, 5)
+    : [];
+
+  return {
+    month,
+    partial,
+    share,
+    comparable,
+    reason,
+    earned,
+    spent,
+    kept: earned - spent,
+    rate: earned > 0 ? Math.round(((earned - spent) / earned) * 100) : null,
+    baseline,
+    movers
+  };
+}
+
+/** Cached AI summary for a report scope, or null when the numbers have moved on. */
+export function getInsight(userId, scope, fingerprint) {
+  const row = db
+    .prepare('SELECT summary, fingerprint FROM insights WHERE user_id = ? AND scope = ?')
+    .get(userId, scope);
+  return row && row.fingerprint === fingerprint ? row.summary : null;
+}
+
+export function setInsight(userId, scope, fingerprint, summary) {
+  db.prepare(
+    `INSERT INTO insights (user_id, scope, fingerprint, summary) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, scope) DO UPDATE SET fingerprint = excluded.fingerprint,
+       summary = excluded.summary, created_at = datetime('now')`
+  ).run(userId, scope, fingerprint, summary);
+}

@@ -12,7 +12,7 @@ categorise them, and see where your money goes each month.
 - **AI categorisation (optional)** — an admin adds an Anthropic (Claude) API key and picks a model in **Server settings**; Claude then sorts transactions into *your own* categories as you import a CSV. On by default once a key is set; each user can opt out; usage is billed to the admin's key.
 - **Budgets** — a monthly target per category, with target vs actual vs remaining and over-budget nudges, plus **Generate targets** to set each target from your historical average spend.
 - **Dashboard** — incoming vs outgoing for any month, 12-month trend, top spending, budget progress, and nudges for uncategorised / over budget.
-- **Reports** — spending and income by category (donut + numbers) for a month or all time.
+- **Reports** — a plain read of the month (came in / went out / kept, with a savings rate) measured against *your own* typical month, a **What changed** list ranking categories by how far they moved from your usual rather than by size, plus spending and income by category (donut + numbers) and a 12-month trend. With an API key configured, Claude adds a two-line summary of the month; it only ever sees the totals above, never individual transactions, and the result is cached per month so page views are free.
 - **Configurable currency** (display formatting only), default Euro (€).
 - **Admin** — a **Server settings** page (in the account menu) for user management, the AI assistant key/model, and more; plus an offline `scripts/reset-password.mjs` for recovery.
 - **Tiny footprint** — a single Node process, the built-in `node:sqlite` (no native deps), and one SQLite file. Idles well under 100 MB RAM.
