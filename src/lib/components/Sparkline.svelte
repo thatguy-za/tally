@@ -1,6 +1,15 @@
 <script>
-  /** @type {{ values: number[], color?: string, width?: number, height?: number, fill?: boolean }} */
-  let { values = [], color = 'var(--ink-faint)', width = 72, height = 22, fill = true } = $props();
+  /** @type {{ values: number[], color?: string, width?: number, height?: number, fill?: boolean, class?: string }} */
+  let {
+    values = [],
+    color = 'var(--ink-faint)',
+    width = 72,
+    height = 22,
+    fill = true,
+    // pass "w-full h-auto" to let the viewBox scale to the container instead of
+    // sitting at its intrinsic size
+    class: cls = ''
+  } = $props();
 
   let pts = $derived.by(() => {
     if (!values.length) return '';
@@ -19,7 +28,7 @@
 </script>
 
 {#if values.length > 1}
-  <svg {width} {height} viewBox="0 0 {width} {height}" class="overflow-visible" aria-hidden="true">
+  <svg {width} {height} viewBox="0 0 {width} {height}" class="overflow-visible {cls}" aria-hidden="true">
     {#if fill}
       <polygon points={area} fill={color} opacity="0.12" />
     {/if}

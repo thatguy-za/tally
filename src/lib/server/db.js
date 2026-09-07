@@ -111,6 +111,19 @@ if (!userCols.includes('ai_off')) {
   db.exec('ALTER TABLE users ADD COLUMN ai_off INTEGER NOT NULL DEFAULT 0');
 }
 
+// Savings used to be seeded as an expense, which counted money you kept as
+// money you spent. Reclassify the seeded category once — guarded by a flag so
+// it never stomps a user who has deliberately set it back.
+const SAVING_MIGRATION = 'migrated_saving_kind';
+const migrated = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(SAVING_MIGRATION);
+if (!migrated) {
+  db.prepare(
+    `UPDATE categories SET kind = 'saving', color = '#0ea5e9'
+     WHERE kind = 'expense' AND name = 'Savings & investments'`
+  ).run();
+  db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run(SAVING_MIGRATION, '1');
+}
+
 const DEFAULT_CATEGORIES = [
   { name: 'Salary', kind: 'income', color: '#16a34a' },
   { name: 'Other income', kind: 'income', color: '#0d9488' },
@@ -123,7 +136,8 @@ const DEFAULT_CATEGORIES = [
   { name: 'Health', kind: 'expense', color: '#ef4444' },
   { name: 'Subscriptions', kind: 'expense', color: '#8b5cf6' },
   { name: 'Entertainment', kind: 'expense', color: '#14b8a6' },
-  { name: 'Savings & investments', kind: 'expense', color: '#64748b' }
+  // money moved here is kept, not spent — see the `saving` kind
+  { name: 'Savings & investments', kind: 'saving', color: '#0ea5e9' }
 ];
 
 export function seedCategories(userId) {

@@ -19,6 +19,7 @@ export function load({ locals, url }) {
     month,
     months: listMonths(locals.user.id),
     expenses,
+    savings: rows.filter((r) => r.kind === 'saving'),
     income: rows.filter((r) => r.kind === 'income'),
     totals: {
       count: withTarget.length,

@@ -213,10 +213,24 @@ export function buildMonthFacts(insights, currency) {
         ? ` (usual ${money(b.spent)} — ${money(Math.abs(insights.spent - b.spent))} ${insights.spent >= b.spent ? 'more' : 'less'})`
         : '')
   );
+  if (insights.saved > 0) {
+    lines.push(
+      `Put aside into savings: ${money(insights.saved)}` +
+        (b?.saved != null ? ` (usual ${money(b.saved)})` : '')
+    );
+  } else if (insights.saved < 0) {
+    lines.push(`Taken back out of savings: ${money(-insights.saved)}`);
+  }
   lines.push(
     `Kept: ${money(insights.kept)}` +
       (insights.rate != null ? ` — ${insights.rate}% of what came in` : '')
   );
+  if (insights.saved) {
+    lines.push(
+      'Money moved into savings counts as kept, not spent: it is excluded from the ' +
+        '"Spent" figure and already included in "Kept". Do not describe it as spending.'
+    );
+  }
   lines.push(
     b
       ? `"Usual" means this person's own average across ${b.months} earlier month${b.months === 1 ? '' : 's'}.`

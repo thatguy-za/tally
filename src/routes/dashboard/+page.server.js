@@ -6,7 +6,8 @@ import {
   categoryBreakdown,
   uncategorisedCount,
   budgetStatus,
-  categorySparkData
+  categorySparkData,
+  savingsSummary
 } from '$lib/server/queries.js';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -18,7 +19,7 @@ export function load({ locals, url }) {
   const month = url.searchParams.get('month') || months[0] || currentMonth();
 
   const totals = monthlyTotals(userId, 12);
-  const forMonth = totals.find((t) => t.ym === month) || { incoming: 0, outgoing: 0 };
+  const forMonth = totals.find((t) => t.ym === month) || { incoming: 0, outgoing: 0, saved: 0 };
 
   const budgetRows = budgetStatus(userId, month).filter(
     (b) => b.kind === 'expense' && b.target != null
@@ -29,10 +30,16 @@ export function load({ locals, url }) {
     month,
     months,
     totals,
-    monthTotals: { incoming: forMonth.incoming || 0, outgoing: forMonth.outgoing || 0 },
+    monthTotals: {
+      incoming: forMonth.incoming || 0,
+      outgoing: forMonth.outgoing || 0,
+      saved: forMonth.saved || 0
+    },
+    savings: savingsSummary(userId, 12),
     recent: listTransactions(userId, { month }).slice(0, 8),
     uncategorised: uncategorisedCount(userId),
-    breakdown: categoryBreakdown(userId, month).filter((b) => b.total < 0),
+    // savings aren't spending, so they stay out of "where it went"
+    breakdown: categoryBreakdown(userId, month).filter((b) => b.total < 0 && b.kind !== 'saving'),
     spark,
     budgetRows: budgetRows
       .slice()

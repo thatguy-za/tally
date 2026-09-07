@@ -8,10 +8,26 @@ export function listCategories(userId) {
     .all(userId);
 }
 
+/**
+ * `saving` is money kept rather than spent — it is left out of every "spent"
+ * figure and reported on its own.
+ */
+export const CATEGORY_KINDS = ['income', 'expense', 'saving'];
+export const normaliseKind = (k) => (CATEGORY_KINDS.includes(k) ? k : 'expense');
+
 export function createCategory(userId, name, kind, color) {
   return db
     .prepare('INSERT INTO categories (user_id, name, kind, color) VALUES (?, ?, ?, ?)')
-    .run(userId, name.trim(), kind === 'income' ? 'income' : 'expense', color || '#64748b');
+    .run(userId, name.trim(), normaliseKind(kind), color || '#64748b');
+}
+
+/** Change what a category *is* — the only way to mark one as savings after the fact. */
+export function setCategoryKind(userId, id, kind) {
+  db.prepare('UPDATE categories SET kind = ? WHERE id = ? AND user_id = ?').run(
+    normaliseKind(kind),
+    id,
+    userId
+  );
 }
 
 export function deleteCategory(userId, id) {
@@ -154,13 +170,24 @@ export function uncategorisedCount(userId) {
 
 /* --------------------------------------------------------------------- reports */
 
+// SQL fragments for the saving/not-saving split; uncategorised counts as spending.
+const IS_SAVING = `COALESCE(c.kind, 'expense') = 'saving'`;
+const NOT_SAVING = `COALESCE(c.kind, 'expense') != 'saving'`;
+
+/**
+ * Per-month in / out / saved. Money in a `saving` category is money kept, so it
+ * is excluded from `outgoing` and reported as `saved` — a net contribution, so
+ * a withdrawal shows up negative rather than being hidden.
+ */
 export function monthlyTotals(userId, months = 12) {
   return db
     .prepare(
-      `SELECT substr(date, 1, 7) AS ym,
-              SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS incoming,
-              SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS outgoing
-       FROM transactions WHERE user_id = ?
+      `SELECT substr(t.date, 1, 7) AS ym,
+              SUM(CASE WHEN t.amount > 0 AND ${NOT_SAVING} THEN t.amount ELSE 0 END) AS incoming,
+              SUM(CASE WHEN t.amount < 0 AND ${NOT_SAVING} THEN -t.amount ELSE 0 END) AS outgoing,
+              SUM(CASE WHEN ${IS_SAVING} THEN -t.amount ELSE 0 END) AS saved
+       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       WHERE t.user_id = ?
        GROUP BY ym ORDER BY ym DESC LIMIT ?`
     )
     .all(userId, months);
@@ -322,7 +349,11 @@ export function budgetStatus(userId, month) {
     .all({ userId, month });
 
   return rows.map((r) => {
-    const actual = Math.abs(r.actual_signed);
+    // savings are a net contribution, so a month with more withdrawn than paid
+    // in has to read negative — Math.abs() would report it as money saved.
+    // `|| 0` collapses the -0 that negating an empty month produces, which
+    // would otherwise format as "-€0.00".
+    const actual = r.kind === 'saving' ? -r.actual_signed || 0 : Math.abs(r.actual_signed);
     const target = r.target ?? null;
     return {
       id: r.id,
@@ -400,25 +431,28 @@ export function monthInsights(userId, month) {
 
   const totals = db
     .prepare(
-      `SELECT substr(date, 1, 7) AS ym,
-              SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS incoming,
-              SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS outgoing
-       FROM transactions WHERE user_id = ?
+      `SELECT substr(t.date, 1, 7) AS ym,
+              SUM(CASE WHEN t.amount > 0 AND ${NOT_SAVING} THEN t.amount ELSE 0 END) AS incoming,
+              SUM(CASE WHEN t.amount < 0 AND ${NOT_SAVING} THEN -t.amount ELSE 0 END) AS outgoing,
+              SUM(CASE WHEN ${IS_SAVING} THEN -t.amount ELSE 0 END) AS saved
+       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       WHERE t.user_id = ?
        GROUP BY ym`
     )
     .all(userId);
 
-  const current = totals.find((r) => r.ym === month) || { incoming: 0, outgoing: 0 };
+  const current = totals.find((r) => r.ym === month) || { incoming: 0, outgoing: 0, saved: 0 };
   const past = totals.filter((r) => r.ym !== month && r.ym !== nowYm);
 
   const earned = current.incoming;
   const spent = current.outgoing;
+  const saved = current.saved;
 
   // Scaling a baseline by days elapsed assumes spending is spread evenly, which
   // it isn't — rent lands on the 1st, salary near the end. In the first quarter
   // of a month that noise swamps the signal, so hold the comparison back rather
   // than show a shaky one.
-  const reason = !(earned || spent)
+  const reason = !(earned || spent || saved)
     ? 'empty'
     : !past.length
       ? 'no-history'
@@ -427,11 +461,15 @@ export function monthInsights(userId, month) {
         : 'ok';
   const comparable = reason === 'ok';
 
+  const mean = (pick) => past.reduce((s, r) => s + pick(r), 0) / past.length;
   const baseline = comparable
     ? {
         months: past.length,
-        earned: partial ? null : past.reduce((s, r) => s + r.incoming, 0) / past.length,
-        spent: (past.reduce((s, r) => s + r.outgoing, 0) / past.length) * share
+        earned: partial ? null : mean((r) => r.incoming),
+        spent: mean((r) => r.outgoing) * share,
+        // savings usually land as one scheduled transfer, so pro-rating them by
+        // days elapsed is meaningless — only compare across whole months
+        saved: partial ? null : mean((r) => r.saved)
       }
     : null;
 
@@ -475,10 +513,49 @@ export function monthInsights(userId, month) {
     reason,
     earned,
     spent,
+    saved,
     kept: earned - spent,
     rate: earned > 0 ? Math.round(((earned - spent) / earned) * 100) : null,
     baseline,
     movers
+  };
+}
+
+/**
+ * Everything the savings views need: the running total put aside to date, and a
+ * month-by-month series carrying both that month's contribution and the balance
+ * built up to it.
+ *
+ * These are *net contributions*, never an account balance — Tally has no sight
+ * of interest or market growth, and a withdrawal shows up as a negative
+ * contribution rather than being hidden. Label it "put aside", not "savings".
+ */
+export function savingsSummary(userId, months = 12) {
+  const rows = db
+    .prepare(
+      `SELECT substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS saved
+       FROM transactions t JOIN categories c ON c.id = t.category_id
+       WHERE t.user_id = ? AND c.kind = 'saving'
+       GROUP BY ym ORDER BY ym`
+    )
+    .all(userId);
+
+  let running = 0;
+  const series = rows.map((r) => {
+    running += r.saved;
+    return { ym: r.ym, saved: r.saved, total: running };
+  });
+
+  const configured = db
+    .prepare(`SELECT 1 AS ok FROM categories WHERE user_id = ? AND kind = 'saving' LIMIT 1`)
+    .get(userId);
+
+  return {
+    total: running,
+    // the tail is trimmed for display but `total` on each point stays cumulative
+    series: series.slice(-months),
+    months: rows.length,
+    configured: !!configured
   };
 }
 

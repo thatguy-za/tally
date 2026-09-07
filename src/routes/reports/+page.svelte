@@ -6,7 +6,12 @@
   import TrendChart from '$lib/components/TrendChart.svelte';
   import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import Sparkline from '$lib/components/Sparkline.svelte';
   let { data } = $props();
+
+  // the running balance, so the curve shows savings building rather than the
+  // sawtooth of individual monthly contributions
+  let savingsCurve = $derived(data.savings.series.map((s) => s.total));
 
   function setScope(v) {
     const url = new URL($page.url);
@@ -75,7 +80,7 @@
 
 {#if data.insights && data.insights.reason !== 'empty'}
   {@const ins = data.insights}
-  <div class="mb-4 grid gap-4 sm:grid-cols-3 rise rise-1">
+  <div class="mb-4 grid gap-4 rise rise-1 sm:grid-cols-2 {data.savings.configured ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}">
     <div class="card">
       <p class="kicker">Came in{ins.partial ? ' so far' : ''}</p>
       <span class="mt-2 block stat-value tnum text-[24px]" style="color:var(--positive)">{money(ins.earned)}</span>
@@ -93,6 +98,22 @@
         <p class="mt-1 text-xs text-[var(--ink-faint)]">{vsUsual(ins.spent, ins.baseline.spent, ins.partial)}</p>
       {/if}
     </div>
+    {#if data.savings.configured}
+      <div class="card">
+        <p class="kicker">Put aside{ins.partial ? ' so far' : ''}</p>
+        <span class="mt-2 block stat-value tnum text-[24px]"
+          style="color:{ins.saved < 0 ? 'var(--ink)' : 'var(--positive)'}">{money(ins.saved)}</span>
+        <p class="mt-1 text-xs text-[var(--ink-faint)]">
+          {#if ins.saved < 0}
+            taken out of savings
+          {:else if ins.baseline?.saved != null}
+            {vsUsual(ins.saved, ins.baseline.saved, false)}
+          {:else}
+            {money(data.savings.total)} in total
+          {/if}
+        </p>
+      </div>
+    {/if}
     <div class="card">
       <p class="kicker">You kept</p>
       <span class="mt-2 block stat-value tnum text-[24px]"
@@ -171,6 +192,40 @@
       </span>
     </div>
   {/if}
+{/if}
+
+{#if data.savings.configured && data.savings.series.length > 1}
+  <div class="card mb-4 rise rise-2">
+    <div class="mb-1 flex items-baseline justify-between gap-3">
+      <h2 class="text-lg">Savings</h2>
+      <span class="tnum text-lg font-semibold" style="color:var(--positive)">{money(data.savings.total)}</span>
+    </div>
+    <p class="mb-4 text-[13px] text-[var(--ink-faint)]">
+      Built up over {data.savings.months} month{data.savings.months === 1 ? '' : 's'}. This is what you
+      have put aside — Tally doesn't see interest or investment growth.
+    </p>
+    <Sparkline values={savingsCurve} color="var(--positive)" width={480} height={72} class="h-auto w-full" />
+    {#if data.saving.length}
+      <div class="mt-4 border-t border-[var(--border)] pt-4">
+        <!-- the headline total is all-time, so say plainly that this list isn't -->
+        <p class="kicker mb-2.5">Put aside in {scopeLabel}</p>
+        <ul class="space-y-2">
+          {#each data.saving as c}
+            <li class="flex items-center justify-between gap-3 text-[13px]">
+              <span class="flex min-w-0 items-center gap-2">
+                <span class="dot shrink-0" style="background:{c.color}"></span>
+                <span class="truncate">{c.name}</span>
+                <span class="text-xs text-[var(--ink-faint)]">×{c.count}</span>
+              </span>
+              <span class="tnum shrink-0 font-medium">
+                {c.total < 0 ? `−${money(Math.abs(c.total))}` : money(c.total)}
+              </span>
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+  </div>
 {/if}
 
 <div class="grid gap-4 lg:grid-cols-2">

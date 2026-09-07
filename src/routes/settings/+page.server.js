@@ -5,6 +5,7 @@ import {
   listCategories,
   createCategory,
   deleteCategory,
+  setCategoryKind,
   listRules,
   createRule,
   deleteRule,
@@ -56,6 +57,15 @@ export const actions = {
       return fail(400, { section: 'category', error: 'A category with that name already exists.' });
     }
     return { section: 'category', ok: true };
+  },
+
+  categoryKind: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    const kind = String(f.get('kind') || '');
+    if (!id) return fail(400, { section: 'category', error: 'Unknown category.' });
+    setCategoryKind(locals.user.id, id, kind);
+    return { section: 'category', ok: true, msg: 'Category updated' };
   },
 
   deleteCategory: async ({ request, locals }) => {

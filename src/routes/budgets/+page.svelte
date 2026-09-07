@@ -91,6 +91,50 @@
         </li>
       {/each}
     </ul>
+
+    {#if data.savings.length}
+      <div class="mt-7 border-t border-[var(--border)] pt-5">
+        <h2 class="text-lg">Savings</h2>
+        <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
+          A target here is an amount to <em>reach</em>, not to stay under — passing it is the win.
+        </p>
+        <ul class="space-y-4">
+          {#each data.savings as c}
+            <li>
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-3 text-[13px]">
+                <span class="flex items-center gap-2 font-medium">
+                  <span class="dot" style="background:{c.color}"></span>{c.name}
+                </span>
+                <span class="flex items-center gap-3">
+                  <span class="tnum text-[var(--ink-faint)]">
+                    {formatMoney(c.actual, data.currency)}{#if c.target != null} / {formatMoney(c.target, data.currency)}{/if}
+                  </span>
+                  <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
+                    placeholder="No target" value={c.target ?? ''} />
+                </span>
+              </div>
+              {#if c.target != null}
+                <div class="h-2 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+                  <div class="h-full rounded-full transition-[width] duration-700"
+                    style="width:{Math.max(0, Math.min(100, c.pct))}%;background:var(--positive)"></div>
+                </div>
+                <p class="mt-1 text-xs {c.remaining <= 0 ? '' : 'text-[var(--ink-faint)]'}"
+                  style={c.remaining <= 0 ? 'color:var(--positive)' : ''}>
+                  {#if c.actual < 0}
+                    {formatMoney(-c.actual, data.currency)} taken out this month
+                  {:else if c.remaining <= 0}
+                    target met · {c.pct}%
+                  {:else}
+                    {formatMoney(c.remaining, data.currency)} to go · {c.pct}%
+                  {/if}
+                </p>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+
     <div class="mt-6 flex justify-end border-t border-[var(--border)] pt-4">
       <button class="btn btn-primary">Save targets</button>
     </div>

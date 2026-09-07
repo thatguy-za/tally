@@ -16,6 +16,9 @@
   let savedRate = $derived(
     data.monthTotals.incoming > 0 ? Math.round((net / data.monthTotals.incoming) * 100) : null
   );
+  // the running balance, so the sparkline shows savings building rather than
+  // the sawtooth of individual monthly contributions
+  let savingsCurve = $derived(data.savings.series.map((s) => s.total));
 </script>
 
 <svelte:head><title>Dashboard · Tally</title></svelte:head>
@@ -25,7 +28,7 @@
     <p class="kicker mb-2">Dashboard</p>
     <h1 class="text-3xl leading-tight" style="font-family:var(--font-display)">
       {#if net > 0}
-        In {monthName} you set aside
+        In {monthName} you kept
         <span class="tnum" style="color:var(--positive)">{formatMoney(net, data.currency)}</span>.
       {:else if net < 0}
         In {monthName} you spent
@@ -58,7 +61,7 @@
   </div>
 {/if}
 
-<div class="grid gap-4 sm:grid-cols-3 rise rise-2">
+<div class="grid gap-4 rise rise-2 sm:grid-cols-2 {data.savings.configured ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}">
   <div class="card">
     <p class="kicker">Incoming</p>
     <Money value={data.monthTotals.incoming} currency={data.currency} countUp colour="positive"
@@ -69,8 +72,22 @@
     <Money value={data.monthTotals.outgoing} currency={data.currency} countUp colour="ink"
       class="mt-2 block stat-value text-[26px]" />
   </div>
+  {#if data.savings.configured}
+    <div class="card">
+      <p class="kicker">Put aside</p>
+      <Money value={data.monthTotals.saved} currency={data.currency} countUp
+        colour={data.monthTotals.saved < 0 ? 'ink' : 'positive'}
+        class="mt-2 block stat-value text-[26px]" />
+      <div class="mt-1.5 flex items-center justify-between gap-2">
+        <span class="text-xs text-[var(--ink-faint)]">
+          {formatMoney(data.savings.total, data.currency)} in total
+        </span>
+        <Sparkline values={savingsCurve} color="var(--positive)" width={60} height={18} />
+      </div>
+    </div>
+  {/if}
   <div class="card">
-    <p class="kicker">Net {#if savedRate !== null}· {savedRate}% saved{/if}</p>
+    <p class="kicker">Net {#if savedRate !== null}· {savedRate}% kept{/if}</p>
     <Money value={net} currency={data.currency} countUp colour={net < 0 ? 'ink' : 'positive'}
       class="mt-2 block stat-value text-[26px]" />
   </div>
