@@ -173,16 +173,22 @@ export async function suggestCategoriesForRows(userId, rows) {
   };
 }
 
+/**
+ * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
+ * reworded summary regenerates instead of serving the old style forever.
+ */
+export const SUMMARY_VERSION = 2;
+
 const SUMMARY_SYSTEM =
-  'You write a short monthly money summary for someone new to budgeting. ' +
+  'You write a very short monthly money summary for someone new to budgeting. ' +
   'Use only the figures you are given: never calculate, estimate or invent a ' +
-  'number, and never name a category that is not in the list. Write two or ' +
-  'three short sentences of plain, warm, second-person English ("you spent…"), ' +
-  'then one concrete suggestion tied to a specific category or figure above. ' +
-  'No headings, no bullet points, no markdown, no preamble, no sign-off and no ' +
-  'disclaimers. Avoid generic advice such as "make a budget" or "track your ' +
-  'spending" — they are already doing that. If the month looks healthy, say so ' +
-  'plainly rather than manufacturing a problem.';
+  'number, and never name a category that is not in the list. Write no more ' +
+  'than 40 words: one sentence on how the month went, then one short, concrete ' +
+  'suggestion tied to a specific category or figure above. Plain, warm, ' +
+  'second-person English ("you spent…"). No headings, bullet points, markdown, ' +
+  'preamble, sign-off or disclaimers. Skip generic advice such as "make a ' +
+  'budget" or "track your spending" — they are already doing that. If the month ' +
+  'looks healthy, say so plainly rather than manufacturing a problem.';
 
 /**
  * The exact text sent to Claude for a month summary: every figure already
@@ -261,7 +267,7 @@ export async function summariseMonth(insights, currency) {
   try {
     res = await client().messages.create({
       ...requestParams(model),
-      max_tokens: 400,
+      max_tokens: 200,
       system: SUMMARY_SYSTEM,
       messages: [{ role: 'user', content: buildMonthFacts(insights, currency) }]
     });

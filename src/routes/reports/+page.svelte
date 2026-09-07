@@ -130,11 +130,17 @@
     </div>
   </div>
 
-  {#if data.aiSummary && (summaryLoading || summary || summaryError)}
-    <div class="card mb-4 rise rise-1">
+  {@const showSummary = data.aiSummary && (summaryLoading || summary || summaryError)}
+  {@const showMovers = ins.movers.length > 0}
+
+  <!-- side by side when both are there, full width when only one is -->
+  {#if showSummary || showMovers}
+  <div class="mb-4 grid gap-4 {showSummary && showMovers ? 'lg:grid-cols-5' : ''}">
+  {#if showSummary}
+    <div class="card rise rise-1 {showMovers ? 'lg:col-span-2' : ''}">
       <h2 class="mb-3 flex items-center gap-2 text-lg">
         <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
-        Your month in a nutshell
+        In a nutshell
       </h2>
       {#if summaryLoading}
         <div class="space-y-2">
@@ -150,8 +156,8 @@
     </div>
   {/if}
 
-  {#if ins.movers.length}
-    <div class="card mb-4 rise rise-2">
+  {#if showMovers}
+    <div class="card rise rise-2 {showSummary ? 'lg:col-span-3' : ''}">
       <div class="mb-1 flex items-baseline justify-between gap-3">
         <h2 class="text-lg">What changed</h2>
         <span class="text-xs text-[var(--ink-faint)]">biggest moves, not biggest totals</span>
@@ -180,7 +186,11 @@
         {/each}
       </ul>
     </div>
-  {:else if !ins.comparable}
+  {/if}
+  </div>
+  {/if}
+
+  {#if !showMovers && !ins.comparable}
     <div class="nudge mb-4 rise rise-2">
       <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
       <span>

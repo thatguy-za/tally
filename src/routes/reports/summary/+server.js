@@ -7,7 +7,7 @@ import {
   setInsight,
   getUserAiCategorise
 } from '$lib/server/queries.js';
-import { summariseMonth } from '$lib/server/ai.js';
+import { summariseMonth, SUMMARY_VERSION } from '$lib/server/ai.js';
 
 /**
  * The numbers are recomputed here rather than taken from the request, so a
@@ -37,8 +37,11 @@ export async function POST({ request, locals }) {
   const fingerprint = createHash('sha1')
     .update(
       JSON.stringify([
+        // the prompt version is in here so a reworded summary regenerates
+        SUMMARY_VERSION,
         Math.round(insights.earned),
         Math.round(insights.spent),
+        Math.round(insights.saved),
         insights.movers.map((m) => [m.id, Math.round(m.spent), Math.round(m.usual)])
       ])
     )
