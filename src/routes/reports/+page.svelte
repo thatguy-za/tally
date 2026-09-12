@@ -3,7 +3,6 @@
   import { page } from '$app/stores';
   import { formatMoney, formatMonth } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
-  import Sparkline from '$lib/components/Sparkline.svelte';
   import StackedMonths from '$lib/components/StackedMonths.svelte';
   let { data } = $props();
 
@@ -41,10 +40,6 @@
     const per = `${money(ins.avg[key])} a month`;
     return usual != null ? `${per} · ${vsUsual(ins.avg[key], usual, false)}` : per;
   }
-
-  // the running balance, so the curve shows savings building rather than the
-  // sawtooth of individual monthly contributions
-  let savingsCurve = $derived(data.savings.series.map((s) => s.total));
 
   // The summary is fetched after the page paints so a slow API call never
   // holds up the numbers, and it is cached server-side per period.
@@ -87,7 +82,7 @@
 <div class="mb-7 flex flex-wrap items-end justify-between gap-3 rise">
   <div>
     <p class="kicker mb-2">Reports · {periodLabel}</p>
-    <h1 class="text-3xl" style="font-family:var(--font-display)">Where the money moves</h1>
+    <h1 class="text-3xl" style="font-family:var(--font-display)">Where your money went</h1>
   </div>
   <div class="flex items-center gap-2">
     <label class="sr-only" for="p-from">From</label>
@@ -106,7 +101,7 @@
 
 {#if data.insights && data.insights.reason !== 'empty'}
   {@const ins = data.insights}
-  <div class="mb-4 grid gap-4 rise rise-1 sm:grid-cols-2 {data.savings.configured ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}">
+  <div class="mb-4 grid gap-4 rise rise-1 {data.savings.configured ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}">
     <div class="card">
       <p class="kicker">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
       <span class="mt-2 block stat-value tnum text-[24px]" style="color:var(--positive)">{money(ins.earned)}</span>
@@ -121,7 +116,7 @@
     </div>
     {#if data.savings.configured}
       <div class="card">
-        <p class="kicker">Put aside{ins.single && ins.partial ? ' so far' : ''}</p>
+        <p class="kicker">Saved{ins.single && ins.partial ? ' so far' : ''}</p>
         <span class="mt-2 block stat-value tnum text-[24px]"
           style="color:{ins.saved < 0 ? 'var(--ink)' : 'var(--positive)'}">{money(ins.saved)}</span>
         <p class="mt-1 text-xs text-[var(--ink-faint)]">
@@ -130,25 +125,11 @@
           {:else if sub(ins, 'saved')}
             {sub(ins, 'saved')}
           {:else}
-            {money(data.savings.total)} in total
+            {money(data.savings.total)} saved in total
           {/if}
         </p>
       </div>
     {/if}
-    <div class="card">
-      <p class="kicker">You kept</p>
-      <span class="mt-2 block stat-value tnum text-[24px]"
-        style="color:{ins.kept < 0 ? 'var(--negative)' : 'var(--positive)'}">{money(ins.kept)}</span>
-      <p class="mt-1 text-xs text-[var(--ink-faint)]">
-        {#if ins.kept < 0}
-          you spent more than came in
-        {:else if ins.rate != null}
-          {ins.rate}% of what came in
-        {:else}
-          nothing came in
-        {/if}
-      </p>
-    </div>
   </div>
 
   {@const showSummary = data.aiSummary && (summaryLoading || summary || summaryError)}
@@ -230,7 +211,7 @@
   {/if}
 {/if}
 
-<div class="card mb-4 rise rise-3">
+<div class="card rise rise-3">
   <div class="mb-4 flex items-baseline justify-between gap-3">
     <h2 class="text-lg">Month by month</h2>
     <span class="kicker">income · spending · by category</span>
@@ -242,17 +223,3 @@
     <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
   {/if}
 </div>
-
-{#if data.savings.configured && data.savings.series.length > 1}
-  <div class="card rise rise-4">
-    <div class="mb-1 flex items-baseline justify-between gap-3">
-      <h2 class="text-lg">Savings</h2>
-      <span class="tnum text-lg font-semibold" style="color:var(--positive)">{money(data.savings.total)}</span>
-    </div>
-    <p class="mb-4 text-[13px] text-[var(--ink-faint)]">
-      {money(data.savings.inWindow)} put aside over this period; {money(data.savings.total)} built up
-      in total by the end of it. Tally doesn't see interest or investment growth.
-    </p>
-    <Sparkline values={savingsCurve} color="var(--positive)" width={480} height={72} class="h-auto w-full" />
-  </div>
-{/if}

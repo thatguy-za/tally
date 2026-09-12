@@ -74,13 +74,13 @@
   </div>
   {#if data.savings.configured}
     <div class="card">
-      <p class="kicker">Put aside</p>
+      <p class="kicker">Saved</p>
       <Money value={data.monthTotals.saved} currency={data.currency} countUp
         colour={data.monthTotals.saved < 0 ? 'ink' : 'positive'}
         class="mt-2 block stat-value text-[26px]" />
       <div class="mt-1.5 flex items-center justify-between gap-2">
         <span class="text-xs text-[var(--ink-faint)]">
-          {formatMoney(data.savings.total, data.currency)} in total
+          {formatMoney(data.savings.total, data.currency)} saved in total
         </span>
         <Sparkline values={savingsCurve} color="var(--positive)" width={60} height={18} />
       </div>

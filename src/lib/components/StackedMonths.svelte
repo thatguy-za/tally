@@ -115,7 +115,7 @@
   }
 </script>
 
-<div class="flex flex-col gap-5 lg:flex-row lg:items-start">
+<div class="flex items-start gap-5">
   <div class="relative min-w-0 flex-1" bind:this={wrap} bind:clientWidth={cw}>
     <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"
       aria-label="Monthly income and spending, each stacked by category">
@@ -160,7 +160,7 @@
     {/if}
   </div>
 
-  <div class="grid shrink-0 grid-cols-2 gap-x-6 gap-y-3 text-[12px] text-[var(--ink-soft)] lg:w-[170px] lg:grid-cols-1 lg:pt-1.5">
+  <div class="flex w-[150px] shrink-0 flex-col gap-4 pt-1.5 text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
     {#each [['Income', income], ['Spending', expense]] as [title, series]}
       {#if series.length}
         <div>
@@ -175,7 +175,7 @@
       {/if}
     {/each}
     {#if !showInOut}
-      <p class="col-span-2 text-[11px] text-[var(--ink-faint)] lg:col-span-1">Income left, spending right.</p>
+      <p class="text-[11px] text-[var(--ink-faint)]">Income left, spending right.</p>
     {/if}
   </div>
 </div>

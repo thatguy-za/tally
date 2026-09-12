@@ -177,7 +177,7 @@ export async function suggestCategoriesForRows(userId, rows) {
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 3;
+export const SUMMARY_VERSION = 4;
 
 const SUMMARY_SYSTEM =
   'You write a very short money summary for someone new to budgeting, covering ' +
@@ -226,18 +226,14 @@ export function buildPeriodFacts(insights, currency) {
   lines.push(`Came in: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(insights.avg.earned, b?.earned));
   lines.push(`Spent: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(insights.avg.spent, b?.spent));
   if (insights.saved > 0) {
-    lines.push(`Put aside into savings: ${money(insights.saved)}` + (insights.single ? '' : ` in total, ${money(insights.avg.saved)}${per}`) + cmp(insights.avg.saved, b?.saved));
+    lines.push(`Saved: ${money(insights.saved)}` + (insights.single ? '' : ` in total, ${money(insights.avg.saved)}${per}`) + cmp(insights.avg.saved, b?.saved));
   } else if (insights.saved < 0) {
     lines.push(`Taken back out of savings: ${money(-insights.saved)}`);
   }
-  lines.push(
-    `Kept: ${money(insights.kept)}` +
-      (insights.rate != null ? ` — ${insights.rate}% of what came in` : '')
-  );
   if (insights.saved) {
     lines.push(
-      'Money moved into savings counts as kept, not spent: it is excluded from the ' +
-        '"Spent" figure and already included in "Kept". Do not describe it as spending.'
+      'Money moved into savings is excluded from the "Spent" figure. Do not describe ' +
+        'it as spending.'
     );
   }
   lines.push(
