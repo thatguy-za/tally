@@ -103,6 +103,8 @@
               <span class="flex min-w-0 items-center gap-2">
                 <span class="dot" style="background:{c.color}"></span>
                 <span class="truncate">{c.name}</span>
+                <!-- share of the whole month's spending, not just the rows shown -->
+                <span class="text-xs text-[var(--ink-faint)]">{Math.round((Math.abs(c.total) / (data.monthTotals.outgoing || 1)) * 100)}%</span>
               </span>
               <span class="flex shrink-0 items-center gap-2.5">
                 <Sparkline values={data.spark[c.id] ?? []} color={c.color} />
