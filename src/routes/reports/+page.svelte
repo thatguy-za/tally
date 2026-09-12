@@ -2,26 +2,31 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { formatMoney, formatMonth } from '$lib/currency.js';
-  import Donut from '$lib/components/Donut.svelte';
-  import TrendChart from '$lib/components/TrendChart.svelte';
-  import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
+  import StackedMonths from '$lib/components/StackedMonths.svelte';
   let { data } = $props();
 
-  // the running balance, so the curve shows savings building rather than the
-  // sawtooth of individual monthly contributions
-  let savingsCurve = $derived(data.savings.series.map((s) => s.total));
+  const money = (n) => formatMoney(n, data.currency);
+  const shortMonth = (ym) => {
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  };
 
-  function setScope(v) {
+  let periodLabel = $derived(
+    data.from === data.to ? formatMonth(data.from) : `${shortMonth(data.from)} – ${shortMonth(data.to)}`
+  );
+  // every month with data, plus whatever the URL asked for, newest first
+  let monthOptions = $derived(
+    [...new Set([data.from, data.to, ...data.months])].sort().reverse()
+  );
+
+  function setPeriod(key, value) {
     const url = new URL($page.url);
-    url.searchParams.set('month', v);
+    url.searchParams.set('from', key === 'from' ? value : data.from);
+    url.searchParams.set('to', key === 'to' ? value : data.to);
     goto(url, { keepFocus: true, noScroll: true });
   }
-  let scopeLabel = $derived(data.scope === 'all' ? 'All time' : formatMonth(data.scope));
-  let months = $derived([...new Set([data.scope, ...data.months])].filter((m) => m !== 'all').sort().reverse());
-
-  const money = (n) => formatMoney(n, data.currency);
 
   /** "€57.00 more than usual" — the phrase under each headline figure. */
   function vsUsual(actual, usual, partial) {
@@ -29,21 +34,33 @@
     if (Math.abs(actual - usual) < 1) return `about the same as usual${by}`;
     return `${money(Math.abs(actual - usual))} ${actual > usual ? 'more' : 'less'} than usual${by}`;
   }
+  /** Sub-line for a strip card: per-month average for a range, straight comparison for a month. */
+  function sub(ins, key) {
+    const usual = ins.baseline?.[key];
+    if (ins.single) return usual != null ? vsUsual(ins[key], usual, ins.partial && key === 'spent') : '';
+    const per = `${money(ins.avg[key])} a month`;
+    return usual != null ? `${per} · ${vsUsual(ins.avg[key], usual, false)}` : per;
+  }
+
+  // the running balance, so the curve shows savings building rather than the
+  // sawtooth of individual monthly contributions
+  let savingsCurve = $derived(data.savings.series.map((s) => s.total));
 
   // The summary is fetched after the page paints so a slow API call never
-  // holds up the numbers, and it is cached server-side per month.
+  // holds up the numbers, and it is cached server-side per period.
   let summary = $state(null);
   let summaryLoading = $state(false);
   let summaryError = $state(null);
 
   $effect(() => {
     const ins = data.insights;
-    const month = data.aiSummary && ins && ins.reason !== 'empty' ? ins.month : null;
-    if (!month) {
+    const key = data.aiSummary && ins && ins.reason !== 'empty' ? `${data.from}:${data.to}` : null;
+    if (!key) {
       summary = null;
       summaryError = null;
       return;
     }
+    const [from, to] = key.split(':');
     let cancelled = false;
     summary = null;
     summaryError = null;
@@ -51,7 +68,7 @@
     fetch('/reports/summary', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ month })
+      body: JSON.stringify({ from, to })
     })
       .then(async (r) => {
         const body = await r.json().catch(() => ({}));
@@ -69,45 +86,49 @@
 
 <div class="mb-7 flex flex-wrap items-end justify-between gap-3 rise">
   <div>
-    <p class="kicker mb-2">Reports · {scopeLabel}</p>
+    <p class="kicker mb-2">Reports · {periodLabel}</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Where the money moves</h1>
   </div>
-  <select class="input max-w-[220px]" value={data.scope} onchange={(e) => setScope(e.currentTarget.value)}>
-    <option value="all">All time</option>
-    {#each months as m}<option value={m}>{formatMonth(m)}</option>{/each}
-  </select>
+  <div class="flex items-center gap-2">
+    <label class="sr-only" for="p-from">From</label>
+    <select class="input max-w-[170px]" id="p-from" value={data.from}
+      onchange={(e) => setPeriod('from', e.currentTarget.value)}>
+      {#each monthOptions as m}<option value={m}>{shortMonth(m)}</option>{/each}
+    </select>
+    <span class="text-[13px] text-[var(--ink-faint)]">to</span>
+    <label class="sr-only" for="p-to">To</label>
+    <select class="input max-w-[170px]" id="p-to" value={data.to}
+      onchange={(e) => setPeriod('to', e.currentTarget.value)}>
+      {#each monthOptions as m}<option value={m}>{shortMonth(m)}</option>{/each}
+    </select>
+  </div>
 </div>
 
 {#if data.insights && data.insights.reason !== 'empty'}
   {@const ins = data.insights}
   <div class="mb-4 grid gap-4 rise rise-1 sm:grid-cols-2 {data.savings.configured ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}">
     <div class="card">
-      <p class="kicker">Came in{ins.partial ? ' so far' : ''}</p>
+      <p class="kicker">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
       <span class="mt-2 block stat-value tnum text-[24px]" style="color:var(--positive)">{money(ins.earned)}</span>
-      {#if ins.baseline?.earned != null}
-        <p class="mt-1 text-xs text-[var(--ink-faint)]">{vsUsual(ins.earned, ins.baseline.earned, false)}</p>
-      {/if}
+      <p class="mt-1 text-xs text-[var(--ink-faint)]">{sub(ins, 'earned')}</p>
     </div>
     <div class="card">
-      <p class="kicker">Went out{ins.partial ? ' so far' : ''}</p>
+      <p class="kicker">Went out{ins.single && ins.partial ? ' so far' : ''}</p>
       <span class="mt-2 block stat-value tnum text-[24px]">{money(ins.spent)}</span>
-      {#if ins.baseline}
-        <!-- deliberately not red: spending more than usual isn't automatically
-             bad (a transfer to savings lands here too), so the number stays
-             neutral and the breakdown below explains what moved -->
-        <p class="mt-1 text-xs text-[var(--ink-faint)]">{vsUsual(ins.spent, ins.baseline.spent, ins.partial)}</p>
-      {/if}
+      <!-- deliberately not red: spending more than usual isn't automatically
+           bad, so the number stays neutral and the breakdown explains what moved -->
+      <p class="mt-1 text-xs text-[var(--ink-faint)]">{sub(ins, 'spent')}</p>
     </div>
     {#if data.savings.configured}
       <div class="card">
-        <p class="kicker">Put aside{ins.partial ? ' so far' : ''}</p>
+        <p class="kicker">Put aside{ins.single && ins.partial ? ' so far' : ''}</p>
         <span class="mt-2 block stat-value tnum text-[24px]"
           style="color:{ins.saved < 0 ? 'var(--ink)' : 'var(--positive)'}">{money(ins.saved)}</span>
         <p class="mt-1 text-xs text-[var(--ink-faint)]">
           {#if ins.saved < 0}
             taken out of savings
-          {:else if ins.baseline?.saved != null}
-            {vsUsual(ins.saved, ins.baseline.saved, false)}
+          {:else if sub(ins, 'saved')}
+            {sub(ins, 'saved')}
           {:else}
             {money(data.savings.total)} in total
           {/if}
@@ -124,7 +145,7 @@
         {:else if ins.rate != null}
           {ins.rate}% of what came in
         {:else}
-          nothing came in this month
+          nothing came in
         {/if}
       </p>
     </div>
@@ -163,9 +184,13 @@
         <span class="text-xs text-[var(--ink-faint)]">biggest moves, not biggest totals</span>
       </div>
       <p class="mb-4 text-[13px] text-[var(--ink-faint)]">
-        Against your own average over {ins.baseline.months} earlier month{ins.baseline.months === 1 ? '' : 's'}{ins.partial
-          ? `, scaled to the ${Math.round(ins.share * 100)}% of ${formatMonth(ins.month)} gone so far`
-          : ''}.
+        {#if ins.single}
+          Against your own average over {ins.baseline.months} earlier month{ins.baseline.months === 1 ? '' : 's'}{ins.partial
+            ? `, scaled to the ${Math.round(ins.share * 100)}% of ${formatMonth(ins.from)} gone so far`
+            : ''}.
+        {:else}
+          Monthly averages for this period, against the {ins.baseline.months} month{ins.baseline.months === 1 ? '' : 's'} before it.
+        {/if}
       </p>
       <ul class="space-y-2.5">
         {#each ins.movers as m}
@@ -190,113 +215,44 @@
   </div>
   {/if}
 
-  {#if !showMovers && !ins.comparable}
+  <!-- only worth saying for a single month; a range that covers all your data has nothing to compare to and that is obvious -->
+  {#if ins.single && !showMovers && !ins.comparable}
     <div class="nudge mb-4 rise rise-2">
       <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
       <span>
         {#if ins.reason === 'no-history'}
           Once you have a second month of data, Tally will show how this month compares to your usual.
         {:else}
-          {formatMonth(ins.month)} has only just started — comparisons appear once the month is properly under way.
+          {formatMonth(ins.from)} has only just started — comparisons appear once the month is properly under way.
         {/if}
       </span>
     </div>
   {/if}
 {/if}
 
+<div class="card mb-4 rise rise-3">
+  <div class="mb-4 flex items-baseline justify-between gap-3">
+    <h2 class="text-lg">Month by month</h2>
+    <span class="kicker">income · spending · by category</span>
+  </div>
+  {#if data.chart.income.length || data.chart.expense.length}
+    <StackedMonths months={data.chart.months} income={data.chart.income} expense={data.chart.expense}
+      values={data.chart.values} currency={data.currency} />
+  {:else}
+    <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
+  {/if}
+</div>
+
 {#if data.savings.configured && data.savings.series.length > 1}
-  <div class="card mb-4 rise rise-2">
+  <div class="card rise rise-4">
     <div class="mb-1 flex items-baseline justify-between gap-3">
       <h2 class="text-lg">Savings</h2>
       <span class="tnum text-lg font-semibold" style="color:var(--positive)">{money(data.savings.total)}</span>
     </div>
     <p class="mb-4 text-[13px] text-[var(--ink-faint)]">
-      Built up over {data.savings.months} month{data.savings.months === 1 ? '' : 's'}. This is what you
-      have put aside — Tally doesn't see interest or investment growth.
+      {money(data.savings.inWindow)} put aside over this period; {money(data.savings.total)} built up
+      in total by the end of it. Tally doesn't see interest or investment growth.
     </p>
     <Sparkline values={savingsCurve} color="var(--positive)" width={480} height={72} class="h-auto w-full" />
-    {#if data.saving.length}
-      <div class="mt-4 border-t border-[var(--border)] pt-4">
-        <!-- the headline total is all-time, so say plainly that this list isn't -->
-        <p class="kicker mb-2.5">Put aside in {scopeLabel}</p>
-        <ul class="space-y-2">
-          {#each data.saving as c}
-            <li class="flex items-center justify-between gap-3 text-[13px]">
-              <span class="flex min-w-0 items-center gap-2">
-                <span class="dot shrink-0" style="background:{c.color}"></span>
-                <span class="truncate">{c.name}</span>
-                <span class="text-xs text-[var(--ink-faint)]">×{c.count}</span>
-              </span>
-              <span class="tnum shrink-0 font-medium">
-                {c.total < 0 ? `−${money(Math.abs(c.total))}` : money(c.total)}
-              </span>
-            </li>
-          {/each}
-        </ul>
-      </div>
-    {/if}
   </div>
 {/if}
-
-<div class="grid gap-4 lg:grid-cols-2">
-  <div class="card rise rise-3">
-    <div class="mb-4 flex items-baseline justify-between">
-      <h2 class="text-lg">Spending by category</h2>
-      <Money value={data.expenseTotal} currency={data.currency} colour="ink" class="font-semibold" />
-    </div>
-    {#if data.expense.length}
-      <div class="flex flex-col items-center gap-6 sm:flex-row">
-        <Donut segments={data.expense} currency={data.currency} label="Spent" />
-        <ul class="w-full space-y-2.5">
-          {#each data.expense as c}
-            <li class="flex items-center justify-between gap-3 text-[13px]">
-              <span class="flex min-w-0 items-center gap-2">
-                <span class="dot" style="background:{c.color}"></span>
-                <span class="truncate">{c.name}</span>
-                <span class="text-xs text-[var(--ink-faint)]">×{c.count}</span>
-              </span>
-              <span class="flex shrink-0 items-baseline gap-2.5 text-right">
-                <span class="tnum font-medium">{formatMoney(c.total, data.currency)}</span>
-                <span class="w-9 text-xs text-[var(--ink-faint)]">
-                  {Math.round((c.total / (data.expenseTotal || 1)) * 100)}%
-                </span>
-              </span>
-            </li>
-          {/each}
-        </ul>
-      </div>
-    {:else}
-      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">No spending in this period.</p>
-    {/if}
-  </div>
-
-  <div class="card rise rise-4">
-    <div class="mb-4 flex items-baseline justify-between">
-      <h2 class="text-lg">Income by category</h2>
-      <Money value={data.incomeTotal} currency={data.currency} colour="positive" class="font-semibold" />
-    </div>
-    {#if data.income.length}
-      <ul class="space-y-2.5">
-        {#each data.income as c}
-          <li class="flex items-center justify-between text-[13px]">
-            <span class="flex items-center gap-2">
-              <span class="dot" style="background:{c.color}"></span>{c.name}
-            </span>
-            <span class="tnum font-medium">{formatMoney(c.total, data.currency)}</span>
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">No income in this period.</p>
-    {/if}
-  </div>
-</div>
-
-<div class="card mt-4 rise rise-5">
-  <h2 class="mb-4 text-lg">Monthly trend</h2>
-  {#if data.trend.length}
-    <TrendChart data={data.trend} currency={data.currency} />
-  {:else}
-    <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Not enough data yet.</p>
-  {/if}
-</div>

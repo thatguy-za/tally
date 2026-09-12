@@ -177,53 +177,56 @@ export async function suggestCategoriesForRows(userId, rows) {
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 2;
+export const SUMMARY_VERSION = 3;
 
 const SUMMARY_SYSTEM =
-  'You write a very short monthly money summary for someone new to budgeting. ' +
-  'Use only the figures you are given: never calculate, estimate or invent a ' +
-  'number, and never name a category that is not in the list. Write no more ' +
-  'than 40 words: one sentence on how the month went, then one short, concrete ' +
-  'suggestion tied to a specific category or figure above. Plain, warm, ' +
-  'second-person English ("you spent…"). No headings, bullet points, markdown, ' +
-  'preamble, sign-off or disclaimers. Skip generic advice such as "make a ' +
-  'budget" or "track your spending" — they are already doing that. If the month ' +
-  'looks healthy, say so plainly rather than manufacturing a problem.';
+  'You write a very short money summary for someone new to budgeting, covering ' +
+  'the period described. Use only the figures you are given: never calculate, ' +
+  'estimate or invent a number, and never name a category that is not in the ' +
+  'list. Write no more than 40 words: one sentence on how the period went, then ' +
+  'one short, concrete suggestion tied to a specific category or figure above. ' +
+  'Plain, warm, second-person English ("you spent…"). No headings, bullet ' +
+  'points, markdown, preamble, sign-off or disclaimers. Skip generic advice ' +
+  'such as "make a budget" or "track your spending" — they are already doing ' +
+  'that. If things look healthy, say so plainly rather than manufacturing a ' +
+  'problem.';
 
 /**
- * The exact text sent to Claude for a month summary: every figure already
+ * The exact text sent to Claude for a period summary: every figure already
  * formatted, so the model narrates rather than calculates. Exported so it is
  * easy to audit what leaves the server — category names and totals, never an
  * individual transaction.
  *
- * @param {ReturnType<import('./queries.js').monthInsights>} insights
+ * @param {ReturnType<import('./queries.js').periodInsights>} insights
  * @param {string} currency
  */
-export function buildMonthFacts(insights, currency) {
+export function buildPeriodFacts(insights, currency) {
   const money = (n) => formatMoney(n, currency);
   const b = insights.baseline;
   const lines = [];
 
-  lines.push(
-    insights.partial
-      ? `Month: ${formatMonth(insights.month)} — still in progress, ${Math.round(insights.share * 100)}% of it elapsed. ` +
-        'Figures below are "so far this month", and every "usual" figure has been scaled to the same share of a month so the comparison is fair.'
-      : `Month: ${formatMonth(insights.month)} (complete).`
-  );
-  lines.push(
-    `Earned: ${money(insights.earned)}` + (b?.earned != null ? ` (usual ${money(b.earned)})` : '')
-  );
-  lines.push(
-    `Spent: ${money(insights.spent)}` +
-      (b
-        ? ` (usual ${money(b.spent)} — ${money(Math.abs(insights.spent - b.spent))} ${insights.spent >= b.spent ? 'more' : 'less'})`
-        : '')
-  );
-  if (insights.saved > 0) {
+  const label = insights.single
+    ? formatMonth(insights.from)
+    : `${formatMonth(insights.from)} to ${formatMonth(insights.to)} (${insights.months} month${insights.months === 1 ? '' : 's'} with data)`;
+  if (insights.single && insights.partial) {
     lines.push(
-      `Put aside into savings: ${money(insights.saved)}` +
-        (b?.saved != null ? ` (usual ${money(b.saved)})` : '')
+      `Period: ${label} — still in progress, ${Math.round(insights.share * 100)}% of it elapsed. ` +
+        'Figures are "so far this month", and every "usual" figure has been scaled to the same share of a month so the comparison is fair.'
     );
+  } else if (insights.partial) {
+    lines.push(`Period: ${label}. The final month is still in progress, so its figures are partial.`);
+  } else {
+    lines.push(`Period: ${label}.`);
+  }
+
+  const per = insights.single ? '' : ' a month on average';
+  const cmp = (actual, usual) =>
+    usual == null ? '' : ` (usual ${money(usual)} — ${money(Math.abs(actual - usual))} ${actual >= usual ? 'more' : 'less'})`;
+
+  lines.push(`Came in: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(insights.avg.earned, b?.earned));
+  lines.push(`Spent: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(insights.avg.spent, b?.spent));
+  if (insights.saved > 0) {
+    lines.push(`Put aside into savings: ${money(insights.saved)}` + (insights.single ? '' : ` in total, ${money(insights.avg.saved)}${per}`) + cmp(insights.avg.saved, b?.saved));
   } else if (insights.saved < 0) {
     lines.push(`Taken back out of savings: ${money(-insights.saved)}`);
   }
@@ -239,12 +242,12 @@ export function buildMonthFacts(insights, currency) {
   }
   lines.push(
     b
-      ? `"Usual" means this person's own average across ${b.months} earlier month${b.months === 1 ? '' : 's'}.`
-      : 'There is no earlier month to compare against yet.'
+      ? `"Usual" means this person's own monthly average across the ${b.months} month${b.months === 1 ? '' : 's'} before this period.`
+      : 'There is nothing before this period to compare against.'
   );
 
   if (insights.movers.length) {
-    lines.push('', 'Biggest changes vs usual:');
+    lines.push('', `Biggest changes vs usual${insights.single ? '' : ' (monthly averages)'}:`);
     for (const m of insights.movers) {
       lines.push(
         `- ${m.name}: ${money(m.spent)} (usual ${money(m.usual)} — ` +
@@ -257,11 +260,11 @@ export function buildMonthFacts(insights, currency) {
 }
 
 /**
- * Turn the numbers from `monthInsights` into a plain-English read of the month.
- * @param {ReturnType<import('./queries.js').monthInsights>} insights
+ * Turn the numbers from `periodInsights` into a plain-English read of the period.
+ * @param {ReturnType<import('./queries.js').periodInsights>} insights
  * @param {string} currency
  */
-export async function summariseMonth(insights, currency) {
+export async function summarisePeriod(insights, currency) {
   const model = getModel();
   let res;
   try {
@@ -269,7 +272,7 @@ export async function summariseMonth(insights, currency) {
       ...requestParams(model),
       max_tokens: 200,
       system: SUMMARY_SYSTEM,
-      messages: [{ role: 'user', content: buildMonthFacts(insights, currency) }]
+      messages: [{ role: 'user', content: buildPeriodFacts(insights, currency) }]
     });
   } catch (e) {
     throw new Error(friendlyError(e));

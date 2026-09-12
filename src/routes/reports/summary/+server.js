@@ -2,12 +2,14 @@ import { json, error } from '@sveltejs/kit';
 import { createHash } from 'node:crypto';
 import { aiEnabled } from '$lib/server/ai-settings.js';
 import {
-  monthInsights,
+  periodInsights,
   getInsight,
   setInsight,
   getUserAiCategorise
 } from '$lib/server/queries.js';
-import { summariseMonth, SUMMARY_VERSION } from '$lib/server/ai.js';
+import { summarisePeriod, SUMMARY_VERSION } from '$lib/server/ai.js';
+
+const YM = /^\d{4}-\d{2}$/;
 
 /**
  * The numbers are recomputed here rather than taken from the request, so a
@@ -28,11 +30,13 @@ export async function POST({ request, locals }) {
   } catch {
     throw error(400, 'Bad request body.');
   }
-  const month = String(body?.month || '');
-  if (!/^\d{4}-\d{2}$/.test(month)) throw error(400, 'A month (YYYY-MM) is required.');
+  let from = String(body?.from || '');
+  let to = String(body?.to || '');
+  if (!YM.test(from) || !YM.test(to)) throw error(400, 'A period (YYYY-MM to YYYY-MM) is required.');
+  if (from > to) [from, to] = [to, from];
 
-  const insights = monthInsights(locals.user.id, month);
-  if (!insights.earned && !insights.spent) return json({ summary: null });
+  const insights = periodInsights(locals.user.id, from, to);
+  if (!insights.earned && !insights.spent && !insights.saved) return json({ summary: null });
 
   const fingerprint = createHash('sha1')
     .update(
@@ -47,13 +51,14 @@ export async function POST({ request, locals }) {
     )
     .digest('hex');
 
-  const cached = getInsight(locals.user.id, month, fingerprint);
+  const scope = `${from}:${to}`;
+  const cached = getInsight(locals.user.id, scope, fingerprint);
   if (cached) return json({ summary: cached, cached: true });
 
   try {
-    const r = await summariseMonth(insights, locals.user.currency);
+    const r = await summarisePeriod(insights, locals.user.currency);
     if (!r.text) return json({ summary: null });
-    setInsight(locals.user.id, month, fingerprint, r.text);
+    setInsight(locals.user.id, scope, fingerprint, r.text);
     return json({ summary: r.text, cached: false, costUsd: r.costUsd });
   } catch (e) {
     throw error(400, e?.message || 'the request failed');

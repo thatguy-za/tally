@@ -411,24 +411,35 @@ function monthElapsed(month) {
   return Math.min(1, now.getDate() / days);
 }
 
+/** Every calendar month from `from` to `to` inclusive, as YYYY-MM. */
+export function monthRange(from, to) {
+  const out = [];
+  let [y, m] = from.split('-').map(Number);
+  while (true) {
+    const cur = `${y}-${String(m).padStart(2, '0')}`;
+    if (cur > to) break;
+    out.push(cur);
+    if (++m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
 /**
- * A beginner-facing read of one month: earned / spent / kept measured against
- * the user's own typical month, plus the categories that moved the most.
+ * A beginner-facing read of a period: what came in, went out and was put aside,
+ * measured as a monthly average against the months *before* the period, plus the
+ * categories whose monthly average moved the most.
  *
- * Baselines come from the user's other months that have already finished. When
- * `month` is still in progress they are scaled to the share of it elapsed, so
- * the comparison reads "vs usual by this point" instead of pitting a part-month
- * against whole ones. Income is lumpy (one salary date), so it is only compared
- * across complete months.
+ * A single-month period is the plain case ("this month vs your usual"). For
+ * longer periods the same maths runs on averages, so "usual" means the months
+ * leading up to the period. A month still in progress counts for the share of
+ * it elapsed, so a half-finished month doesn't drag the average down.
  *
  * @param {number} userId
- * @param {string} month YYYY-MM
+ * @param {string} from YYYY-MM
+ * @param {string} to   YYYY-MM (inclusive)
  */
-export function monthInsights(userId, month) {
+export function periodInsights(userId, from, to) {
   const nowYm = ym(new Date());
-  const partial = month === nowYm;
-  const share = partial ? monthElapsed(month) : 1;
-
   const totals = db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
@@ -441,35 +452,43 @@ export function monthInsights(userId, month) {
     )
     .all(userId);
 
-  const current = totals.find((r) => r.ym === month) || { incoming: 0, outgoing: 0, saved: 0 };
-  const past = totals.filter((r) => r.ym !== month && r.ym !== nowYm);
+  const inPeriod = totals.filter((r) => r.ym >= from && r.ym <= to);
+  const before = totals.filter((r) => r.ym < from);
+  const sum = (rows, pick) => rows.reduce((s, r) => s + pick(r), 0);
 
-  const earned = current.incoming;
-  const spent = current.outgoing;
-  const saved = current.saved;
+  const earned = sum(inPeriod, (r) => r.incoming);
+  const spent = sum(inPeriod, (r) => r.outgoing);
+  const saved = sum(inPeriod, (r) => r.saved);
 
-  // Scaling a baseline by days elapsed assumes spending is spread evenly, which
-  // it isn't — rent lands on the 1st, salary near the end. In the first quarter
-  // of a month that noise swamps the signal, so hold the comparison back rather
-  // than show a shaky one.
+  // months that count towards the average: those with data, the current one
+  // only for the share of it that has happened
+  const partial = to >= nowYm;
+  const effectiveMonths = inPeriod.reduce((s, r) => s + (r.ym === nowYm ? monthElapsed(r.ym) : 1), 0);
+  const single = from === to;
+  const share = single && partial ? monthElapsed(from) : 1;
+
+  // Scaling a lone month by days elapsed assumes spending is spread evenly,
+  // which it isn't — rent lands on the 1st, salary near the end. In the first
+  // quarter of a single month that noise swamps the signal, so hold back.
   const reason = !(earned || spent || saved)
     ? 'empty'
-    : !past.length
+    : !before.length
       ? 'no-history'
-      : partial && share < 0.25
+      : single && partial && share < 0.25
         ? 'early'
         : 'ok';
   const comparable = reason === 'ok';
 
-  const mean = (pick) => past.reduce((s, r) => s + pick(r), 0) / past.length;
+  const n = Math.max(effectiveMonths, 0.01);
+  const avg = { earned: earned / n, spent: spent / n, saved: saved / n };
+  const bmean = (pick) => sum(before, pick) / before.length;
   const baseline = comparable
     ? {
-        months: past.length,
-        earned: partial ? null : mean((r) => r.incoming),
-        spent: mean((r) => r.outgoing) * share,
-        // savings usually land as one scheduled transfer, so pro-rating them by
-        // days elapsed is meaningless — only compare across whole months
-        saved: partial ? null : mean((r) => r.saved)
+        months: before.length,
+        // income and savings land in lumps, so a part-month can't be compared
+        earned: single && partial ? null : bmean((r) => r.incoming),
+        spent: bmean((r) => r.outgoing) * share,
+        saved: single && partial ? null : bmean((r) => r.saved)
       }
     : null;
 
@@ -482,23 +501,23 @@ export function monthInsights(userId, month) {
     )
     .all(userId);
 
-  const pastMonths = new Set(past.map((r) => r.ym));
   const byCat = new Map();
   for (const r of catRows) {
     let e = byCat.get(r.id);
     if (!e) {
-      e = { id: r.id, name: r.name, color: r.color, spent: 0, pastTotal: 0 };
+      e = { id: r.id, name: r.name, color: r.color, period: 0, before: 0 };
       byCat.set(r.id, e);
     }
-    if (r.ym === month) e.spent = r.total;
-    else if (pastMonths.has(r.ym)) e.pastTotal += r.total;
+    if (r.ym >= from && r.ym <= to) e.period += r.total;
+    else if (r.ym < from) e.before += r.total;
   }
 
   const movers = comparable
     ? [...byCat.values()]
         .map((e) => {
-          const usual = (e.pastTotal / past.length) * share;
-          return { id: e.id, name: e.name, color: e.color, spent: e.spent, usual, delta: e.spent - usual };
+          const spent = e.period / n;
+          const usual = (e.before / before.length) * share;
+          return { id: e.id, name: e.name, color: e.color, spent, usual, delta: spent - usual };
         })
         .filter((e) => Math.abs(e.delta) >= 1 && (e.spent >= 1 || e.usual >= 1))
         .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
@@ -506,7 +525,10 @@ export function monthInsights(userId, month) {
     : [];
 
   return {
-    month,
+    from,
+    to,
+    single,
+    months: inPeriod.length,
     partial,
     share,
     comparable,
@@ -516,21 +538,43 @@ export function monthInsights(userId, month) {
     saved,
     kept: earned - spent,
     rate: earned > 0 ? Math.round(((earned - spent) / earned) * 100) : null,
+    avg,
     baseline,
     movers
   };
 }
 
 /**
- * Everything the savings views need: the running total put aside to date, and a
+ * Per-month, per-category totals for the stacked chart, income and spending
+ * only (savings have their own card). Amounts are positive magnitudes.
+ */
+export function monthlyCategoryTotals(userId, from, to) {
+  return db
+    .prepare(
+      `SELECT substr(t.date, 1, 7) AS ym, c.id, c.name, c.color, c.kind,
+              SUM(ABS(t.amount)) AS total
+       FROM transactions t JOIN categories c ON c.id = t.category_id
+       WHERE t.user_id = @userId AND c.kind IN ('income', 'expense')
+         AND substr(t.date, 1, 7) BETWEEN @from AND @to
+         AND ((c.kind = 'income' AND t.amount > 0) OR (c.kind = 'expense' AND t.amount < 0))
+       GROUP BY ym, c.id`
+    )
+    .all({ userId, from, to });
+}
+
+/**
+ * Everything the savings views need: the running total put aside, and a
  * month-by-month series carrying both that month's contribution and the balance
  * built up to it.
+ *
+ * Pass a number for the last N months (dashboard) or `{ from, to }` for a
+ * range (reports). `total` is the balance at the end of the window.
  *
  * These are *net contributions*, never an account balance — Tally has no sight
  * of interest or market growth, and a withdrawal shows up as a negative
  * contribution rather than being hidden. Label it "put aside", not "savings".
  */
-export function savingsSummary(userId, months = 12) {
+export function savingsSummary(userId, window = 12) {
   const rows = db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS saved
@@ -541,19 +585,30 @@ export function savingsSummary(userId, months = 12) {
     .all(userId);
 
   let running = 0;
-  const series = rows.map((r) => {
+  const all = rows.map((r) => {
     running += r.saved;
     return { ym: r.ym, saved: r.saved, total: running };
   });
+
+  let series;
+  let total;
+  if (typeof window === 'number') {
+    series = all.slice(-window);
+    total = running;
+  } else {
+    series = all.filter((p) => p.ym >= window.from && p.ym <= window.to);
+    const upTo = all.filter((p) => p.ym <= window.to);
+    total = upTo.length ? upTo[upTo.length - 1].total : 0;
+  }
 
   const configured = db
     .prepare(`SELECT 1 AS ok FROM categories WHERE user_id = ? AND kind = 'saving' LIMIT 1`)
     .get(userId);
 
   return {
-    total: running,
-    // the tail is trimmed for display but `total` on each point stays cumulative
-    series: series.slice(-months),
+    total,
+    inWindow: series.reduce((s, p) => s + p.saved, 0),
+    series,
     months: rows.length,
     configured: !!configured
   };
