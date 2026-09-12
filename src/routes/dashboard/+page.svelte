@@ -8,8 +8,9 @@
   let { data } = $props();
 
   let net = $derived(data.monthTotals.incoming - data.monthTotals.outgoing);
-  // bars share one scale: the biggest amount spent or target this month
-  let spendMax = $derived(Math.max(1, ...data.spending.flatMap((c) => [c.actual, c.target ?? 0])));
+  let spentTotal = $derived(Math.max(1, data.spending.reduce((s, c) => s + c.actual, 0)));
+  const barColour = (pct) =>
+    pct > 100 ? 'var(--negative)' : pct > 85 ? 'var(--gold)' : 'var(--accent)';
   let monthName = $derived(formatMonth(data.month).split(' ')[0]);
   let savedRate = $derived(
     data.monthTotals.incoming > 0 ? Math.round((net / data.monthTotals.incoming) * 100) : null
@@ -94,49 +95,47 @@
 <div class="card mt-4 rise rise-3">
   <div class="mb-4 flex flex-wrap items-baseline justify-between gap-3">
     <h2 class="text-lg">Where it went</h2>
-    {#if data.budgets.count}
-      <a href="/budgets" class="link-accent tnum text-[13px]">
-        {formatMoney(data.budgets.actual, data.currency)} of {formatMoney(data.budgets.target, data.currency)} budgeted
-        · {Math.round((data.budgets.actual / (data.budgets.target || 1)) * 100)}%
-      </a>
-    {:else if data.spending.length}
-      <a href="/budgets" class="link-accent text-[13px]">Set some targets</a>
-    {/if}
+    <a href="/budgets" class="link-accent text-[13px]">
+      {#if data.budgets.count}
+        <span class="tnum">{formatMoney(data.budgets.actual, data.currency)} of {formatMoney(data.budgets.target, data.currency)}</span> budgeted →
+      {:else}
+        Set targets →
+      {/if}
+    </a>
   </div>
+
   {#if data.spending.length}
-    <!-- one bar per category: length is what was spent, the tick is the target,
-         anything past the tick turns red. Same scale for every row. -->
-    <ul class="space-y-3.5">
+    <!-- the month's spending as one bar, each category's share in its colour -->
+    <div class="mb-5 flex h-2.5 gap-[2px] overflow-hidden rounded-full" role="img" aria-label="Share of this month's spending by category">
       {#each data.spending as c (c.id)}
-        {@const within = c.target != null ? Math.min(c.actual, c.target) : c.actual}
-        {@const over = c.target != null ? Math.max(0, c.actual - c.target) : 0}
-        <li>
-          <div class="mb-1 flex items-baseline justify-between gap-3 text-[13px]">
-            <span class="flex min-w-0 items-center gap-2">
-              <span class="dot" style="background:{c.color}"></span>
-              <span class="truncate">{c.name}</span>
-            </span>
-            <span class="tnum shrink-0">
-              <span class="font-medium">{formatMoney(c.actual, data.currency)}</span>
-              {#if c.target != null}
-                <span class="text-xs {c.remaining < 0 ? '' : 'text-[var(--ink-faint)]'}"
-                  style={c.remaining < 0 ? 'color:var(--negative)' : ''}>
-                  {c.remaining < 0
-                    ? `${formatMoney(-c.remaining, data.currency)} over`
-                    : `of ${formatMoney(c.target, data.currency)}`}
-                </span>
-              {/if}
-            </span>
-          </div>
-          <div class="relative h-1.5 rounded-full" style="background:var(--paper-sunk)">
-            <div class="absolute inset-y-0 left-0 flex overflow-hidden rounded-full" style="width:{((within + over) / spendMax) * 100}%">
-              <div class="h-full transition-[width] duration-700" style="width:{(within / (within + over || 1)) * 100}%;background:{c.color}"></div>
-              {#if over}<div class="h-full flex-1" style="background:var(--negative)"></div>{/if}
-            </div>
+        {#if c.actual > 0}
+          <div style="width:{(c.actual / spentTotal) * 100}%;background:{c.color}" title="{c.name} · {formatMoney(c.actual, data.currency)}"></div>
+        {/if}
+      {/each}
+    </div>
+
+    <ul class="divide-y divide-[var(--border)]">
+      {#each data.spending as c (c.id)}
+        <li class="flex items-center gap-4 py-2 text-[13px]">
+          <span class="flex min-w-0 flex-1 items-center gap-2">
+            <span class="dot shrink-0" style="background:{c.color}"></span>
+            <span class="truncate">{c.name}</span>
+            <span class="text-xs text-[var(--ink-faint)]">{Math.round((c.actual / spentTotal) * 100)}%</span>
+          </span>
+          <span class="tnum w-[84px] shrink-0 text-right font-medium">{formatMoney(c.actual, data.currency)}</span>
+          <!-- against its target: a short track, filled to the share used -->
+          <span class="flex w-[124px] shrink-0 items-center justify-end gap-2">
             {#if c.target != null}
-              <div class="absolute -top-[3px] h-3 w-[2px] rounded-full" style="left:calc({(c.target / spendMax) * 100}% - 1px);background:var(--ink)"></div>
+              <span class="h-1.5 w-[72px] overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+                <span class="block h-full rounded-full transition-[width] duration-700"
+                  style="width:{Math.min(100, c.pct)}%;background:{barColour(c.pct)}"></span>
+              </span>
+              <span class="tnum w-10 text-right text-xs {c.pct > 100 ? 'font-semibold' : 'text-[var(--ink-faint)]'}"
+                style={c.pct > 100 ? 'color:var(--negative)' : ''}>{c.pct}%</span>
+            {:else}
+              <span class="text-xs text-[var(--ink-faint)]">no target</span>
             {/if}
-          </div>
+          </span>
         </li>
       {/each}
     </ul>
