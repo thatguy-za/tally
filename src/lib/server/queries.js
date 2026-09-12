@@ -194,11 +194,12 @@ export function getUserAiCategorise(userId) {
   return !db.prepare('SELECT ai_off FROM users WHERE id = ?').get(userId)?.ai_off;
 }
 
-export function uncategorisedCount(userId) {
+export function uncategorisedCount(userId, accountId = null) {
+  const af = accountFilter(accountId);
   return Number(
     db
-      .prepare('SELECT COUNT(*) AS n FROM transactions WHERE user_id = ? AND category_id IS NULL')
-      .get(userId).n
+      .prepare(`SELECT COUNT(*) AS n FROM transactions t WHERE t.user_id = @userId AND t.category_id IS NULL ${af.sql}`)
+      .get({ userId, ...af.params }).n
   );
 }
 
@@ -211,11 +212,24 @@ const IS_SAVING = `COALESCE(c.kind, 'expense') = 'saving'`;
 const NOT_SAVING = `COALESCE(c.kind, 'expense') NOT IN ('saving', 'transfer')`;
 
 /**
+ * An optional account filter as a SQL fragment + the params to bind. Every
+ * per-account view (dashboard, reports) is optional — pass null/undefined for
+ * the combined, all-accounts read.
+ * @param {number|string|null|undefined} accountId 'none' matches unassigned transactions
+ */
+function accountFilter(accountId) {
+  if (accountId === 'none') return { sql: 'AND t.account_id IS NULL', params: {} };
+  if (accountId) return { sql: 'AND t.account_id = @accountId', params: { accountId } };
+  return { sql: '', params: {} };
+}
+
+/**
  * Per-month in / out / saved. Money in a `saving` category is money kept, so it
  * is excluded from `outgoing` and reported as `saved` — a net contribution, so
  * a withdrawal shows up negative rather than being hidden.
  */
-export function monthlyTotals(userId, months = 12) {
+export function monthlyTotals(userId, months = 12, accountId = null) {
+  const af = accountFilter(accountId);
   return db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
@@ -223,16 +237,18 @@ export function monthlyTotals(userId, months = 12) {
               SUM(CASE WHEN t.amount < 0 AND ${NOT_SAVING} THEN -t.amount ELSE 0 END) AS outgoing,
               SUM(CASE WHEN ${IS_SAVING} THEN -t.amount ELSE 0 END) AS saved
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = ?
-       GROUP BY ym ORDER BY ym DESC LIMIT ?`
+       WHERE t.user_id = @userId ${af.sql}
+       GROUP BY ym ORDER BY ym DESC LIMIT @months`
     )
-    .all(userId, months);
+    .all({ userId, months, ...af.params });
 }
 
-export function categoryBreakdown(userId, month) {
+export function categoryBreakdown(userId, month, accountId = null) {
   const params = { userId };
   let monthFilter = '';
   if (month) { monthFilter = 'AND substr(t.date, 1, 7) = @month'; params.month = month; }
+  const af = accountFilter(accountId);
+  Object.assign(params, af.params);
   return db
     .prepare(
       `SELECT c.id AS id,
@@ -242,7 +258,7 @@ export function categoryBreakdown(userId, month) {
               SUM(t.amount) AS total,
               COUNT(*) AS count
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = @userId ${monthFilter}
+       WHERE t.user_id = @userId ${monthFilter} ${af.sql}
        GROUP BY c.id
        ORDER BY total ASC`
     )
@@ -254,7 +270,7 @@ export function categoryBreakdown(userId, month) {
  * @returns {{ months: string[], byCategory: Record<string, number[]> }}
  * arrays run oldest -> newest and align to `months`.
  */
-export function categorySparkData(userId, months = 6) {
+export function categorySparkData(userId, months = 6, accountId = null) {
   const now = new Date();
   const list = [];
   for (let i = months - 1; i >= 0; i--) {
@@ -262,14 +278,15 @@ export function categorySparkData(userId, months = 6) {
     list.push(d.toISOString().slice(0, 7));
   }
   const since = list[0] + '-01';
+  const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   const rows = db
     .prepare(
       `SELECT category_id, substr(date, 1, 7) AS ym, SUM(amount) AS total
        FROM transactions
-       WHERE user_id = ? AND date >= ? AND category_id IS NOT NULL
+       WHERE user_id = @userId AND date >= @since AND category_id IS NOT NULL ${af}
        GROUP BY category_id, ym`
     )
-    .all(userId, since);
+    .all({ userId, since, ...accountFilter(accountId).params });
 
   const idx = Object.fromEntries(list.map((m, i) => [m, i]));
   /** @type {Record<string, number[]>} */
@@ -367,7 +384,8 @@ export function deleteBudget(userId, categoryId) {
 }
 
 /** target vs actual vs remaining for each expense category in `month` (YYYY-MM). */
-export function budgetStatus(userId, month) {
+export function budgetStatus(userId, month, accountId = null) {
+  const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   const rows = db
     .prepare(
       `SELECT c.id, c.name, c.color, c.kind,
@@ -375,14 +393,14 @@ export function budgetStatus(userId, month) {
               COALESCE((
                 SELECT SUM(t.amount) FROM transactions t
                 WHERE t.user_id = c.user_id AND t.category_id = c.id
-                  AND substr(t.date, 1, 7) = @month
+                  AND substr(t.date, 1, 7) = @month ${af}
               ), 0) AS actual_signed
        FROM categories c
        LEFT JOIN budgets b ON b.category_id = c.id AND b.user_id = c.user_id
        WHERE c.user_id = @userId
        ORDER BY c.kind DESC, c.name`
     )
-    .all({ userId, month });
+    .all({ userId, month, ...accountFilter(accountId).params });
 
   return rows.map((r) => {
     // savings are a net contribution, so a month with more withdrawn than paid
@@ -474,8 +492,9 @@ export function monthRange(from, to) {
  * @param {string} from YYYY-MM
  * @param {string} to   YYYY-MM (inclusive)
  */
-export function periodInsights(userId, from, to) {
+export function periodInsights(userId, from, to, accountId = null) {
   const nowYm = ym(new Date());
+  const af = accountFilter(accountId);
   const totals = db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
@@ -483,10 +502,10 @@ export function periodInsights(userId, from, to) {
               SUM(CASE WHEN t.amount < 0 AND ${NOT_SAVING} THEN -t.amount ELSE 0 END) AS outgoing,
               SUM(CASE WHEN ${IS_SAVING} THEN -t.amount ELSE 0 END) AS saved
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = ?
+       WHERE t.user_id = @userId ${af.sql}
        GROUP BY ym`
     )
-    .all(userId);
+    .all({ userId, ...af.params });
 
   const inPeriod = totals.filter((r) => r.ym >= from && r.ym <= to);
   const before = totals.filter((r) => r.ym < from);
@@ -532,10 +551,10 @@ export function periodInsights(userId, from, to) {
     .prepare(
       `SELECT c.id, c.name, c.color, substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS total
        FROM transactions t JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = ? AND t.amount < 0 AND c.kind = 'expense'
+       WHERE t.user_id = @userId AND t.amount < 0 AND c.kind = 'expense' ${af.sql}
        GROUP BY c.id, ym`
     )
-    .all(userId);
+    .all({ userId, ...af.params });
 
   const byCat = new Map();
   for (const r of catRows) {
@@ -584,7 +603,8 @@ export function periodInsights(userId, from, to) {
  * Per-month, per-category totals for the stacked chart, income and spending
  * only (savings have their own card). Amounts are positive magnitudes.
  */
-export function monthlyCategoryTotals(userId, from, to) {
+export function monthlyCategoryTotals(userId, from, to, accountId = null) {
+  const af = accountFilter(accountId);
   return db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym, c.id, c.name, c.color, c.kind,
@@ -593,9 +613,10 @@ export function monthlyCategoryTotals(userId, from, to) {
        WHERE t.user_id = @userId AND c.kind IN ('income', 'expense')
          AND substr(t.date, 1, 7) BETWEEN @from AND @to
          AND ((c.kind = 'income' AND t.amount > 0) OR (c.kind = 'expense' AND t.amount < 0))
+         ${af.sql}
        GROUP BY ym, c.id`
     )
-    .all({ userId, from, to });
+    .all({ userId, from, to, ...af.params });
 }
 
 /**
@@ -610,15 +631,16 @@ export function monthlyCategoryTotals(userId, from, to) {
  * of interest or market growth, and a withdrawal shows up as a negative
  * contribution rather than being hidden. Label it "put aside", not "savings".
  */
-export function savingsSummary(userId, window = 12) {
+export function savingsSummary(userId, window = 12, accountId = null) {
+  const af = accountFilter(accountId);
   const rows = db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS saved
        FROM transactions t JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = ? AND c.kind = 'saving'
+       WHERE t.user_id = @userId AND c.kind = 'saving' ${af.sql}
        GROUP BY ym ORDER BY ym`
     )
-    .all(userId);
+    .all({ userId, ...af.params });
 
   let running = 0;
   const all = rows.map((r) => {

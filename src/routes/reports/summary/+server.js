@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { aiEnabled } from '$lib/server/ai-settings.js';
 import {
   periodInsights,
+  listAccounts,
   getInsight,
   setInsight,
   getUserAiCategorise
@@ -35,7 +36,13 @@ export async function POST({ request, locals }) {
   if (!YM.test(from) || !YM.test(to)) throw error(400, 'A period (YYYY-MM to YYYY-MM) is required.');
   if (from > to) [from, to] = [to, from];
 
-  const insights = periodInsights(locals.user.id, from, to);
+  // only trust an account id that actually belongs to this user
+  const rawAccount = String(body?.accountId || '');
+  const accounts = listAccounts(locals.user.id);
+  const accountId =
+    rawAccount === 'none' || accounts.some((a) => String(a.id) === rawAccount) ? rawAccount : null;
+
+  const insights = periodInsights(locals.user.id, from, to, accountId);
   if (!insights.earned && !insights.spent && !insights.saved) return json({ summary: null });
 
   const fingerprint = createHash('sha1')
@@ -51,7 +58,8 @@ export async function POST({ request, locals }) {
     )
     .digest('hex');
 
-  const scope = `${from}:${to}`;
+  // a different account filter is a different cached summary
+  const scope = `${from}:${to}${accountId ? `:${accountId}` : ''}`;
   const cached = getInsight(locals.user.id, scope, fingerprint);
   if (cached) return json({ summary: cached, cached: true });
 

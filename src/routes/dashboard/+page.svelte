@@ -1,6 +1,7 @@
 <script>
   import { formatMoney, formatMonth } from '$lib/currency.js';
   import MonthPicker from '$lib/components/MonthPicker.svelte';
+  import AccountPicker from '$lib/components/AccountPicker.svelte';
   import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
@@ -37,13 +38,18 @@
       {/if}
     </h1>
   </div>
-  <MonthPicker months={data.months} selected={data.month} />
+  <div class="flex items-center gap-2">
+    {#if data.accounts.length > 1}
+      <AccountPicker accounts={data.accounts} selected={data.accountId ?? ''} />
+    {/if}
+    <MonthPicker months={data.months} selected={data.month} />
+  </div>
 </div>
 
 {#if data.uncategorised > 0 || data.budgets.over > 0}
   <div class="mb-6 grid gap-2 sm:grid-cols-2 rise rise-1">
     {#if data.uncategorised > 0}
-      <a href="/transactions?category=none" class="nudge">
+      <a href="/transactions?category=none{data.accountId ? `&account=${data.accountId}` : ''}" class="nudge">
         <Icon name="sparkle" size={16} class="text-[var(--gold)]" />
         <span>{data.uncategorised} to categorise</span>
         <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />

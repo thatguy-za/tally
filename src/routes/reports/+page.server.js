@@ -1,12 +1,15 @@
 import { aiEnabled } from '$lib/server/ai-settings.js';
 import {
   listMonths,
+  listAccounts,
   monthRange,
   periodInsights,
   monthlyCategoryTotals,
   savingsSummary,
   getUserAiCategorise
 } from '$lib/server/queries.js';
+
+const isRealAccount = (id, accounts) => accounts.some((a) => String(a.id) === id);
 
 const YM = /^\d{4}-\d{2}$/;
 const MAX_SERIES = 7; // beyond this, categories fold into "Other"
@@ -43,6 +46,7 @@ function seriesFor(rows, kind) {
 export function load({ locals, url }) {
   const userId = locals.user.id;
   const months = listMonths(userId); // newest first
+  const accounts = listAccounts(userId);
   const latest = months[0] || shiftMonth(new Date().toISOString().slice(0, 7), 0);
   const earliest = months[months.length - 1] || latest;
 
@@ -56,7 +60,10 @@ export function load({ locals, url }) {
   if (!YM.test(to)) to = defTo;
   if (from > to) [from, to] = [to, from];
 
-  const rows = monthlyCategoryTotals(userId, from, to);
+  const rawAccount = url.searchParams.get('account') || '';
+  const accountId = rawAccount === 'none' || isRealAccount(rawAccount, accounts) ? rawAccount : null;
+
+  const rows = monthlyCategoryTotals(userId, from, to, accountId);
   const income = seriesFor(rows, 'income');
   const expense = seriesFor(rows, 'expense');
   const values = {};
@@ -71,14 +78,16 @@ export function load({ locals, url }) {
     from,
     to,
     months,
-    insights: periodInsights(userId, from, to),
+    accounts,
+    accountId,
+    insights: periodInsights(userId, from, to, accountId),
     chart: {
       months: monthRange(from, to),
       income: income.series,
       expense: expense.series,
       values
     },
-    savings: savingsSummary(userId, { from, to }),
+    savings: savingsSummary(userId, { from, to }, accountId),
     aiSummary: aiEnabled() && getUserAiCategorise(userId),
     currency: locals.user.currency
   };

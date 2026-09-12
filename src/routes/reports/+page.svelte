@@ -4,6 +4,7 @@
   import { formatMoney, formatMonth } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
   import StackedMonths from '$lib/components/StackedMonths.svelte';
+  import AccountPicker from '$lib/components/AccountPicker.svelte';
   let { data } = $props();
 
   const money = (n) => formatMoney(n, data.currency);
@@ -49,13 +50,15 @@
 
   $effect(() => {
     const ins = data.insights;
-    const key = data.aiSummary && ins && ins.reason !== 'empty' ? `${data.from}:${data.to}` : null;
+    const key = data.aiSummary && ins && ins.reason !== 'empty'
+      ? `${data.from}:${data.to}:${data.accountId ?? ''}`
+      : null;
     if (!key) {
       summary = null;
       summaryError = null;
       return;
     }
-    const [from, to] = key.split(':');
+    const [from, to, accountId] = key.split(':');
     let cancelled = false;
     summary = null;
     summaryError = null;
@@ -63,7 +66,7 @@
     fetch('/reports/summary', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ from, to })
+      body: JSON.stringify({ from, to, accountId: accountId || undefined })
     })
       .then(async (r) => {
         const body = await r.json().catch(() => ({}));
@@ -85,6 +88,9 @@
     <h1 class="text-3xl" style="font-family:var(--font-display)">Where your money went</h1>
   </div>
   <div class="flex items-center gap-2">
+    {#if data.accounts.length > 1}
+      <AccountPicker accounts={data.accounts} selected={data.accountId ?? ''} />
+    {/if}
     <label class="sr-only" for="p-from">From</label>
     <select class="input max-w-[170px]" id="p-from" value={data.from}
       onchange={(e) => setPeriod('from', e.currentTarget.value)}>
