@@ -1,17 +1,15 @@
 <script>
   import { formatMoney, formatMonth } from '$lib/currency.js';
-  import TrendChart from '$lib/components/TrendChart.svelte';
   import MonthPicker from '$lib/components/MonthPicker.svelte';
   import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
-  import BudgetRing from '$lib/components/BudgetRing.svelte';
   let { data } = $props();
 
   let net = $derived(data.monthTotals.incoming - data.monthTotals.outgoing);
-  let topSpend = $derived([...data.breakdown].sort((a, b) => a.total - b.total).slice(0, 6));
-  let spendMax = $derived(Math.max(1, ...topSpend.map((c) => Math.abs(c.total))));
+  // bars share one scale: the biggest amount spent or target this month
+  let spendMax = $derived(Math.max(1, ...data.spending.flatMap((c) => [c.actual, c.target ?? 0])));
   let monthName = $derived(formatMonth(data.month).split(' ')[0]);
   let savedRate = $derived(
     data.monthTotals.incoming > 0 ? Math.round((net / data.monthTotals.incoming) * 100) : null
@@ -93,68 +91,59 @@
   </div>
 </div>
 
-<div class="mt-4 grid gap-4 lg:grid-cols-5 rise rise-3">
-  <div class="card lg:col-span-3">
-    <div class="mb-4 flex items-baseline justify-between">
-      <h2 class="text-lg">Twelve-month rhythm</h2>
-      <span class="kicker">income vs spending</span>
-    </div>
-    {#if data.totals.length}
-      <TrendChart data={data.totals} currency={data.currency} />
-    {:else}
-      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">No transactions yet.</p>
+<div class="card mt-4 rise rise-3">
+  <div class="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+    <h2 class="text-lg">Where it went</h2>
+    {#if data.budgets.count}
+      <a href="/budgets" class="link-accent tnum text-[13px]">
+        {formatMoney(data.budgets.actual, data.currency)} of {formatMoney(data.budgets.target, data.currency)} budgeted
+        · {Math.round((data.budgets.actual / (data.budgets.target || 1)) * 100)}%
+      </a>
+    {:else if data.spending.length}
+      <a href="/budgets" class="link-accent text-[13px]">Set some targets</a>
     {/if}
   </div>
-
-  <div class="card lg:col-span-2">
-    <h2 class="mb-4 text-lg">Where it went</h2>
-    {#if topSpend.length}
-      <ul class="space-y-3">
-        {#each topSpend as c}
-          <li>
-            <div class="mb-1 flex items-baseline justify-between gap-3 text-[13px]">
-              <span class="flex min-w-0 items-center gap-2">
-                <span class="dot" style="background:{c.color}"></span>
-                <span class="truncate">{c.name}</span>
-              </span>
-              <span class="flex shrink-0 items-center gap-2.5">
-                <Sparkline values={data.spark[c.id] ?? []} color={c.color} />
-                <span class="tnum w-[74px] text-right font-medium">{formatMoney(Math.abs(c.total), data.currency)}</span>
-              </span>
+  {#if data.spending.length}
+    <!-- one bar per category: length is what was spent, the tick is the target,
+         anything past the tick turns red. Same scale for every row. -->
+    <ul class="space-y-3.5">
+      {#each data.spending as c (c.id)}
+        {@const within = c.target != null ? Math.min(c.actual, c.target) : c.actual}
+        {@const over = c.target != null ? Math.max(0, c.actual - c.target) : 0}
+        <li>
+          <div class="mb-1 flex items-baseline justify-between gap-3 text-[13px]">
+            <span class="flex min-w-0 items-center gap-2">
+              <span class="dot" style="background:{c.color}"></span>
+              <span class="truncate">{c.name}</span>
+            </span>
+            <span class="tnum shrink-0">
+              <span class="font-medium">{formatMoney(c.actual, data.currency)}</span>
+              {#if c.target != null}
+                <span class="text-xs {c.remaining < 0 ? '' : 'text-[var(--ink-faint)]'}"
+                  style={c.remaining < 0 ? 'color:var(--negative)' : ''}>
+                  {c.remaining < 0
+                    ? `${formatMoney(-c.remaining, data.currency)} over`
+                    : `of ${formatMoney(c.target, data.currency)}`}
+                </span>
+              {/if}
+            </span>
+          </div>
+          <div class="relative h-1.5 rounded-full" style="background:var(--paper-sunk)">
+            <div class="absolute inset-y-0 left-0 flex overflow-hidden rounded-full" style="width:{((within + over) / spendMax) * 100}%">
+              <div class="h-full transition-[width] duration-700" style="width:{(within / (within + over || 1)) * 100}%;background:{c.color}"></div>
+              {#if over}<div class="h-full flex-1" style="background:var(--negative)"></div>{/if}
             </div>
-            <div class="h-1.5 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
-              <div class="h-full rounded-full transition-[width] duration-700"
-                style="width:{(Math.abs(c.total) / spendMax) * 100}%;background:{c.color}"></div>
-            </div>
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">No spending this month.</p>
-    {/if}
-  </div>
-</div>
-
-{#if data.budgets.count > 0}
-  {@const overallPct = (data.budgets.actual / (data.budgets.target || 1)) * 100}
-  <a href="/budgets" class="card mt-4 block transition-colors hover:border-[var(--border-strong)] rise rise-4">
-    <div class="mb-4 flex items-baseline justify-between">
-      <h2 class="text-lg">Budget this month</h2>
-      <span class="tnum text-sm text-[var(--ink-soft)]">
-        {formatMoney(data.budgets.actual, data.currency)}
-        <span class="text-[var(--ink-faint)]">of {formatMoney(data.budgets.target, data.currency)}</span>
-      </span>
-    </div>
-    <div class="flex flex-wrap items-start gap-x-6 gap-y-4">
-      <BudgetRing pct={overallPct} size={82} stroke={7} label="Overall"
-        sublabel={`${data.budgets.count} tracked`} />
-      {#each data.budgetRows.slice(0, 6) as b}
-        <BudgetRing pct={b.pct} color={b.color} label={b.name}
-          sublabel={formatMoney(b.actual, data.currency)} />
+            {#if c.target != null}
+              <div class="absolute -top-[3px] h-3 w-[2px] rounded-full" style="left:calc({(c.target / spendMax) * 100}% - 1px);background:var(--ink)"></div>
+            {/if}
+          </div>
+        </li>
       {/each}
-    </div>
-  </a>
-{/if}
+    </ul>
+  {:else}
+    <p class="py-12 text-center text-sm text-[var(--ink-faint)]">No spending this month.</p>
+  {/if}
+</div>
 
 <div class="card card-flush mt-4 rise rise-4">
   <div class="flex items-center justify-between px-5 py-4">
