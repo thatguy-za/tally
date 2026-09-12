@@ -12,10 +12,12 @@
    *   income: { id: string|number, name: string, color: string|null }[],
    *   expense: { id: string|number, name: string, color: string|null }[],
    *   values: Record<string, { income: Record<string, number>, expense: Record<string, number> }>,
-   *   currency: string
+   *   currency: string,
+   *   title?: string
    * }}
    */
-  let { months, income, expense, values, currency } = $props();
+  // the title renders inside the plot column so the legend can use the card's full height
+  let { months, income, expense, values, currency, title = '' } = $props();
 
   // drawn at the wrapper's real width so text stays legible on a phone
   // instead of the whole picture scaling down
@@ -116,7 +118,9 @@
 </script>
 
 <div class="flex items-start gap-5">
-  <div class="relative min-w-0 flex-1" bind:this={wrap} bind:clientWidth={cw}>
+  <div class="min-w-0 flex-1">
+    {#if title}<h2 class="mb-4 text-lg">{title}</h2>{/if}
+    <div class="relative" bind:this={wrap} bind:clientWidth={cw}>
     <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"
       aria-label="Monthly income and spending, each stacked by category">
       {#each ticks as t}
@@ -158,9 +162,10 @@
         <div class="mt-0.5 text-[var(--ink-faint)]">{tip.note}</div>
       </div>
     {/if}
+    </div>
   </div>
 
-  <div class="flex w-[150px] shrink-0 flex-col gap-4 pt-1.5 text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
+  <div class="flex w-[150px] shrink-0 flex-col gap-4 text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
     {#each [['Income', income], ['Spending', expense]] as [title, series]}
       {#if series.length}
         <div>

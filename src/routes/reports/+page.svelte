@@ -212,11 +212,11 @@
 {/if}
 
 <div class="card rise rise-3">
-  <h2 class="mb-4 text-lg">Your spending by month</h2>
   {#if data.chart.income.length || data.chart.expense.length}
-    <StackedMonths months={data.chart.months} income={data.chart.income} expense={data.chart.expense}
-      values={data.chart.values} currency={data.currency} />
+    <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
+      expense={data.chart.expense} values={data.chart.values} currency={data.currency} />
   {:else}
+    <h2 class="mb-4 text-lg">Your spending by month</h2>
     <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
   {/if}
 </div>
