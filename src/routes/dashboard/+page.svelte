@@ -94,7 +94,15 @@
 
 <div class="mt-4 rise rise-3">
   <div class="card">
-    <h2 class="mb-4 text-lg">Where it went</h2>
+    <div class="mb-4 flex items-baseline justify-between gap-3">
+      <h2 class="text-lg">Where it went</h2>
+      {#if data.budgets.count > 0}
+        <a href="/budgets" class="tnum text-sm text-[var(--ink-soft)] hover:text-[var(--ink)]">
+          {formatMoney(data.budgets.actual, data.currency)}
+          <span class="text-[var(--ink-faint)]">of {formatMoney(data.budgets.target, data.currency)}</span>
+        </a>
+      {/if}
+    </div>
     {#if topSpend.length}
       <ul class="space-y-3">
         {#each topSpend as c}
@@ -127,13 +135,7 @@
 {#if data.budgets.count > 0}
   {@const overallPct = (data.budgets.actual / (data.budgets.target || 1)) * 100}
   <a href="/budgets" class="card mt-4 block transition-colors hover:border-[var(--border-strong)] rise rise-4">
-    <div class="mb-4 flex items-baseline justify-between">
-      <h2 class="text-lg">Budget this month</h2>
-      <span class="tnum text-sm text-[var(--ink-soft)]">
-        {formatMoney(data.budgets.actual, data.currency)}
-        <span class="text-[var(--ink-faint)]">of {formatMoney(data.budgets.target, data.currency)}</span>
-      </span>
-    </div>
+    <h2 class="mb-4 text-lg">Budget this month</h2>
     <div class="flex flex-wrap items-start gap-x-6 gap-y-4">
       <BudgetRing pct={overallPct} size={82} stroke={7} label="Overall"
         sublabel={`${data.budgets.count} tracked`} />
