@@ -212,10 +212,7 @@
 {/if}
 
 <div class="card rise rise-3">
-  <div class="mb-4 flex items-baseline justify-between gap-3">
-    <h2 class="text-lg">Month by month</h2>
-    <span class="kicker">income · spending · by category</span>
-  </div>
+  <h2 class="mb-4 text-lg">Your spending by month</h2>
   {#if data.chart.income.length || data.chart.expense.length}
     <StackedMonths months={data.chart.months} income={data.chart.income} expense={data.chart.expense}
       values={data.chart.values} currency={data.currency} />
