@@ -67,6 +67,17 @@ npm run dev
 
 The database is created automatically at `DATABASE_PATH` (default `./data/tally.sqlite`).
 
+## Tests
+
+```bash
+npm test
+```
+
+Runs against a throwaway SQLite file under `.vitest-tmp/`, wiped before each run — never
+your real `DATABASE_PATH`. Covers CSV/date/amount parsing and the money math in
+`src/lib/server/queries.js` (category kinds, account filtering, budgets, period
+comparisons). `npm run test:watch` re-runs on change.
+
 ## CSV import
 
 Upload any bank export — the columns can be in any order. Tally detects the

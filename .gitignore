@@ -8,4 +8,5 @@ node_modules
 *.sqlite
 *.sqlite-*
 /data
+/.vitest-tmp
 .DS_Store
