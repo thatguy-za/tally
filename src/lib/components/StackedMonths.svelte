@@ -56,10 +56,10 @@
   let showTotals = $derived(groupW >= 110);
   let showInOut = $derived(groupW >= 80);
 
-  function label(ym, i) {
+  // month only — the period picker above already states the years
+  function label(ym) {
     const [yy, mm] = ym.split('-').map(Number);
-    const name = new Date(yy, mm - 1, 1).toLocaleDateString(undefined, { month: 'short' });
-    return i === 0 || mm === 1 ? `${name} ${yy}` : name;
+    return new Date(yy, mm - 1, 1).toLocaleDateString(undefined, { month: 'short' });
   }
 
   /** Segment geometry for one bar, bottom-up. */
@@ -92,7 +92,7 @@
         cx,
         xIn,
         xOut,
-        label: label(ym, i),
+        label: label(ym),
         income: stack(xIn, income, values[ym].income),
         expense: stack(xOut, expense, values[ym].expense)
       };
@@ -110,7 +110,7 @@
       name: seg.name,
       color: fill(seg.color),
       amount: money(seg.v),
-      note: `${kind} · ${label(ym, 1)} · ${Math.round((seg.v / seg.total) * 100)}% of ${money(seg.total)}`
+      note: `${kind} · ${label(ym)} · ${Math.round((seg.v / seg.total) * 100)}% of ${money(seg.total)}`
     };
   }
 </script>
