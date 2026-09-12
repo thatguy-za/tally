@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { parseCsv } from '$lib/csv.js';
 import {
   listCategories,
+  listRules,
   bulkInsert,
   applyRules,
   uncategorisedCount,
@@ -18,6 +19,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function load({ locals }) {
   return {
     categories: listCategories(locals.user.id),
+    // matched client-side during review, before a row is ever sent to AI
+    rules: listRules(locals.user.id),
     aiAvailable: aiEnabled() && getUserAiCategorise(locals.user.id)
   };
 }

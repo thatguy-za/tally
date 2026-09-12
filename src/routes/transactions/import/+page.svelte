@@ -74,6 +74,22 @@
 
   let byName = $derived(new Map(data.categories.map((c) => [c.name.trim().toLowerCase(), c.id])));
 
+  /**
+   * Mirrors queries.js categoriseByRules(): the user's auto-categorisation
+   * rules, highest priority first (as sent from the server), first match on a
+   * case-insensitive substring of the description wins. Run against every row
+   * during review — before anything reaches AI — so a rule match never costs
+   * an API call.
+   */
+  function ruleMatch(description) {
+    if (!description) return null;
+    const d = description.toLowerCase();
+    for (const r of data.rules) {
+      if (d.includes(r.match_text.toLowerCase())) return r.category_id;
+    }
+    return null;
+  }
+
   let rows = $derived(
     bodyRows.map((raw, i) => {
       const c = compute(raw);
@@ -85,12 +101,19 @@
       const key = error ? null : dupeKey(date, amount, description);
       const duplicate = key ? existing.has(key) : false;
       let catValue = e.category;
+      let byRule = false;
       if (catValue === undefined) {
         const hit = c.categoryName && byName.get(c.categoryName.toLowerCase());
-        catValue = hit ? String(hit) : c.categoryName ? `new:${c.categoryName}` : '';
+        if (hit) catValue = String(hit);
+        else if (c.categoryName) catValue = `new:${c.categoryName}`;
+        else {
+          const ruleId = ruleMatch(description);
+          if (ruleId) { catValue = String(ruleId); byRule = true; }
+          else catValue = '';
+        }
       }
       const included = e.excluded !== undefined ? !e.excluded : !(error || duplicate);
-      return { i, date, amount, description, catValue, error, duplicate, included };
+      return { i, date, amount, description, catValue, byRule, error, duplicate, included };
     })
   );
 
@@ -104,6 +127,7 @@
     errors: rows.filter((r) => r.error).length,
     dupes: rows.filter((r) => r.duplicate).length,
     uncategorised: rows.filter((r) => r.included && !String(r.catValue)).length,
+    byRule: rows.filter((r) => r.included && r.byRule).length,
     incoming: rows.filter((r) => r.included && Number.isFinite(r.amount) && r.amount > 0).reduce((s, r) => s + r.amount, 0),
     outgoing: rows.filter((r) => r.included && Number.isFinite(r.amount) && r.amount < 0).reduce((s, r) => s - r.amount, 0)
   });
@@ -169,7 +193,9 @@
   });
 
   async function runAiSuggest() {
-    const targets = rows.filter((r) => !r.error).slice(0, AI_MAX);
+    // rules already ran during review (see `rows`) — only send what is still
+    // uncategorised, so a rule match never costs an AI call
+    const targets = rows.filter((r) => !r.error && !r.catValue).slice(0, AI_MAX);
     if (!targets.length) {
       aiState = { running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: true };
       return;
@@ -291,7 +317,7 @@
       <input class="input" id="file" name="file" type="file" accept=".csv,.tsv,.txt,text/csv" required />
       <p class="mt-1.5 text-xs text-[var(--ink-faint)]">
         Any bank export — comma, semicolon or tab separated, columns in any order. Max 8 MB.
-        {#if data.aiAvailable}Claude will categorise the rows for you on the next screen.{/if}
+        {#if data.aiAvailable}Your rules run first; Claude categorises whatever they miss.{/if}
       </p>
     </div>
     <button class="btn btn-primary">Continue</button>
@@ -312,6 +338,12 @@
         <button type="button" class="rounded px-1.5 py-0.5" style="background:var(--warning-wash);color:var(--warning)"
           onclick={() => excludeWhere((r) => r.duplicate)}>exclude {stats.dupes} duplicate{stats.dupes === 1 ? '' : 's'}</button>
       {/if}
+      {#if stats.byRule}
+        <span class="rounded px-1.5 py-0.5" style="background:var(--accent-wash);color:var(--accent-strong)"
+          title="Matched by your auto-categorisation rules — skipped by AI">
+          {stats.byRule} by rule{stats.byRule === 1 ? '' : 's'}
+        </span>
+      {/if}
       <span class="tnum ml-auto text-[var(--ink-faint)]">+{stats.incoming.toFixed(2)} / −{stats.outgoing.toFixed(2)}</span>
     </div>
 
@@ -327,6 +359,8 @@
             <span style="color:var(--negative)">
               Couldn't finish — {aiState.error}{#if aiState.count} {aiState.count} row(s) were done first.{/if}
             </span>
+          {:else if aiState.ran && aiState.total === 0}
+            <span>Every row was already categorised by your rules — nothing sent to Claude.</span>
           {:else if aiState.ran && aiState.count}
             <span>Claude categorised {aiState.count} of {aiState.total} row(s){costTxt}. Check the ✨ picks.</span>
           {:else if aiState.ran}
@@ -445,7 +479,11 @@
                     </span>
                   {:else}
                     <div class="flex items-center gap-1">
-                      {#if aiSuggested.has(r.i)}<Icon name="sparkle" size={12} class="shrink-0 text-[var(--accent)]" />{/if}
+                      {#if aiSuggested.has(r.i)}
+                        <span title="Suggested by Claude"><Icon name="sparkle" size={12} class="shrink-0 text-[var(--accent)]" /></span>
+                      {:else if r.byRule}
+                        <span title="Matched by one of your rules"><Icon name="repeat" size={12} class="shrink-0 text-[var(--ink-faint)]" /></span>
+                      {/if}
                       <select class="cell min-w-[140px]" value={r.catValue}
                         onchange={(e) => { aiSuggested = new Set([...aiSuggested].filter((x) => x !== r.i)); edit(r.i, { category: e.currentTarget.value }); }}>
                         <option value="">Uncategorised</option>
