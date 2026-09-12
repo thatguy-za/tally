@@ -6,6 +6,7 @@ categorise them, and see where your money goes each month.
 ## Features
 
 - **Multi-user** — each person has their own login, categories, budgets, rules, currency and data, isolated at the query layer. The first account to register becomes the admin.
+- **Multiple accounts** — track more than one bank account (a current account and a savings account, say). Choose which one a transaction belongs to when you add or import it; filtering and management are automatic once you add a second account, and invisible if you only use one. A **Transfer** category kind marks the receiving side of a move between your own accounts so it is never counted as new income.
 - **CSV import** with a full **review table** — upload any bank export (columns in any order, comma/semicolon/tab delimited), then fix dates, amounts, descriptions and categories row-by-row before saving. Handles signed or debit/credit columns, many date and number formats, and flags likely **duplicates** (date + amount + description).
 - **Manual entry**, inline editing, and **bulk categorise / bulk delete**.
 - **Auto-categorisation rules** — "description contains X → category Y", applied on import, on manual entry, and re-runnable on demand. Turn any transaction into a rule straight from the transactions table.

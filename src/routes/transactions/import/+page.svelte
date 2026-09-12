@@ -12,6 +12,10 @@
   let skipRows = $state(0);
   let dateOrder = $state('dmy');
   let invert = $state(false);
+  let accountId = $state(null);
+  $effect(() => {
+    if (accountId == null && data.accounts.length) accountId = data.accounts[0].id;
+  });
   let skipDuplicates = $state(true);
   let runRules = $state(true);
   let createCategories = $state(true);
@@ -156,7 +160,7 @@
   // ---- payload --------------------------------------------------------
   let payload = $derived(
     JSON.stringify({
-      options: { skipDuplicates, runRules, createCategories },
+      options: { skipDuplicates, runRules, createCategories, accountId },
       rows: rows
         .filter((r) => r.included && !r.error)
         .map((r) => ({
@@ -330,6 +334,14 @@
     <!-- status strip -->
     <div class="card mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
       <span><b class="tnum">{stats.included}</b> of {stats.total} will import</span>
+      {#if data.accounts.length > 1}
+        <label class="flex items-center gap-1.5">
+          into
+          <select class="input !py-1 text-xs" bind:value={accountId}>
+            {#each data.accounts as a}<option value={a.id}>{a.name}</option>{/each}
+          </select>
+        </label>
+      {/if}
       {#if stats.errors}
         <button type="button" class="rounded px-1.5 py-0.5" style="background:var(--negative-wash);color:var(--negative)"
           onclick={() => excludeWhere((r) => r.error)}>exclude {stats.errors} with errors</button>

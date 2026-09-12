@@ -10,9 +10,13 @@ export function listCategories(userId) {
 
 /**
  * `saving` is money kept rather than spent — it is left out of every "spent"
- * figure and reported on its own.
+ * figure and reported on its own. `transfer` is for the receiving side of a
+ * move between two of the user's own accounts (e.g. into a savings account
+ * whose statement is also imported): it is excluded from income, spending
+ * and "saved" alike, since that money was already accounted for on the
+ * sending side.
  */
-export const CATEGORY_KINDS = ['income', 'expense', 'saving'];
+export const CATEGORY_KINDS = ['income', 'expense', 'saving', 'transfer'];
 export const normaliseKind = (k) => (CATEGORY_KINDS.includes(k) ? k : 'expense');
 
 export function createCategory(userId, name, kind, color) {
@@ -32,6 +36,32 @@ export function setCategoryKind(userId, id, kind) {
 
 export function deleteCategory(userId, id) {
   db.prepare('DELETE FROM categories WHERE id = ? AND user_id = ?').run(id, userId);
+}
+
+/* --------------------------------------------------------------------- accounts */
+
+export function listAccounts(userId) {
+  return db.prepare('SELECT * FROM accounts WHERE user_id = ? ORDER BY id').all(userId);
+}
+
+export function createAccount(userId, name, color) {
+  return db
+    .prepare('INSERT INTO accounts (user_id, name, color) VALUES (?, ?, ?)')
+    .run(userId, name.trim(), color || '#64748b');
+}
+
+export function renameAccount(userId, id, name, color) {
+  db.prepare('UPDATE accounts SET name = ?, color = ? WHERE id = ? AND user_id = ?').run(
+    name.trim(),
+    color || '#64748b',
+    id,
+    userId
+  );
+}
+
+/** Its transactions become unassigned ("No account"), same as deleting a category. */
+export function deleteAccount(userId, id) {
+  db.prepare('DELETE FROM accounts WHERE id = ? AND user_id = ?').run(id, userId);
 }
 
 /* ---------------------------------------------------------------- transactions */
@@ -54,6 +84,8 @@ export function listTransactions(userId, f = {}) {
   if (f.dateTo) { where.push('t.date <= @dateTo'); params.dateTo = f.dateTo; }
   if (f.categoryId === 'none') where.push('t.category_id IS NULL');
   else if (f.categoryId) { where.push('t.category_id = @categoryId'); params.categoryId = f.categoryId; }
+  if (f.accountId === 'none') where.push('t.account_id IS NULL');
+  else if (f.accountId) { where.push('t.account_id = @accountId'); params.accountId = f.accountId; }
   if (f.search) { where.push('lower(t.description) LIKE @search'); params.search = `%${String(f.search).toLowerCase()}%`; }
   if (f.amountMin != null) { where.push('abs(t.amount) >= @amountMin'); params.amountMin = f.amountMin; }
   if (f.amountMax != null) { where.push('abs(t.amount) <= @amountMax'); params.amountMax = f.amountMax; }
@@ -62,22 +94,24 @@ export function listTransactions(userId, f = {}) {
 
   return db
     .prepare(
-      `SELECT t.*, c.name AS category_name, c.color AS category_color, c.kind AS category_kind
+      `SELECT t.*, c.name AS category_name, c.color AS category_color, c.kind AS category_kind,
+              a.name AS account_name, a.color AS account_color
        FROM transactions t
        LEFT JOIN categories c ON c.id = t.category_id
+       LEFT JOIN accounts a ON a.id = t.account_id
        WHERE ${where.join(' AND ')}
        ORDER BY t.date DESC, t.id DESC`
     )
     .all(params);
 }
 
-export function addTransaction(userId, { date, description, amount, category_id }) {
+export function addTransaction(userId, { date, description, amount, category_id, account_id }) {
   return db
     .prepare(
-      `INSERT INTO transactions (user_id, date, description, amount, category_id)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO transactions (user_id, date, description, amount, category_id, account_id)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(userId, date, description || '', amount, category_id || null);
+    .run(userId, date, description || '', amount, category_id || null, account_id || null);
 }
 
 const dupeKey = (r) =>
@@ -94,8 +128,8 @@ export function existingDupeKeys(userId) {
 export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
   const seen = skipDuplicates ? existingDupeKeys(userId) : new Set();
   const stmt = db.prepare(
-    `INSERT INTO transactions (user_id, date, description, amount, category_id)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO transactions (user_id, date, description, amount, category_id, account_id)
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
   let inserted = 0;
   let duplicates = 0;
@@ -106,7 +140,7 @@ export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
         if (seen.has(k)) { duplicates++; continue; }
         seen.add(k);
       }
-      stmt.run(userId, r.date, r.description || '', r.amount, r.category_id || null);
+      stmt.run(userId, r.date, r.description || '', r.amount, r.category_id || null, r.account_id || null);
       inserted++;
     }
   });
@@ -114,7 +148,7 @@ export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
 }
 
 export function updateTransaction(userId, id, fields) {
-  const allowed = ['date', 'description', 'amount', 'category_id'];
+  const allowed = ['date', 'description', 'amount', 'category_id', 'account_id'];
   const sets = [];
   const params = { id, userId };
   for (const k of allowed) {
@@ -170,9 +204,11 @@ export function uncategorisedCount(userId) {
 
 /* --------------------------------------------------------------------- reports */
 
-// SQL fragments for the saving/not-saving split; uncategorised counts as spending.
+// SQL fragments for splitting out what counts as ordinary income/spending.
+// 'transfer' (the receiving side of a move between the user's own accounts)
+// is excluded from both, same as 'saving', but never counted as saved either.
 const IS_SAVING = `COALESCE(c.kind, 'expense') = 'saving'`;
-const NOT_SAVING = `COALESCE(c.kind, 'expense') != 'saving'`;
+const NOT_SAVING = `COALESCE(c.kind, 'expense') NOT IN ('saving', 'transfer')`;
 
 /**
  * Per-month in / out / saved. Money in a `saving` category is money kept, so it

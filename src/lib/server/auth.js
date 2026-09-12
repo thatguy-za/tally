@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import { db, seedCategories } from './db.js';
+import { db, seedCategories, seedDefaultAccount } from './db.js';
 
 const SESSION_COOKIE = 'session';
 const SESSION_DAYS = 30;
@@ -25,6 +25,7 @@ export function createUser(email, password) {
     .run(email.toLowerCase().trim(), hashPassword(password), count === 0 ? 1 : 0);
   const id = Number(info.lastInsertRowid);
   seedCategories(id);
+  seedDefaultAccount(id);
   return getUserById(id);
 }
 

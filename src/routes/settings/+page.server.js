@@ -6,6 +6,10 @@ import {
   createCategory,
   deleteCategory,
   setCategoryKind,
+  listAccounts,
+  createAccount,
+  renameAccount,
+  deleteAccount,
   listRules,
   createRule,
   deleteRule,
@@ -23,6 +27,10 @@ export function load({ locals }) {
     .prepare('SELECT category_id, COUNT(*) AS n FROM transactions WHERE user_id = ? GROUP BY category_id')
     .all(userId);
   const countMap = Object.fromEntries(counts.map((c) => [c.category_id, c.n]));
+  const acctCounts = db
+    .prepare('SELECT account_id, COUNT(*) AS n FROM transactions WHERE user_id = ? GROUP BY account_id')
+    .all(userId);
+  const acctCountMap = Object.fromEntries(acctCounts.map((c) => [c.account_id, c.n]));
 
   return {
     currencies: CURRENCIES,
@@ -30,6 +38,7 @@ export function load({ locals }) {
     email: locals.user.email,
     isAdmin: !!locals.user.is_admin,
     categories: listCategories(userId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
+    accounts: listAccounts(userId).map((a) => ({ ...a, count: acctCountMap[a.id] || 0 })),
     rules: listRules(userId),
     aiAvailable: aiEnabled(),
     aiCategorise: getUserAiCategorise(userId)
@@ -43,6 +52,40 @@ export const actions = {
     if (!CURRENCIES.some((c) => c.code === code)) return fail(400, { error: 'Unknown currency.' });
     db.prepare('UPDATE users SET currency = ? WHERE id = ?').run(code, locals.user.id);
     return { section: 'currency', ok: true };
+  },
+
+  addAccount: async ({ request, locals }) => {
+    const f = await request.formData();
+    const name = String(f.get('name') || '').trim();
+    const color = String(f.get('color') || '#64748b');
+    if (!name) return fail(400, { section: 'account', error: 'Name is required.' });
+    try {
+      createAccount(locals.user.id, name, color);
+    } catch {
+      return fail(400, { section: 'account', error: 'An account with that name already exists.' });
+    }
+    return { section: 'account', ok: true };
+  },
+
+  renameAccount: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    const name = String(f.get('name') || '').trim();
+    const color = String(f.get('color') || '#64748b');
+    if (!id || !name) return fail(400, { section: 'account', error: 'Name is required.' });
+    try {
+      renameAccount(locals.user.id, id, name, color);
+    } catch {
+      return fail(400, { section: 'account', error: 'An account with that name already exists.' });
+    }
+    return { section: 'account', ok: true, msg: 'Account updated' };
+  },
+
+  deleteAccount: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    if (id) deleteAccount(locals.user.id, id);
+    return { section: 'account', ok: true };
   },
 
   addCategory: async ({ request, locals }) => {

@@ -10,6 +10,9 @@ mkdirSync(dirname(DB_PATH), { recursive: true });
 export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = ON');
+// let a writer wait out a brief lock instead of failing immediately — cheap
+// insurance for a single-file SQLite app under any concurrent access
+db.exec('PRAGMA busy_timeout = 5000');
 
 /**
  * Run `fn` inside a transaction. Returns whatever `fn` returns.
@@ -54,6 +57,18 @@ db.exec(`
     UNIQUE (user_id, name)
   );
 
+  -- a real-world account (checking, savings, ...). Transactions belong to one
+  -- so money moving between a user's own accounts can be told apart from
+  -- actual income or spending — see the 'transfer' category kind.
+  CREATE TABLE IF NOT EXISTS accounts (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    color      TEXT NOT NULL DEFAULT '#64748b',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (user_id, name)
+  );
+
   CREATE TABLE IF NOT EXISTS transactions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -61,11 +76,13 @@ db.exec(`
     description TEXT NOT NULL DEFAULT '',
     amount      REAL NOT NULL,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    account_id  INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE INDEX IF NOT EXISTS idx_tx_user_date ON transactions(user_id, date);
   CREATE INDEX IF NOT EXISTS idx_tx_user_cat ON transactions(user_id, category_id);
+  CREATE INDEX IF NOT EXISTS idx_tx_user_acct ON transactions(user_id, account_id);
 
   CREATE TABLE IF NOT EXISTS rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +128,27 @@ if (!userCols.includes('ai_off')) {
   db.exec('ALTER TABLE users ADD COLUMN ai_off INTEGER NOT NULL DEFAULT 0');
 }
 
+// Existing databases predate the accounts table's column on transactions.
+const txCols = db.prepare("PRAGMA table_info(transactions)").all().map((c) => c.name);
+if (!txCols.includes("account_id")) {
+  db.exec("ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_tx_user_acct ON transactions(user_id, account_id)");
+}
+
+// Every user needs at least one account to import or add transactions into.
+// Cheap and idempotent, so it doubles as the one-time backfill for anyone
+// upgrading from before accounts existed.
+db.exec(`
+  INSERT INTO accounts (user_id, name)
+  SELECT id, 'Main account' FROM users WHERE id NOT IN (SELECT DISTINCT user_id FROM accounts)
+`);
+db.exec(`
+  UPDATE transactions SET account_id = (
+    SELECT MIN(id) FROM accounts WHERE accounts.user_id = transactions.user_id
+  )
+  WHERE account_id IS NULL
+`);
+
 // Savings used to be seeded as an expense, which counted money you kept as
 // money you spent. Reclassify the seeded category once — guarded by a flag so
 // it never stomps a user who has deliberately set it back.
@@ -147,4 +185,10 @@ export function seedCategories(userId) {
   tx(() => {
     for (const c of DEFAULT_CATEGORIES) stmt.run(userId, c.name, c.kind, c.color);
   });
+}
+
+export function seedDefaultAccount(userId) {
+  db.prepare(
+    'INSERT OR IGNORE INTO accounts (user_id, name) VALUES (?, ?)'
+  ).run(userId, 'Main account');
 }

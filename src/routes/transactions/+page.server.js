@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { parseAmount } from '$lib/server/csv.js';
 import {
   listCategories,
+  listAccounts,
   listMonths,
   listTransactions,
   addTransaction,
@@ -32,6 +33,7 @@ export function load({ locals, url }) {
     dateFrom: q.get('from') || '',
     dateTo: q.get('to') || '',
     category: q.get('category') || '',
+    account: q.get('account') || '',
     search: q.get('q') || '',
     amountMin: q.get('min') || '',
     amountMax: q.get('max') || '',
@@ -44,6 +46,7 @@ export function load({ locals, url }) {
     dateTo: filters.dateTo || undefined,
     categoryId:
       filters.category === 'none' ? 'none' : filters.category ? Number(filters.category) : undefined,
+    accountId: filters.account === 'none' ? 'none' : filters.account ? Number(filters.account) : undefined,
     search: filters.search || undefined,
     amountMin: filters.amountMin ? Number(filters.amountMin) : undefined,
     amountMax: filters.amountMax ? Number(filters.amountMax) : undefined,
@@ -63,6 +66,7 @@ export function load({ locals, url }) {
     transactions,
     sum,
     categories: listCategories(userId),
+    accounts: listAccounts(userId),
     months: listMonths(userId),
     filters,
     currency: locals.user.currency
@@ -80,7 +84,10 @@ export const actions = {
     const signed = amount * (direction === 'in' ? 1 : -1);
     let categoryId = f.get('category_id') ? Number(f.get('category_id')) : null;
     if (!categoryId) categoryId = categoriseByRules(locals.user.id, description);
-    addTransaction(locals.user.id, { date, description, amount: signed, category_id: categoryId });
+    // no account field shown (only one account) — file it under that one
+    let accountId = f.get('account_id') ? Number(f.get('account_id')) : null;
+    if (!accountId) accountId = listAccounts(locals.user.id)[0]?.id ?? null;
+    addTransaction(locals.user.id, { date, description, amount: signed, category_id: categoryId, account_id: accountId });
     return { added: true };
   },
 
@@ -101,10 +108,12 @@ export const actions = {
     const magnitude = num(f.get('amount'));
     const direction = String(f.get('direction') || 'out');
     if (!id || !date || magnitude == null) return fail(400, { error: 'Invalid values.' });
+    const accountId = f.get('account_id') !== null ? Number(f.get('account_id')) || null : undefined;
     updateTransaction(locals.user.id, id, {
       date,
       description,
-      amount: magnitude * (direction === 'in' ? 1 : -1)
+      amount: magnitude * (direction === 'in' ? 1 : -1),
+      ...(accountId !== undefined ? { account_id: accountId } : {})
     });
     return { updated: true };
   },

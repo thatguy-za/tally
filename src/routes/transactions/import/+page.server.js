@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { parseCsv } from '$lib/csv.js';
 import {
   listCategories,
+  listAccounts,
   listRules,
   bulkInsert,
   applyRules,
@@ -19,6 +20,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export function load({ locals }) {
   return {
     categories: listCategories(locals.user.id),
+    accounts: listAccounts(locals.user.id),
     // matched client-side during review, before a row is ever sent to AI
     rules: listRules(locals.user.id),
     aiAvailable: aiEnabled() && getUserAiCategorise(locals.user.id)
@@ -63,6 +65,14 @@ export const actions = {
     const byId = new Set(cats.map((c) => c.id));
     const byName = new Map(cats.map((c) => [c.name.trim().toLowerCase(), c.id]));
 
+    // one destination account for the whole batch; falls back to the user's
+    // first account if the chosen one no longer exists (or none was sent)
+    const accounts = listAccounts(locals.user.id);
+    const chosenAccountId = Number(opts.accountId) || null;
+    const accountId = accounts.some((a) => a.id === chosenAccountId)
+      ? chosenAccountId
+      : (accounts[0]?.id ?? null);
+
     const resolveCategory = (row) => {
       if (row.category_id && byId.has(Number(row.category_id))) return Number(row.category_id);
       const name = String(row.category_name || '').trim();
@@ -89,7 +99,8 @@ export const actions = {
         date,
         description: String(r.description || '').trim().slice(0, 200),
         amount,
-        category_id: resolveCategory(r)
+        category_id: resolveCategory(r),
+        account_id: accountId
       });
     }
     if (!prepared.length)

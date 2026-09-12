@@ -37,7 +37,7 @@ export function load({ locals, url }) {
     recent: listTransactions(userId, { month }).slice(0, 8),
     uncategorised: uncategorisedCount(userId),
     // savings aren't spending, so they stay out of "where it went"
-    breakdown: categoryBreakdown(userId, month).filter((b) => b.total < 0 && b.kind !== 'saving'),
+    breakdown: categoryBreakdown(userId, month).filter((b) => b.total < 0 && b.kind !== 'saving' && b.kind !== 'transfer'),
     spark,
     budgets: {
       target: budgetRows.reduce((s, b) => s + b.target, 0),

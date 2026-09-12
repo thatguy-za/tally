@@ -161,13 +161,21 @@
         <option value="in">Incoming</option>
       </select>
     </div>
-    <div class="sm:col-span-3">
+    <div class="{data.accounts.length > 1 ? 'sm:col-span-2' : 'sm:col-span-3'}">
       <label class="label" for="a-cat">Category</label>
       <select class="input" id="a-cat" name="category_id">
         <option value="">Auto (rules) / uncategorised</option>
         {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
       </select>
     </div>
+    {#if data.accounts.length > 1}
+      <div class="sm:col-span-1">
+        <label class="label" for="a-acct">Account</label>
+        <select class="input" id="a-acct" name="account_id">
+          {#each data.accounts as a}<option value={String(a.id)}>{a.name}</option>{/each}
+        </select>
+      </div>
+    {/if}
     <div class="flex items-end gap-2 sm:col-span-3">
       <button class="btn btn-primary">Save</button>
       <button type="button" class="btn btn-ghost" onclick={() => (showAdd = false)}>Cancel</button>
@@ -205,6 +213,17 @@
         {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
       </select>
     </div>
+    {#if data.accounts.length > 1}
+      <div>
+        <label class="label" for="f-acct">Account</label>
+        <select class="input" id="f-acct" value={data.filters.account}
+          onchange={(e) => setParam('account', e.currentTarget.value)}>
+          <option value="">Any</option>
+          <option value="none">No account</option>
+          {#each data.accounts as a}<option value={String(a.id)}>{a.name}</option>{/each}
+        </select>
+      </div>
+    {/if}
     <div>
       <label class="label" for="f-dir">Direction</label>
       <select class="input" id="f-dir" value={data.filters.direction}
@@ -313,7 +332,13 @@
                     <option value="out">Outgoing</option>
                     <option value="in">Incoming</option>
                   </select>
-                  <div class="flex gap-2">
+                  {#if data.accounts.length > 1}
+                    <select class="input" name="account_id" value={String(t.account_id ?? '')}>
+                      <option value="">No account</option>
+                      {#each data.accounts as a}<option value={String(a.id)}>{a.name}</option>{/each}
+                    </select>
+                  {/if}
+                  <div class="flex gap-2 sm:col-span-6">
                     <button class="btn btn-primary btn-sm">Save</button>
                     <button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingId = null)}>Cancel</button>
                   </div>
@@ -354,7 +379,12 @@
                 <input type="checkbox" checked={selected.has(t.id)} onchange={() => toggle(t.id)} />
               </td>
               <td class="tnum whitespace-nowrap py-2.5 pr-3 text-[var(--ink-faint)]">{t.date}</td>
-              <td class="py-2.5 pr-3 font-medium">{t.description || '—'}</td>
+              <td class="py-2.5 pr-3">
+                <div class="font-medium">{t.description || '—'}</div>
+                {#if data.accounts.length > 1}
+                  <div class="text-xs text-[var(--ink-faint)]">{t.account_name || 'No account'}</div>
+                {/if}
+              </td>
               <td class="py-2.5 pr-3">
                 <form method="POST" action="?/categorise"
                   use:enhance={({ formData }) =>
