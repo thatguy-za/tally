@@ -39,10 +39,6 @@ export function load({ locals, url }) {
     // savings aren't spending, so they stay out of "where it went"
     breakdown: categoryBreakdown(userId, month).filter((b) => b.total < 0 && b.kind !== 'saving'),
     spark,
-    budgetRows: budgetRows
-      .slice()
-      .sort((a, b) => b.actual - a.actual)
-      .map((b) => ({ id: b.id, name: b.name, color: b.color, pct: b.pct, target: b.target, actual: b.actual })),
     budgets: {
       target: budgetRows.reduce((s, b) => s + b.target, 0),
       actual: budgetRows.reduce((s, b) => s + b.actual, 0),

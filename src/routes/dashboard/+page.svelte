@@ -5,7 +5,6 @@
   import Icon from '$lib/components/Icon.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
-  import BudgetRing from '$lib/components/BudgetRing.svelte';
   let { data } = $props();
 
   let net = $derived(data.monthTotals.incoming - data.monthTotals.outgoing);
@@ -95,7 +94,7 @@
 <div class="mt-4 rise rise-3">
   <div class="card">
     <div class="mb-4 flex items-baseline justify-between gap-3">
-      <h2 class="text-lg">Where it went</h2>
+      <h2 class="text-lg">This month’s budget</h2>
       {#if data.budgets.count > 0}
         <a href="/budgets" class="tnum text-sm text-[var(--ink-soft)] hover:text-[var(--ink)]">
           {formatMoney(data.budgets.actual, data.currency)}
@@ -131,21 +130,6 @@
     {/if}
   </div>
 </div>
-
-{#if data.budgets.count > 0}
-  {@const overallPct = (data.budgets.actual / (data.budgets.target || 1)) * 100}
-  <a href="/budgets" class="card mt-4 block transition-colors hover:border-[var(--border-strong)] rise rise-4">
-    <h2 class="mb-4 text-lg">Budget this month</h2>
-    <div class="flex flex-wrap items-start gap-x-6 gap-y-4">
-      <BudgetRing pct={overallPct} size={82} stroke={7} label="Overall"
-        sublabel={`${data.budgets.count} tracked`} />
-      {#each data.budgetRows.slice(0, 6) as b}
-        <BudgetRing pct={b.pct} color={b.color} label={b.name}
-          sublabel={formatMoney(b.actual, data.currency)} />
-      {/each}
-    </div>
-  </a>
-{/if}
 
 <div class="card card-flush mt-4 rise rise-4">
   <div class="flex items-center justify-between px-5 py-4">
