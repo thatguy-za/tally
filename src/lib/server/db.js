@@ -82,7 +82,6 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_tx_user_date ON transactions(user_id, date);
   CREATE INDEX IF NOT EXISTS idx_tx_user_cat ON transactions(user_id, category_id);
-  CREATE INDEX IF NOT EXISTS idx_tx_user_acct ON transactions(user_id, account_id);
 
   CREATE TABLE IF NOT EXISTS rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,8 +131,11 @@ if (!userCols.includes('ai_off')) {
 const txCols = db.prepare("PRAGMA table_info(transactions)").all().map((c) => c.name);
 if (!txCols.includes("account_id")) {
   db.exec("ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_tx_user_acct ON transactions(user_id, account_id)");
 }
+// created here rather than in the initial schema block above, since that
+// block's CREATE TABLE is a no-op on an existing database and the ALTER
+// TABLE above hasn't necessarily happened yet within that same batch
+db.exec("CREATE INDEX IF NOT EXISTS idx_tx_user_acct ON transactions(user_id, account_id)");
 
 // Every user needs at least one account to import or add transactions into.
 // Cheap and idempotent, so it doubles as the one-time backfill for anyone
