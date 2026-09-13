@@ -35,7 +35,7 @@ export function getUserByEmail(email) {
 
 export function getUserById(id) {
   return db
-    .prepare('SELECT id, email, currency, is_admin FROM users WHERE id = ?')
+    .prepare('SELECT id, email, currency, is_admin, onboarded_at FROM users WHERE id = ?')
     .get(id);
 }
 
@@ -54,7 +54,7 @@ export function getSessionUser(sessionId) {
   if (!sessionId) return null;
   const row = db
     .prepare(
-      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.currency, u.is_admin
+      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.currency, u.is_admin, u.onboarded_at
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`
     )
     .get(sessionId);
@@ -63,7 +63,18 @@ export function getSessionUser(sessionId) {
     db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
     return null;
   }
-  return { id: row.user_id, email: row.email, currency: row.currency, is_admin: row.is_admin };
+  return {
+    id: row.user_id,
+    email: row.email,
+    currency: row.currency,
+    is_admin: row.is_admin,
+    onboarded_at: row.onboarded_at
+  };
+}
+
+/** Marks the wizard done — whether completed or exited early, it doesn't reappear. */
+export function finishOnboarding(userId) {
+  db.prepare("UPDATE users SET onboarded_at = datetime('now') WHERE id = ?").run(userId);
 }
 
 export function deleteSession(sessionId) {

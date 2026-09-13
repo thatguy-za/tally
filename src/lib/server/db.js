@@ -39,6 +39,7 @@ db.exec(`
     password_hash TEXT NOT NULL,
     currency      TEXT NOT NULL DEFAULT 'EUR',
     is_admin      INTEGER NOT NULL DEFAULT 0,
+    onboarded_at  TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -125,6 +126,13 @@ if (!userCols.includes('ai_categorise')) {
 // AI categorisation is opt-OUT: on for everyone once an admin adds a key.
 if (!userCols.includes('ai_off')) {
   db.exec('ALTER TABLE users ADD COLUMN ai_off INTEGER NOT NULL DEFAULT 0');
+}
+// Existing users predate the onboarding wizard — treat them as already
+// onboarded so it doesn't suddenly appear for someone who set the app up
+// long ago. New signups get onboarded_at = NULL and see the wizard.
+if (!userCols.includes('onboarded_at')) {
+  db.exec("ALTER TABLE users ADD COLUMN onboarded_at TEXT");
+  db.exec("UPDATE users SET onboarded_at = datetime('now')");
 }
 
 // Existing databases predate the accounts table's column on transactions.

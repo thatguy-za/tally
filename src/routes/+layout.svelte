@@ -6,6 +6,7 @@
   import Toaster from '$lib/components/Toaster.svelte';
   import LoadingBar from '$lib/components/LoadingBar.svelte';
   import UserMenu from '$lib/components/UserMenu.svelte';
+  import OnboardingOverlay from '$lib/components/OnboardingOverlay.svelte';
   import { theme, initTheme, toggleTheme } from '$lib/theme.svelte.js';
   let { data, children } = $props();
 
@@ -40,6 +41,9 @@
 
 <LoadingBar />
 <Toaster />
+{#if data.onboarding}
+  <OnboardingOverlay onboarding={data.onboarding} />
+{/if}
 
 {#if data.user}
   <div class="shell flex min-h-full flex-col">
@@ -85,7 +89,7 @@
     </main>
 
     <footer class="mx-auto w-full max-w-5xl px-4 py-6 text-[11px] text-[var(--ink-faint)]">
-      Tally · self-hosted budgeting
+      Tally · self-hosted budgeting · v{__APP_VERSION__}
     </footer>
   </div>
 {:else}
