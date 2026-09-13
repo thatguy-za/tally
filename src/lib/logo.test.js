@@ -25,6 +25,12 @@ describe('guessDomain', () => {
     expect(guessDomain('TST* THE COFFEE BAR')).toBe('coffee.com');
   });
 
+  it('skips a generic business-type word regardless of which side of the brand name it is on', () => {
+    expect(guessDomain('BOOTS PHARMACY')).toBe('boots.com');
+    expect(guessDomain('PHARMACY BOOTS')).toBe('boots.com');
+    expect(guessDomain('CVS PHARMACY #4521')).toBe('cvs.com');
+  });
+
   it('returns null for generic bank-speak instead of guessing a nonsense domain', () => {
     expect(guessDomain('ATM WITHDRAWAL')).toBeNull();
     expect(guessDomain('SALARY - ACME CORP')).toBeNull();

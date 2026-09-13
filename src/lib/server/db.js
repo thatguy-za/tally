@@ -78,6 +78,9 @@ db.exec(`
     amount      REAL NOT NULL,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     account_id  INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+    -- set when the user has said this one doesn't need a category, so it
+    -- stops appearing in the "N to categorise" nudge and the "none" filter
+    dismissed_uncategorised INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -148,6 +151,9 @@ if (!userCols.includes('onboarded_at')) {
 const txCols = db.prepare("PRAGMA table_info(transactions)").all().map((c) => c.name);
 if (!txCols.includes("account_id")) {
   db.exec("ALTER TABLE transactions ADD COLUMN account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL");
+}
+if (!txCols.includes("dismissed_uncategorised")) {
+  db.exec("ALTER TABLE transactions ADD COLUMN dismissed_uncategorised INTEGER NOT NULL DEFAULT 0");
 }
 // created here rather than in the initial schema block above, since that
 // block's CREATE TABLE is a no-op on an existing database and the ALTER

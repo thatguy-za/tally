@@ -14,7 +14,10 @@ import {
   categoriseByRules,
   createRule,
   listRules,
-  getLogoDomains
+  getLogoDomains,
+  setUncategorisedDismissed,
+  setLogoDomain,
+  resetLogoDomain
 } from '$lib/server/queries.js';
 
 const num = (v) => {
@@ -165,5 +168,31 @@ export const actions = {
     const onlyUncategorised = f.get('scope') !== 'all';
     const n = applyRules(locals.user.id, { onlyUncategorised });
     return { bulk: `Rules categorised ${n} transaction${n === 1 ? '' : 's'}.` };
+  },
+
+  dismissUncategorised: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    const dismissed = f.get('dismissed') !== '0';
+    if (!id) return fail(400);
+    setUncategorisedDismissed(locals.user.id, id, dismissed);
+    return { dismissed };
+  },
+
+  setLogo: async ({ request }) => {
+    const f = await request.formData();
+    const description = String(f.get('description') || '');
+    const domain = String(f.get('domain') || '').trim();
+    if (!description) return fail(400, { section: 'logo', error: 'Missing description.' });
+    setLogoDomain(description, domain || null);
+    return { section: 'logo', ok: true };
+  },
+
+  resetLogo: async ({ request }) => {
+    const f = await request.formData();
+    const description = String(f.get('description') || '');
+    if (!description) return fail(400, { section: 'logo', error: 'Missing description.' });
+    resetLogoDomain(description);
+    return { section: 'logo', ok: true };
   }
 };

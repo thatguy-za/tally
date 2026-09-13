@@ -88,7 +88,9 @@ export function listTransactions(userId, f = {}) {
   if (f.month) { where.push('substr(t.date, 1, 7) = @month'); params.month = f.month; }
   if (f.dateFrom) { where.push('t.date >= @dateFrom'); params.dateFrom = f.dateFrom; }
   if (f.dateTo) { where.push('t.date <= @dateTo'); params.dateTo = f.dateTo; }
-  if (f.categoryId === 'none') where.push('t.category_id IS NULL');
+  // dismissed-uncategorised rows opted out of ever needing a category, so
+  // they don't belong in a "what still needs categorising" filtered view
+  if (f.categoryId === 'none') where.push('t.category_id IS NULL AND t.dismissed_uncategorised = 0');
   else if (f.categoryId) { where.push('t.category_id = @categoryId'); params.categoryId = f.categoryId; }
   if (f.accountId === 'none') where.push('t.account_id IS NULL');
   else if (f.accountId) { where.push('t.account_id = @accountId'); params.accountId = f.accountId; }
@@ -204,8 +206,21 @@ export function uncategorisedCount(userId, accountId = null) {
   const af = accountFilter(accountId);
   return Number(
     db
-      .prepare(`SELECT COUNT(*) AS n FROM transactions t WHERE t.user_id = @userId AND t.category_id IS NULL ${af.sql}`)
+      .prepare(
+        `SELECT COUNT(*) AS n FROM transactions t
+         WHERE t.user_id = @userId AND t.category_id IS NULL
+           AND t.dismissed_uncategorised = 0 ${af.sql}`
+      )
       .get({ userId, ...af.params }).n
+  );
+}
+
+/** Says "this one doesn't need a category" — it stops counting toward the nudge. */
+export function setUncategorisedDismissed(userId, id, dismissed) {
+  db.prepare('UPDATE transactions SET dismissed_uncategorised = ? WHERE id = ? AND user_id = ?').run(
+    dismissed ? 1 : 0,
+    id,
+    userId
   );
 }
 
@@ -733,4 +748,26 @@ export function getLogoDomains(descriptions) {
   const result = new Map();
   for (const d of descriptions) result.set(d, domainByKey.get(logoKey(d)) ?? null);
   return result;
+}
+
+/**
+ * Manually pin a description's logo to a specific domain (or explicitly to
+ * "no logo" when domain is null) — overrides whatever guessDomain() came up
+ * with. Applies to every transaction sharing this description, same as the
+ * automatic guess already does.
+ */
+export function setLogoDomain(description, domain) {
+  const key = logoKey(description);
+  if (!key) return;
+  db.prepare(
+    `INSERT INTO merchant_logos (key, domain) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET domain = excluded.domain`
+  ).run(key, domain || null);
+}
+
+/** Forgets a cached guess (manual or automatic) so it's recomputed on next use. */
+export function resetLogoDomain(description) {
+  const key = logoKey(description);
+  if (!key) return;
+  db.prepare('DELETE FROM merchant_logos WHERE key = ?').run(key);
 }

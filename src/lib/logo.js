@@ -42,9 +42,59 @@ const GENERIC_TERMS = new Set([
   'paid'
 ]);
 
-// Grammatical filler that can appear before a real merchant name — skipped
-// over rather than treated as a reason to give up (e.g. "THE COFFEE BAR").
-const STOPWORDS = new Set(['the', 'a', 'an', 'to', 'of', 'from', 'inc', 'llc', 'ltd']);
+// Grammatical filler and generic business-type nouns that can appear next to
+// a real merchant name in either order (e.g. "BOOTS PHARMACY" and "PHARMACY
+// BOOTS" should both find "boots") — skipped over rather than treated as a
+// reason to give up, or worse, mistaken for the merchant itself.
+const STOPWORDS = new Set([
+  'the',
+  'a',
+  'an',
+  'to',
+  'of',
+  'from',
+  'inc',
+  'llc',
+  'ltd',
+  'co',
+  'group',
+  'store',
+  'shop',
+  'supermarket',
+  'market',
+  'mart',
+  'pharmacy',
+  'restaurant',
+  'cafe',
+  'bar',
+  'grill',
+  'pub',
+  'hotel',
+  'motel',
+  'salon',
+  'spa',
+  'gym',
+  'clinic',
+  'hospital',
+  'dental',
+  'garage',
+  'cinema',
+  'bakery',
+  'laundry',
+  'cleaners',
+  'grocery',
+  'groceries',
+  'wholesale',
+  'retail',
+  'outlet',
+  'boutique',
+  'express',
+  'service',
+  'services',
+  'station',
+  'centre',
+  'center'
+]);
 
 const DOMAIN_RE = /\b([a-z0-9-]+\.(?:com|net|org|io|app|shop|store|co\.[a-z]{2}|[a-z]{2,3}))\b/i;
 

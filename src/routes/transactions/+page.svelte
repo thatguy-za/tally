@@ -7,6 +7,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import MerchantLogo from '$lib/components/MerchantLogo.svelte';
+  import LogoPicker from '$lib/components/LogoPicker.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
@@ -14,6 +15,7 @@
   let showFilters = $state(false);
   let editingId = $state(null);
   let rulingId = $state(null);
+  let editingLogoFor = $state(null);
   let selected = $state(new Set());
   const today = new Date().toISOString().slice(0, 10);
 
@@ -382,7 +384,12 @@
               <td class="tnum whitespace-nowrap py-2.5 pr-3 text-[var(--ink-faint)]">{t.date}</td>
               <td class="py-2.5 pr-3">
                 <div class="flex items-center gap-2.5">
-                  <MerchantLogo domain={t.logo_domain} color={catColor(currentCat(t))} size={24} />
+                  <MerchantLogo
+                    domain={t.logo_domain}
+                    color={catColor(currentCat(t))}
+                    size={24}
+                    onEdit={() => (editingLogoFor = t)}
+                  />
                   <div class="min-w-0">
                     <div class="truncate font-medium">{t.description || '—'}</div>
                     {#if data.accounts.length > 1}
@@ -405,6 +412,15 @@
                     </select>
                   </div>
                 </form>
+                {#if !currentCat(t)}
+                  <form method="POST" action="?/dismissUncategorised" use:enhance class="mt-1">
+                    <input type="hidden" name="id" value={t.id} />
+                    <input type="hidden" name="dismissed" value={t.dismissed_uncategorised ? '0' : '1'} />
+                    <button class="text-[11px] text-[var(--ink-faint)] underline decoration-dotted hover:text-[var(--ink)]">
+                      {t.dismissed_uncategorised ? 'Restore reminder' : "Doesn't need a category"}
+                    </button>
+                  </form>
+                {/if}
               </td>
               <td class="py-2.5 pr-4 text-right">
                 <Money value={t.amount} currency={data.currency} colour="auto" class="font-medium" />
@@ -442,3 +458,11 @@
     />
   {/if}
 </div>
+
+{#if editingLogoFor}
+  <LogoPicker
+    description={editingLogoFor.description}
+    currentDomain={editingLogoFor.logo_domain}
+    onClose={() => (editingLogoFor = null)}
+  />
+{/if}
