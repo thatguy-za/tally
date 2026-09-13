@@ -62,16 +62,14 @@
   </p>
   <form method="POST" action="?/save" use:enhance>
     <ul class="space-y-4">
-      {#each data.expenses as c}
+      {#each data.expenses as c (c.id)}
         <li>
           <div class="mb-2 flex flex-wrap items-center justify-between gap-3 text-[13px]">
             <span class="flex items-center gap-2 font-medium">
               <span class="dot" style="background:{c.color}"></span>{c.name}
             </span>
-            <span class="flex items-center gap-3">
-              <span class="tnum text-[var(--ink-faint)]">
-                {formatMoney(c.actual, data.currency)}{#if c.target != null} / {formatMoney(c.target, data.currency)}{/if}
-              </span>
+            <span class="flex items-center gap-2">
+              <span class="tnum text-[var(--ink-faint)]">{formatMoney(c.actual, data.currency)} /</span>
               <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
                 placeholder="No target" value={c.target ?? ''} />
             </span>
@@ -99,7 +97,7 @@
           A target here is an amount to <em>reach</em>, not to stay under — passing it is the win.
         </p>
         <ul class="space-y-4">
-          {#each data.savings as c}
+          {#each data.savings as c (c.id)}
             <li>
               <div class="mb-2 flex flex-wrap items-center justify-between gap-3 text-[13px]">
                 <span class="flex items-center gap-2 font-medium">

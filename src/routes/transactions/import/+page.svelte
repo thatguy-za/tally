@@ -260,10 +260,11 @@
     splitMode = false;
     mapping = { ...mapping, debit: '', credit: '' };
   }
-  const DATE_ORDERS = ['dmy', 'mdy', 'ymd'];
-  function cycleDateOrder() {
-    dateOrder = DATE_ORDERS[(DATE_ORDERS.indexOf(dateOrder) + 1) % 3];
-  }
+  const DATE_ORDERS = [
+    { value: 'dmy', label: 'DD/MM/YYYY' },
+    { value: 'mdy', label: 'MM/DD/YYYY' },
+    { value: 'ymd', label: 'YYYY/MM/DD' }
+  ];
 </script>
 
 <svelte:head><title>Import · Tally</title></svelte:head>
@@ -410,13 +411,13 @@
               <th class="w-9 py-2 pl-4"><input type="checkbox" checked={allChecked} onchange={toggleAll} /></th>
               <th class="px-2 pb-2 pt-3">
                 <div class="th mb-1">Date <span style="color:var(--negative)">*</span></div>
-                <div class="flex items-center gap-1">
-                  <select class="head-sel min-w-[110px] {mapping.date === '' ? '!border-[var(--negative)]' : ''}" bind:value={mapping.date}>
-                    <option value="">— column —</option>
-                    {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
-                  </select>
-                  <button type="button" class="chip" title="Cycle date order" onclick={cycleDateOrder}>{dateOrder.toUpperCase()}</button>
-                </div>
+                <select class="head-sel min-w-[110px] {mapping.date === '' ? '!border-[var(--negative)]' : ''}" bind:value={mapping.date}>
+                  <option value="">— column —</option>
+                  {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                </select>
+                <select class="head-sel mt-1 min-w-[110px]" bind:value={dateOrder} title="Date format">
+                  {#each DATE_ORDERS as o}<option value={o.value}>{o.label}</option>{/each}
+                </select>
               </th>
               <th class="px-2 pb-2 pt-3">
                 <div class="th mb-1">Description</div>

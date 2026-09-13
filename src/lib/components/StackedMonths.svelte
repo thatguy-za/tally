@@ -104,7 +104,7 @@
   // hover tooltip, positioned against the wrapper
   let tip = $state(null);
   let wrap;
-  function show(e, seg, kind, ym) {
+  function show(e, seg, ym) {
     const r = wrap.getBoundingClientRect();
     tip = {
       x: e.clientX - r.left + 12,
@@ -112,7 +112,7 @@
       name: seg.name,
       color: fill(seg.color),
       amount: money(seg.v),
-      note: `${kind} · ${label(ym)} · ${Math.round((seg.v / seg.total) * 100)}% of ${money(seg.total)}`
+      note: `${label(ym)} · ${Math.round((seg.v / seg.total) * 100)}% of ${money(seg.total)}`
     };
   }
 </script>
@@ -129,13 +129,13 @@
       {/each}
 
       {#each bars as b (b.ym)}
-        {#each [['income', b.income, b.xIn], ['spending', b.expense, b.xOut]] as [kind, st, x]}
+        {#each [[b.income, b.xIn], [b.expense, b.xOut]] as [st, x]}
           {#each st.segs as seg (seg.id)}
             <path d={seg.path} fill={fill(seg.color)} style="cursor:default"
               role="presentation"
-              onmousemove={(e) => show(e, seg, kind, b.ym)}
+              onmousemove={(e) => show(e, seg, b.ym)}
               onmouseleave={() => (tip = null)}>
-              <title>{seg.name}: {money(seg.v)} ({kind}, {b.label})</title>
+              <title>{seg.name}: {money(seg.v)} ({b.label})</title>
             </path>
           {/each}
           {#if showTotals && st.total > 0}
@@ -144,7 +144,7 @@
           {/if}
           {#if showInOut}
             <text x={x + barW / 2} y={H - PAD.b + 14} text-anchor="middle" font-size="9.5"
-              fill="var(--ink-faint)">{kind === 'income' ? 'in' : 'out'}</text>
+              fill="var(--ink-faint)">{st === b.income ? 'in' : 'out'}</text>
           {/if}
         {/each}
         <text x={b.cx} y={H - PAD.b + (showInOut ? 30 : 18)} text-anchor="middle" font-size="12"
