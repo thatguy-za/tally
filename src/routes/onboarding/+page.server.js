@@ -22,11 +22,16 @@ export const actions = {
     return { ok: true, configured: !!key };
   },
 
-  test: async ({ locals }) => {
+  test: async ({ request, locals }) => {
     if (!locals.user.is_admin) return fail(403);
-    if (!aiEnabled()) return fail(400, { error: 'Add an API key first.' });
+    const f = await request.formData();
+    // test whatever is currently typed, even if it hasn't been saved yet —
+    // falls back to the configured key/model when the field is left blank
+    const apiKey = String(f.get('api_key') || '').trim();
+    const model = String(f.get('model') || '');
+    if (!apiKey && !aiEnabled()) return fail(400, { error: 'Add an API key first.' });
     try {
-      const r = await testConnection();
+      const r = await testConnection({ apiKey, model });
       return { ok: true, msg: `Connected — ${r.model} replied “${r.reply || '…'}”.` };
     } catch (e) {
       return fail(400, { error: `Test failed: ${e?.message || 'unknown error'}` });

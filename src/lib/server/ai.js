@@ -6,8 +6,8 @@ import { listCategories } from './queries.js';
 const BATCH_SIZE = 40;
 const MAX_PER_RUN = 300;
 
-function client() {
-  const apiKey = getApiKey();
+function client(apiKeyOverride) {
+  const apiKey = apiKeyOverride || getApiKey();
   if (!apiKey) throw new Error('No Anthropic API key configured.');
   return new Anthropic({ apiKey, maxRetries: 1, timeout: 60_000 });
 }
@@ -282,12 +282,17 @@ export async function summarisePeriod(insights, currency) {
   };
 }
 
-/** Cheap round-trip to verify the key + model work. */
-export async function testConnection() {
-  const model = getModel();
+/**
+ * Cheap round-trip to verify the key + model work. Pass `apiKey`/`model` to
+ * test values that haven't been saved yet (e.g. still sitting in a form) —
+ * omit either to fall back to whatever is already configured.
+ * @param {{ apiKey?: string, model?: string }} [overrides]
+ */
+export async function testConnection({ apiKey, model } = {}) {
+  model = model || getModel();
   let res;
   try {
-    res = await client().messages.create({
+    res = await client(apiKey).messages.create({
       ...requestParams(model),
       max_tokens: 16,
       messages: [{ role: 'user', content: 'Reply with the word: ok' }]

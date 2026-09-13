@@ -8,7 +8,8 @@ import {
   uncategorisedCount,
   budgetStatus,
   categorySparkData,
-  savingsSummary
+  savingsSummary,
+  NON_SPENDING_KINDS
 } from '$lib/server/queries.js';
 
 const isRealAccount = (id, accounts) => accounts.some((a) => String(a.id) === id);
@@ -48,9 +49,10 @@ export function load({ locals, url }) {
     savings: savingsSummary(userId, 12, accountId),
     recent: listTransactions(userId, { month, accountId }).slice(0, 8),
     uncategorised: uncategorisedCount(userId, accountId),
-    // savings aren't spending, so they stay out of "where it went"
+    // savings, transfers and opening balances aren't spending, so they stay
+    // out of "where it went"
     breakdown: categoryBreakdown(userId, month, accountId)
-      .filter((b) => b.total < 0 && b.kind !== 'saving' && b.kind !== 'transfer'),
+      .filter((b) => b.total < 0 && !NON_SPENDING_KINDS.includes(b.kind)),
     spark,
     budgets: {
       target: budgetRows.reduce((s, b) => s + b.target, 0),

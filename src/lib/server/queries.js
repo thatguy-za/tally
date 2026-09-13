@@ -14,10 +14,15 @@ export function listCategories(userId) {
  * move between two of the user's own accounts (e.g. into a savings account
  * whose statement is also imported): it is excluded from income, spending
  * and "saved" alike, since that money was already accounted for on the
- * sending side.
+ * sending side. `opening_balance` is the starting balance you had when you
+ * began tracking an account (the way most bank exports and other budgeting
+ * apps represent it) — also excluded everywhere, since it isn't income,
+ * spending, or a move between two tracked accounts.
  */
-export const CATEGORY_KINDS = ['income', 'expense', 'saving', 'transfer'];
+export const CATEGORY_KINDS = ['income', 'expense', 'saving', 'transfer', 'opening_balance'];
 export const normaliseKind = (k) => (CATEGORY_KINDS.includes(k) ? k : 'expense');
+/** Kinds left out of income/spending totals wherever they're computed. */
+export const NON_SPENDING_KINDS = ['saving', 'transfer', 'opening_balance'];
 
 export function createCategory(userId, name, kind, color) {
   return db
@@ -206,10 +211,10 @@ export function uncategorisedCount(userId, accountId = null) {
 /* --------------------------------------------------------------------- reports */
 
 // SQL fragments for splitting out what counts as ordinary income/spending.
-// 'transfer' (the receiving side of a move between the user's own accounts)
-// is excluded from both, same as 'saving', but never counted as saved either.
+// 'transfer' and 'opening_balance' are excluded from both, same as 'saving',
+// but never counted as saved either — see NON_SPENDING_KINDS above.
 const IS_SAVING = `COALESCE(c.kind, 'expense') = 'saving'`;
-const NOT_SAVING = `COALESCE(c.kind, 'expense') NOT IN ('saving', 'transfer')`;
+const NOT_SAVING = `COALESCE(c.kind, 'expense') NOT IN (${NON_SPENDING_KINDS.map((k) => `'${k}'`).join(', ')})`;
 
 /**
  * An optional account filter as a SQL fragment + the params to bind. Every

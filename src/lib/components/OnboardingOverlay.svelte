@@ -3,6 +3,7 @@
   import { enhance } from '$app/forms';
   import { goto, invalidateAll } from '$app/navigation';
   import Icon from './Icon.svelte';
+  import ColorPicker from './ColorPicker.svelte';
   import { toast } from '$lib/toast.svelte.js';
 
   /** @type {{ onboarding: { isAdmin: boolean, ai: { configured: boolean, keyFromEnv: boolean, model: string, models: {id:string,label:string}[] }, accounts: any[], categories: any[] } }} */
@@ -34,9 +35,15 @@
   let newCategoryColor = $state('#7b8a5a');
   let closing = $state(false);
 
-  const kindLabel = { income: 'Income', expense: 'Spending', saving: 'Savings', transfer: 'Transfer' };
+  const kindLabel = {
+    income: 'Income',
+    expense: 'Spending',
+    saving: 'Savings',
+    transfer: 'Transfer',
+    opening_balance: 'Opening balance'
+  };
   let grouped = $derived(
-    ['income', 'expense', 'saving', 'transfer']
+    ['income', 'expense', 'saving', 'transfer', 'opening_balance']
       .map((kind) => ({ kind, items: onboarding.categories.filter((c) => c.kind === kind) }))
       .filter((g) => g.items.length)
   );
@@ -93,15 +100,30 @@
         method="POST"
         action="/onboarding?/apiKey"
         class="mt-4"
-        use:enhance={() => {
+        use:enhance={({ action }) => {
+          const testing_ = action.search === '?/test';
           apiKeyError = '';
-          testResult = '';
-          testError = '';
-          return async ({ result }) => {
+          if (testing_) {
+            testing = true;
+            testResult = '';
+            testError = '';
+          }
+          return async ({ result, action }) => {
+            if (action.search === '?/test') {
+              testing = false;
+              if (result.type === 'success') testResult = result.data?.msg || 'Connected.';
+              else if (result.type === 'failure') testError = result.data?.error || 'Test failed.';
+              return;
+            }
             if (result.type === 'success') {
               apiKeySaved = !!result.data?.configured;
-              if (apiKeySaved) toast('API key saved');
-              await invalidateAll();
+              if (apiKeySaved) {
+                toast('API key saved');
+                await invalidateAll();
+                next();
+              } else {
+                await invalidateAll();
+              }
             } else if (result.type === 'failure') {
               apiKeyError = result.data?.error || 'Something went wrong.';
             }
@@ -118,32 +140,16 @@
           <p class="mt-1 text-xs text-[var(--ink-faint)]">Haiku is the cheapest and is usually plenty for categorisation.</p>
         </div>
         {#if apiKeyError}<p class="mt-1.5 text-xs" style="color:var(--negative)">{apiKeyError}</p>{/if}
+        {#if testResult}<p class="mt-1.5 text-xs" style="color:var(--positive)">{testResult}</p>{/if}
+        {#if testError}<p class="mt-1.5 text-xs" style="color:var(--negative)">{testError}</p>{/if}
         <div class="mt-4 flex flex-wrap items-center gap-2">
-          <button class="btn btn-primary">{apiKeySaved ? 'Save changes' : 'Save'}</button>
-          <button type="button" class="btn btn-ghost" onclick={next}>{apiKeySaved ? 'Continue' : 'Skip for now'}</button>
+          <button type="submit" formaction="/onboarding?/test" class="btn btn-ghost" disabled={testing}>
+            {testing ? 'Testing…' : 'Test connection'}
+          </button>
+          <button type="submit" class="btn btn-primary">Save & continue</button>
+          <button type="button" class="btn btn-ghost" onclick={next}>Skip for now</button>
         </div>
       </form>
-      {#if apiKeySaved}
-        <form
-          method="POST"
-          action="/onboarding?/test"
-          class="mt-3"
-          use:enhance={() => {
-            testing = true;
-            testResult = '';
-            testError = '';
-            return async ({ result }) => {
-              testing = false;
-              if (result.type === 'success') testResult = result.data?.msg || 'Connected.';
-              else if (result.type === 'failure') testError = result.data?.error || 'Test failed.';
-            };
-          }}
-        >
-          <button class="btn btn-ghost" disabled={testing}>{testing ? 'Testing…' : 'Test connection'}</button>
-          {#if testResult}<p class="mt-2 text-xs" style="color:var(--positive)">{testResult}</p>{/if}
-          {#if testError}<p class="mt-2 text-xs" style="color:var(--negative)">{testError}</p>{/if}
-        </form>
-      {/if}
     {:else if STEPS[step] === 'accounts'}
       <span class="mb-3 grid h-10 w-10 place-items-center rounded-[11px]" style="background:var(--accent-wash)">
         <Icon name="wallet" size={19} class="text-[var(--accent)]" />
@@ -165,13 +171,16 @@
               }}
             >
               <input type="hidden" name="id" value={a.id} />
-              <input
-                type="color"
-                name="color"
+              <input type="hidden" name="color" id="ob-acct-color-{a.id}" value={a.color} />
+              <ColorPicker
                 value={a.color}
-                class="h-8 w-8 shrink-0 cursor-pointer rounded border border-[var(--border-strong)] bg-transparent p-0"
-                aria-label="Colour for {a.name}"
-                onchange={(e) => e.currentTarget.form?.requestSubmit()}
+                size="h-8 w-8"
+                label="Colour for {a.name}"
+                onchange={(c) => {
+                  const input = document.getElementById(`ob-acct-color-${a.id}`);
+                  input.value = c;
+                  input.form?.requestSubmit();
+                }}
               />
               <input
                 name="name"
@@ -195,13 +204,8 @@
           }
         }}
       >
-        <input
-          type="color"
-          name="color"
-          bind:value={newAccountColor}
-          class="h-8 w-8 shrink-0 cursor-pointer rounded border border-[var(--border-strong)] bg-transparent p-0"
-          aria-label="Colour for new account"
-        />
+        <input type="hidden" name="color" value={newAccountColor} />
+        <ColorPicker bind:value={newAccountColor} size="h-8 w-8" label="Colour for new account" />
         <input class="input flex-1" name="name" placeholder="Add another account…" bind:value={newAccountName} />
         <button class="btn btn-ghost" disabled={!newAccountName.trim()}>Add</button>
       </form>
@@ -247,6 +251,7 @@
                       <option value="income">Income</option>
                       <option value="saving">Savings</option>
                       <option value="transfer">Transfer</option>
+                      <option value="opening_balance">Opening balance</option>
                     </select>
                   </form>
                 </li>
@@ -266,19 +271,15 @@
           }
         }}
       >
-        <input
-          type="color"
-          name="color"
-          bind:value={newCategoryColor}
-          class="h-8 w-8 shrink-0 cursor-pointer rounded border border-[var(--border-strong)] bg-transparent p-0"
-          aria-label="Colour for new category"
-        />
+        <input type="hidden" name="color" value={newCategoryColor} />
+        <ColorPicker bind:value={newCategoryColor} size="h-8 w-8" label="Colour for new category" />
         <input class="input min-w-0 flex-1" name="name" placeholder="Add a category…" bind:value={newCategoryName} />
         <select class="input w-auto" name="kind" bind:value={newCategoryKind}>
           <option value="expense">Spending</option>
           <option value="income">Income</option>
           <option value="saving">Savings</option>
           <option value="transfer">Transfer</option>
+          <option value="opening_balance">Opening balance</option>
         </select>
         <button class="btn btn-ghost" disabled={!newCategoryName.trim()}>Add</button>
       </form>

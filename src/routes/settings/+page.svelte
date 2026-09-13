@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms';
   import { formatMoney } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
+  import ColorPicker from '$lib/components/ColorPicker.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
@@ -63,10 +64,17 @@
         <li class="flex items-center justify-between gap-3 py-2 text-[13px]">
           <form method="POST" action="?/renameAccount" use:enhance class="flex min-w-0 flex-1 items-center gap-2">
             <input type="hidden" name="id" value={a.id} />
-            <input type="color" name="color" value={a.color}
-              class="h-6 w-6 shrink-0 cursor-pointer rounded border border-[var(--border-strong)] bg-transparent p-0"
-              aria-label="Colour for {a.name}"
-              onchange={(e) => e.currentTarget.form.requestSubmit()} />
+            <input type="hidden" name="color" id="acct-color-{a.id}" value={a.color} />
+            <ColorPicker
+              value={a.color}
+              size="h-6 w-6"
+              label="Colour for {a.name}"
+              onchange={(c) => {
+                const input = document.getElementById(`acct-color-${a.id}`);
+                input.value = c;
+                input.form?.requestSubmit();
+              }}
+            />
             <input name="name" value={a.name} class="cell min-w-0 flex-1 text-[13px]"
               aria-label="Name for this account"
               onchange={(e) => e.currentTarget.form.requestSubmit()} />
@@ -90,9 +98,9 @@
         <input class="input" id="acc-name" name="name" placeholder="e.g. Savings" required />
       </div>
       <div>
-        <label class="label" for="acc-color">Colour</label>
-        <input class="h-[38px] w-14 rounded-[9px] border border-[var(--border-strong)] bg-[var(--surface)] p-1"
-          id="acc-color" name="color" type="color" bind:value={newAccountColor} />
+        <span class="label">Colour</span>
+        <input type="hidden" name="color" value={newAccountColor} />
+        <ColorPicker bind:value={newAccountColor} size="h-[38px] w-14 rounded-[9px]" label="Colour for new account" />
       </div>
       <button class="btn btn-primary">Add</button>
       {#if err('account')}<span class="text-sm" style="color:var(--negative)">{err('account')}</span>{/if}
@@ -106,7 +114,9 @@
       Money in a <b>Savings</b> category counts as money you kept, not money you spent — it stays
       out of your spending totals and is tracked separately. If you track more than one account,
       use <b>Transfer</b> for the receiving side of a move between them (e.g. money arriving in a
-      savings account you also import) so it isn't counted as new income.
+      savings account you also import) so it isn't counted as new income. Use <b>Opening balance</b>
+      for the starting balance a bank statement often includes when you begin tracking an account —
+      it's excluded from income and spending too.
     </p>
     <ul class="mb-4 divide-y divide-[var(--border)]">
       {#each data.categories as c}
@@ -123,6 +133,7 @@
                 <option value="income">Income</option>
                 <option value="saving">Savings</option>
                 <option value="transfer">Transfer</option>
+                <option value="opening_balance">Opening balance</option>
               </select>
             </form>
           </span>
@@ -149,12 +160,13 @@
           <option value="income">Income</option>
           <option value="saving">Savings</option>
           <option value="transfer">Transfer</option>
+          <option value="opening_balance">Opening balance</option>
         </select>
       </div>
       <div>
-        <label class="label" for="c-color">Colour</label>
-        <input class="h-[38px] w-14 rounded-[9px] border border-[var(--border-strong)] bg-[var(--surface)] p-1"
-          id="c-color" name="color" type="color" bind:value={newColor} />
+        <span class="label">Colour</span>
+        <input type="hidden" name="color" value={newColor} />
+        <ColorPicker bind:value={newColor} size="h-[38px] w-14 rounded-[9px]" label="Colour for new category" />
       </div>
       <button class="btn btn-primary">Add</button>
       {#if err('category')}<span class="text-sm" style="color:var(--negative)">{err('category')}</span>{/if}

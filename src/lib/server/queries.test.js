@@ -86,6 +86,17 @@ describe('category kinds and monthlyTotals', () => {
     expect(row.saved).toBe(0);
   });
 
+  it('excludes opening_balance (the starting balance of a tracked account) from income, outgoing and saved alike', () => {
+    const u = makeUser();
+    const opening = makeCategory(u, 'Opening balance', 'opening_balance');
+    addTx(u, { date: '2026-03-01', amount: 1000, category_id: opening });
+
+    const [row] = monthlyTotals(u, 1);
+    expect(row.incoming).toBe(0);
+    expect(row.outgoing).toBe(0);
+    expect(row.saved).toBe(0);
+  });
+
   it('treats an uncategorised transaction as ordinary spending/income, not saving', () => {
     const u = makeUser();
     addTx(u, { date: '2026-03-01', amount: -50 });
