@@ -1,20 +1,32 @@
 <script>
+  import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import { goto, invalidateAll } from '$app/navigation';
   import Icon from './Icon.svelte';
   import { toast } from '$lib/toast.svelte.js';
 
-  /** @type {{ onboarding: { isAdmin: boolean, aiConfigured: boolean, accounts: any[], categories: any[] } }} */
+  /** @type {{ onboarding: { isAdmin: boolean, ai: { configured: boolean, keyFromEnv: boolean, model: string, models: {id:string,label:string}[] }, accounts: any[], categories: any[] } }} */
   let { onboarding } = $props();
 
-  const STEPS = $derived(
-    [onboarding.isAdmin && !onboarding.aiConfigured ? 'api-key' : null, 'accounts', 'categories', 'import'].filter(
-      Boolean
-    )
+  // Fixed for the life of this overlay instance — whether the API key step
+  // shows is decided once, at mount. Recomputing this from live `onboarding`
+  // data (e.g. right after the key is saved) would shrink the array under a
+  // `step` index that's mid-flight and silently skip whatever step came next.
+  const STEPS = untrack(() =>
+    (onboarding.isAdmin && !onboarding.ai.configured ? ['api-key'] : []).concat([
+      'accounts',
+      'categories',
+      'import'
+    ])
   );
 
   let step = $state(0);
   let apiKeyError = $state('');
+  let apiKeySaved = $state(untrack(() => onboarding.ai.configured));
+  let selectedModel = $state(untrack(() => onboarding.ai.model));
+  let testing = $state(false);
+  let testResult = $state('');
+  let testError = $state('');
   let newAccountName = $state('');
   let newAccountColor = $state('#6366f1');
   let newCategoryName = $state('');
@@ -83,11 +95,13 @@
         class="mt-4"
         use:enhance={() => {
           apiKeyError = '';
+          testResult = '';
+          testError = '';
           return async ({ result }) => {
             if (result.type === 'success') {
-              if (result.data?.configured) toast('API key saved');
+              apiKeySaved = !!result.data?.configured;
+              if (apiKeySaved) toast('API key saved');
               await invalidateAll();
-              next();
             } else if (result.type === 'failure') {
               apiKeyError = result.data?.error || 'Something went wrong.';
             }
@@ -96,12 +110,40 @@
       >
         <label class="label" for="ob-api-key">API key</label>
         <input class="input" id="ob-api-key" name="api_key" type="password" autocomplete="off" placeholder="sk-ant-…" />
+        <div class="mt-3">
+          <label class="label" for="ob-model">Model</label>
+          <select class="input" id="ob-model" name="model" bind:value={selectedModel}>
+            {#each onboarding.ai.models as m}<option value={m.id}>{m.label}</option>{/each}
+          </select>
+          <p class="mt-1 text-xs text-[var(--ink-faint)]">Haiku is the cheapest and is usually plenty for categorisation.</p>
+        </div>
         {#if apiKeyError}<p class="mt-1.5 text-xs" style="color:var(--negative)">{apiKeyError}</p>{/if}
-        <div class="mt-4 flex items-center gap-2">
-          <button class="btn btn-primary">Save & continue</button>
-          <button type="button" class="btn btn-ghost" onclick={next}>Skip for now</button>
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <button class="btn btn-primary">{apiKeySaved ? 'Save changes' : 'Save'}</button>
+          <button type="button" class="btn btn-ghost" onclick={next}>{apiKeySaved ? 'Continue' : 'Skip for now'}</button>
         </div>
       </form>
+      {#if apiKeySaved}
+        <form
+          method="POST"
+          action="/onboarding?/test"
+          class="mt-3"
+          use:enhance={() => {
+            testing = true;
+            testResult = '';
+            testError = '';
+            return async ({ result }) => {
+              testing = false;
+              if (result.type === 'success') testResult = result.data?.msg || 'Connected.';
+              else if (result.type === 'failure') testError = result.data?.error || 'Test failed.';
+            };
+          }}
+        >
+          <button class="btn btn-ghost" disabled={testing}>{testing ? 'Testing…' : 'Test connection'}</button>
+          {#if testResult}<p class="mt-2 text-xs" style="color:var(--positive)">{testResult}</p>{/if}
+          {#if testError}<p class="mt-2 text-xs" style="color:var(--negative)">{testError}</p>{/if}
+        </form>
+      {/if}
     {:else if STEPS[step] === 'accounts'}
       <span class="mb-3 grid h-10 w-10 place-items-center rounded-[11px]" style="background:var(--accent-wash)">
         <Icon name="wallet" size={19} class="text-[var(--accent)]" />
