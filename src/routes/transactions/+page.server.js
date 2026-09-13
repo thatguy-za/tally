@@ -13,7 +13,8 @@ import {
   applyRules,
   categoriseByRules,
   createRule,
-  listRules
+  listRules,
+  getLogoDomains
 } from '$lib/server/queries.js';
 
 const num = (v) => {
@@ -52,6 +53,9 @@ export function load({ locals, url }) {
     amountMax: filters.amountMax ? Number(filters.amountMax) : undefined,
     direction: filters.direction || undefined
   });
+
+  const logoDomains = getLogoDomains(transactions.map((t) => t.description));
+  for (const t of transactions) t.logo_domain = logoDomains.get(t.description) ?? null;
 
   const sum = transactions.reduce(
     (acc, t) => {

@@ -6,6 +6,7 @@
   import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
+  import MerchantLogo from '$lib/components/MerchantLogo.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
@@ -380,10 +381,15 @@
               </td>
               <td class="tnum whitespace-nowrap py-2.5 pr-3 text-[var(--ink-faint)]">{t.date}</td>
               <td class="py-2.5 pr-3">
-                <div class="font-medium">{t.description || '—'}</div>
-                {#if data.accounts.length > 1}
-                  <div class="text-xs text-[var(--ink-faint)]">{t.account_name || 'No account'}</div>
-                {/if}
+                <div class="flex items-center gap-2.5">
+                  <MerchantLogo domain={t.logo_domain} color={catColor(currentCat(t))} size={24} />
+                  <div class="min-w-0">
+                    <div class="truncate font-medium">{t.description || '—'}</div>
+                    {#if data.accounts.length > 1}
+                      <div class="text-xs text-[var(--ink-faint)]">{t.account_name || 'No account'}</div>
+                    {/if}
+                  </div>
+                </div>
               </td>
               <td class="py-2.5 pr-3">
                 <form method="POST" action="?/categorise"

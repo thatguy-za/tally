@@ -1,4 +1,5 @@
 import { db, tx } from './db.js';
+import { guessDomain, logoKey } from '$lib/logo.js';
 
 /* ------------------------------------------------------------------ categories */
 
@@ -691,4 +692,45 @@ export function setInsight(userId, scope, fingerprint, summary) {
      ON CONFLICT(user_id, scope) DO UPDATE SET fingerprint = excluded.fingerprint,
        summary = excluded.summary, created_at = datetime('now')`
   ).run(userId, scope, fingerprint, summary);
+}
+
+/* ------------------------------------------------------------------- logos */
+
+/**
+ * Resolve a favicon-able domain guess for each description, reusing a
+ * cached guess (including a cached "nothing found") for anything seen
+ * before, and computing + caching the rest in one batch.
+ * @param {string[]} descriptions
+ * @returns {Map<string, string|null>} keyed by the *original* description
+ */
+export function getLogoDomains(descriptions) {
+  const byKey = new Map(); // logoKey -> original description(s)
+  for (const d of descriptions) {
+    const key = logoKey(d);
+    if (key && !byKey.has(key)) byKey.set(key, d);
+  }
+  if (!byKey.size) return new Map();
+
+  const keys = [...byKey.keys()];
+  const placeholders = keys.map(() => '?').join(',');
+  const cached = db
+    .prepare(`SELECT key, domain FROM merchant_logos WHERE key IN (${placeholders})`)
+    .all(...keys);
+  const domainByKey = new Map(cached.map((r) => [r.key, r.domain]));
+
+  const missing = keys.filter((k) => !domainByKey.has(k));
+  if (missing.length) {
+    const insert = db.prepare('INSERT OR IGNORE INTO merchant_logos (key, domain) VALUES (?, ?)');
+    tx(() => {
+      for (const key of missing) {
+        const domain = guessDomain(byKey.get(key));
+        domainByKey.set(key, domain);
+        insert.run(key, domain);
+      }
+    });
+  }
+
+  const result = new Map();
+  for (const d of descriptions) result.set(d, domainByKey.get(logoKey(d)) ?? null);
+  return result;
 }

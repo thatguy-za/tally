@@ -20,7 +20,8 @@ import {
   monthRange,
   periodInsights,
   monthlyCategoryTotals,
-  savingsSummary
+  savingsSummary,
+  getLogoDomains
 } from './queries.js';
 
 /**
@@ -497,5 +498,39 @@ describe('updateTransaction', () => {
     expect(row.category_id).toBe(cat);
     expect(row.description).toBe('Coffee'); // untouched
     expect(row.amount).toBe(-10); // untouched
+  });
+});
+
+describe('getLogoDomains', () => {
+  it('guesses and caches a domain per unique description, reused across repeats', () => {
+    const first = getLogoDomains(['SPAR CAPE TOWN', 'SPAR CAPE TOWN', 'NETFLIX.COM']);
+    expect(first.get('SPAR CAPE TOWN')).toBe('spar.com');
+    expect(first.get('NETFLIX.COM')).toBe('netflix.com');
+
+    const cachedRow = db
+      .prepare('SELECT domain FROM merchant_logos WHERE key = ?')
+      .get('spar cape town');
+    expect(cachedRow.domain).toBe('spar.com');
+
+    // a second call must reuse the cached row rather than re-guessing
+    const second = getLogoDomains(['SPAR CAPE TOWN']);
+    expect(second.get('SPAR CAPE TOWN')).toBe('spar.com');
+  });
+
+  it('caches a null guess too, so an ungessable description is not retried forever', () => {
+    const result = getLogoDomains(['ATM WITHDRAWAL']);
+    expect(result.get('ATM WITHDRAWAL')).toBeNull();
+
+    const cachedRow = db
+      .prepare('SELECT key, domain FROM merchant_logos WHERE key = ?')
+      .get('atm withdrawal');
+    expect(cachedRow).toBeTruthy();
+    expect(cachedRow.domain).toBeNull();
+  });
+
+  it('maps blank descriptions to null without erroring', () => {
+    const result = getLogoDomains(['', 'GITHUB INC']);
+    expect(result.get('')).toBeNull();
+    expect(result.get('GITHUB INC')).toBe('github.com');
   });
 });

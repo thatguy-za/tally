@@ -9,7 +9,8 @@ import {
   budgetStatus,
   categorySparkData,
   savingsSummary,
-  NON_SPENDING_KINDS
+  NON_SPENDING_KINDS,
+  getLogoDomains
 } from '$lib/server/queries.js';
 
 const isRealAccount = (id, accounts) => accounts.some((a) => String(a.id) === id);
@@ -36,6 +37,10 @@ export function load({ locals, url }) {
   );
   const { byCategory: spark } = categorySparkData(userId, 6, accountId);
 
+  const recent = listTransactions(userId, { month, accountId }).slice(0, 8);
+  const logoDomains = getLogoDomains(recent.map((t) => t.description));
+  for (const t of recent) t.logo_domain = logoDomains.get(t.description) ?? null;
+
   return {
     month,
     months,
@@ -47,7 +52,7 @@ export function load({ locals, url }) {
       saved: forMonth.saved || 0
     },
     savings: savingsSummary(userId, 12, accountId),
-    recent: listTransactions(userId, { month, accountId }).slice(0, 8),
+    recent,
     uncategorised: uncategorisedCount(userId, accountId),
     // savings, transfers and opening balances aren't spending, so they stay
     // out of "where it went"

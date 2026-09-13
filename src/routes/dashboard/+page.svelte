@@ -6,6 +6,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
+  import MerchantLogo from '$lib/components/MerchantLogo.svelte';
   let { data } = $props();
 
   let net = $derived(data.monthTotals.incoming - data.monthTotals.outgoing);
@@ -147,7 +148,7 @@
       {#each data.recent as t, i (t.id)}
         <li class="flex items-center justify-between gap-3 border-t border-[var(--border)] px-5 py-3 text-sm">
           <div class="flex min-w-0 items-center gap-3">
-            <span class="dot" style="background:{t.category_color || 'var(--ink-faint)'}"></span>
+            <MerchantLogo domain={t.logo_domain} color={t.category_color || 'var(--ink-faint)'} />
             <div class="min-w-0">
               <p class="truncate font-medium">{t.description || '—'}</p>
               <p class="text-xs text-[var(--ink-faint)]">

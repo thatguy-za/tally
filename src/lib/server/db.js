@@ -116,6 +116,15 @@ db.exec(`
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, scope)
   );
+
+  -- guessed merchant domain per normalised description (see src/lib/logo.js),
+  -- shared across all users since it's a fact about the merchant, not the
+  -- user. domain is NULL when a lookup was tried and nothing usable was
+  -- found, so that "no logo" doesn't get re-guessed on every page view.
+  CREATE TABLE IF NOT EXISTS merchant_logos (
+    key    TEXT PRIMARY KEY,
+    domain TEXT
+  );
 `);
 
 // --- lightweight migrations for existing databases ---
