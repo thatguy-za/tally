@@ -22,7 +22,10 @@
   // stacking context for the rest of the page's life — trapping a normal
   // z-indexed popover inside it, so a later sibling card paints over it.
   // Portalling to <body> and positioning in document coordinates sidesteps
-  // that entirely.
+  // that entirely. Once at the body level, the popover's z-index (65) has
+  // to clear every full-screen layer it might open on top of — notably the
+  // onboarding overlay (z-index 60, see .overlay in app.css) — or it opens
+  // "successfully" while rendering invisibly behind it.
   function toggle() {
     if (!open) {
       const r = root.getBoundingClientRect();
@@ -72,7 +75,7 @@
   <div
     bind:this={popoverEl}
     use:portal
-    class="z-40 grid w-[152px] grid-cols-4 gap-1.5 rounded-[11px] border border-[var(--border-strong)] bg-[var(--surface-raised)] p-2.5 shadow-[var(--shadow-lg)]"
+    class="z-[65] grid w-[152px] grid-cols-4 gap-1.5 rounded-[11px] border border-[var(--border-strong)] bg-[var(--surface-raised)] p-2.5 shadow-[var(--shadow-lg)]"
     style="position:absolute;top:{pos.top}px;left:{pos.left}px"
     role="menu"
   >
