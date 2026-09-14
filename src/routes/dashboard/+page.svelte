@@ -7,11 +7,10 @@
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Sparkline from '$lib/components/Sparkline.svelte';
   import MerchantLogo from '$lib/components/MerchantLogo.svelte';
+  import MonthlyBudgetCard from '$lib/components/MonthlyBudgetCard.svelte';
   let { data } = $props();
 
   let net = $derived(data.monthTotals.incoming - data.monthTotals.outgoing);
-  let topSpend = $derived([...data.breakdown].sort((a, b) => a.total - b.total).slice(0, 6));
-  let spendMax = $derived(Math.max(1, ...topSpend.map((c) => Math.abs(c.total))));
   let monthName = $derived(formatMonth(data.month).split(' ')[0]);
   let savedRate = $derived(
     data.monthTotals.incoming > 0 ? Math.round((net / data.monthTotals.incoming) * 100) : null
@@ -99,43 +98,8 @@
 </div>
 
 <div class="mt-4 rise rise-3">
-  <div class="card">
-    <div class="mb-4 flex items-baseline justify-between gap-3">
-      <h2 class="text-lg">This month’s budget</h2>
-      {#if data.budgets.count > 0}
-        <a href="/budgets" class="tnum text-sm text-[var(--ink-soft)] hover:text-[var(--ink)]">
-          {formatMoney(data.budgets.actual, data.currency)}
-          <span class="text-[var(--ink-faint)]">of {formatMoney(data.budgets.target, data.currency)}</span>
-        </a>
-      {/if}
-    </div>
-    {#if topSpend.length}
-      <ul class="space-y-3">
-        {#each topSpend as c}
-          <li>
-            <div class="mb-1 flex items-baseline justify-between gap-3 text-[13px]">
-              <span class="flex min-w-0 items-center gap-2">
-                <span class="dot" style="background:{c.color}"></span>
-                <span class="truncate">{c.name}</span>
-                <!-- share of the whole month's spending, not just the rows shown -->
-                <span class="text-xs text-[var(--ink-faint)]">{Math.round((Math.abs(c.total) / (data.monthTotals.outgoing || 1)) * 100)}%</span>
-              </span>
-              <span class="flex shrink-0 items-center gap-2.5">
-                <Sparkline values={data.spark[c.id] ?? []} color={c.color} />
-                <span class="tnum w-[74px] text-right font-medium">{formatMoney(Math.abs(c.total), data.currency)}</span>
-              </span>
-            </div>
-            <div class="h-1.5 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
-              <div class="h-full rounded-full transition-[width] duration-700"
-                style="width:{(Math.abs(c.total) / spendMax) * 100}%;background:{c.color}"></div>
-            </div>
-          </li>
-        {/each}
-      </ul>
-    {:else}
-      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">No spending this month.</p>
-    {/if}
-  </div>
+  <MonthlyBudgetCard budgets={data.budgets} breakdown={data.breakdown} spark={data.spark}
+    outgoingTotal={data.monthTotals.outgoing} currency={data.currency} />
 </div>
 
 <div class="card card-flush mt-4 rise rise-4">

@@ -210,7 +210,7 @@
   const AI_CHUNK = 20;
   const AI_MAX = 400;
   let aiState = $state({ running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: false });
-  let aiSuggested = $state(new Set()); // rows Claude set
+  let aiSuggested = $state(new Set()); // rows the AI set
   let aiPending = $state(new Set()); // rows currently being categorised
   let aiKick = '';
 
@@ -383,7 +383,7 @@
     {#if data.aiAvailable}
       <p class="mt-3 flex items-center gap-1.5 text-xs text-[var(--ink-faint)]">
         <Icon name="sparkle" size={12} class="text-[var(--accent)]" />
-        Your rules run first; Claude categorises whatever they miss.
+        Your rules run first; the AI categorises whatever they miss.
       </p>
     {/if}
 
@@ -431,18 +431,18 @@
         <div class="flex flex-wrap items-center gap-2">
           <Icon name="sparkle" size={14} class="text-[var(--accent)]" />
           {#if aiState.running}
-            <span>Claude is categorising… <b class="tnum">{aiPct}%</b>
+            <span>The AI is categorising… <b class="tnum">{aiPct}%</b>
               <span class="text-[var(--ink-faint)]">({aiState.done}/{aiState.total})</span></span>
           {:else if aiState.error}
             <span style="color:var(--negative)">
               Couldn't finish — {aiState.error}{#if aiState.count} {aiState.count} row(s) were done first.{/if}
             </span>
           {:else if aiState.ran && aiState.total === 0}
-            <span>Every row was already categorised by your rules — nothing sent to Claude.</span>
+            <span>Every row was already categorised by your rules — nothing sent to the AI.</span>
           {:else if aiState.ran && aiState.count}
-            <span>Claude categorised {aiState.count} of {aiState.total} row(s){costTxt}. Check the ✨ picks.</span>
+            <span>The AI categorised {aiState.count} of {aiState.total} row(s){costTxt}. Check the ✨ picks.</span>
           {:else if aiState.ran}
-            <span>Claude didn't find confident matches — set the categories below.</span>
+            <span>The AI didn't find confident matches — set the categories below.</span>
           {/if}
           <button type="button" class="btn btn-ghost btn-sm ml-auto" disabled={aiState.running} onclick={runAiSuggest}>
             {aiState.running ? 'Working…' : aiState.ran ? 'Re-run' : 'Categorise'}
@@ -555,12 +555,12 @@
                 <td class="py-1 pr-3">
                   {#if aiPending.has(r.i)}
                     <span class="ai-shimmer flex h-[26px] min-w-[140px] items-center gap-1.5 rounded-md px-2 text-[12px] text-[var(--ink-faint)]">
-                      <span class="ai-dot"></span> Claude…
+                      <span class="ai-dot"></span> AI…
                     </span>
                   {:else}
                     <div class="flex items-center gap-1">
                       {#if aiSuggested.has(r.i)}
-                        <span title="Suggested by Claude"><Icon name="sparkle" size={12} class="shrink-0 text-[var(--accent)]" /></span>
+                        <span title="Suggested by AI"><Icon name="sparkle" size={12} class="shrink-0 text-[var(--accent)]" /></span>
                       {:else if r.byRule}
                         <span title="Matched by one of your rules"><Icon name="repeat" size={12} class="shrink-0 text-[var(--ink-faint)]" /></span>
                       {/if}

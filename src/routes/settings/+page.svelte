@@ -255,7 +255,7 @@
             <Icon name="sparkle" size={16} class="text-[var(--accent)]" /> AI categorisation
           </h2>
           <p class="mt-1 max-w-lg text-[13px] text-[var(--ink-faint)]">
-            On by default. Claude sorts transactions into <em>your</em> categories when you
+            On by default. AI sorts transactions into <em>your</em> categories when you
             import a CSV. Turn it off to keep your data away from the API entirely.
           </p>
         </div>

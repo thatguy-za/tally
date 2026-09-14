@@ -1,31 +1,38 @@
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { formatMoney, formatMonth } from '$lib/currency.js';
-import { getApiKey, getModel, AI_MODELS } from './ai-settings.js';
+import { getApiKey, getModel, getProvider, findModelInfo } from './ai-settings.js';
 import { listCategories } from './queries.js';
 
 const BATCH_SIZE = 40;
 const MAX_PER_RUN = 300;
 
-function client(apiKeyOverride) {
-  const apiKey = apiKeyOverride || getApiKey();
-  if (!apiKey) throw new Error('No Anthropic API key configured.');
+const PROVIDER_NAME = { anthropic: 'Anthropic', openai: 'OpenAI' };
+
+function client(provider, apiKeyOverride) {
+  const apiKey = apiKeyOverride || getApiKey(provider);
+  if (!apiKey) throw new Error(`No ${PROVIDER_NAME[provider]} API key configured.`);
+  if (provider === 'openai') return new OpenAI({ apiKey, maxRetries: 1, timeout: 60_000 });
   return new Anthropic({ apiKey, maxRetries: 1, timeout: 60_000 });
 }
 
 /** Turn an SDK/network error into a short, user-safe sentence. */
-function friendlyError(e) {
+function friendlyError(e, provider) {
+  const name = PROVIDER_NAME[provider] || 'The provider';
   const status = e?.status;
-  const apiMsg = e?.error?.error?.message || e?.error?.message;
+  const apiMsg =
+    provider === 'openai' ? e?.error?.message : e?.error?.error?.message || e?.error?.message;
   if (status === 401) return 'the API key is invalid.';
   if (status === 403) return 'the API key is not permitted to use this model.';
-  if (status === 429) return 'the Anthropic account is rate limited or out of credit.';
+  if (status === 429) return `the ${name} account is rate limited or out of credit.`;
   if (status === 404) return 'the selected model is unavailable for this key.';
-  if (status >= 500) return 'Anthropic had a server error — try again shortly.';
+  if (status >= 500) return `${name} had a server error — try again shortly.`;
   if (apiMsg) return apiMsg;
-  if (e?.name === 'APIConnectionTimeoutError') return 'the request timed out.';
+  if (e?.name === 'APIConnectionTimeoutError' || e?.code === 'ETIMEDOUT') return 'the request timed out.';
   return e?.message || 'unknown error';
 }
 
+/** Tool schema shared by both providers — only the wrapping shape differs. */
 const CATEGORISE_TOOL = {
   name: 'submit_categorisation',
   description: 'Record the chosen category for each transaction by its ref.',
@@ -63,9 +70,122 @@ function requestParams(model) {
 
 /** @param {{ input:number, output:number }} usage @param {string} model */
 export function estimateCost(usage, model) {
-  const m = AI_MODELS.find((x) => x.id === model);
+  const m = findModelInfo(model);
   if (!m) return 0;
   return (usage.input / 1e6) * m.input + (usage.output / 1e6) * m.output;
+}
+
+/**
+ * Force a tool call and return its parsed input, regardless of provider.
+ * @param {{ system: string, userText: string, toolName: string, maxTokens?: number, apiKeyOverride?: string, provider?: string, model?: string }} args
+ * @returns {Promise<{ input: any, usage: {input:number,output:number} }>}
+ */
+async function callTool({ system, userText, toolName, maxTokens = 4096, apiKeyOverride, provider, model }) {
+  provider = provider || getProvider();
+  model = model || getModel(provider);
+
+  if (provider === 'openai') {
+    const openai = client('openai', apiKeyOverride);
+    let res;
+    try {
+      res = await openai.chat.completions.create({
+        model,
+        max_completion_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: userText }
+        ],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: CATEGORISE_TOOL.name,
+              description: CATEGORISE_TOOL.description,
+              parameters: CATEGORISE_TOOL.input_schema,
+              strict: true
+            }
+          }
+        ],
+        tool_choice: { type: 'function', function: { name: toolName } }
+      });
+    } catch (e) {
+      throw new Error(friendlyError(e, provider));
+    }
+    const usage = { input: res.usage?.prompt_tokens ?? 0, output: res.usage?.completion_tokens ?? 0 };
+    const call = res.choices?.[0]?.message?.tool_calls?.find((c) => c.function?.name === toolName);
+    let input = null;
+    if (call) {
+      try {
+        input = JSON.parse(call.function.arguments);
+      } catch {
+        input = null;
+      }
+    }
+    return { input, usage };
+  }
+
+  const anthropic = client('anthropic', apiKeyOverride);
+  let res;
+  try {
+    res = await anthropic.messages.create({
+      ...requestParams(model),
+      max_tokens: maxTokens,
+      system,
+      tools: [CATEGORISE_TOOL],
+      // force the tool — `auto` was letting Claude reply in prose
+      tool_choice: { type: 'tool', name: toolName },
+      messages: [{ role: 'user', content: userText }]
+    });
+  } catch (e) {
+    throw new Error(friendlyError(e, provider));
+  }
+  const usage = { input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0 };
+  const call = res.content.find((b) => b.type === 'tool_use' && b.name === toolName);
+  return { input: call?.input ?? null, usage };
+}
+
+/**
+ * Plain text completion, regardless of provider.
+ * @param {{ system?: string, userText: string, maxTokens: number, apiKeyOverride?: string, provider?: string, model?: string }} args
+ * @returns {Promise<{ text: string, usage: {input:number,output:number}, model: string }>}
+ */
+async function callText({ system, userText, maxTokens, apiKeyOverride, provider, model }) {
+  provider = provider || getProvider();
+  model = model || getModel(provider);
+
+  if (provider === 'openai') {
+    const openai = client('openai', apiKeyOverride);
+    let res;
+    try {
+      res = await openai.chat.completions.create({
+        model,
+        max_completion_tokens: maxTokens,
+        messages: [
+          ...(system ? [{ role: 'system', content: system }] : []),
+          { role: 'user', content: userText }
+        ]
+      });
+    } catch (e) {
+      throw new Error(friendlyError(e, provider));
+    }
+    const usage = { input: res.usage?.prompt_tokens ?? 0, output: res.usage?.completion_tokens ?? 0 };
+    return { text: res.choices?.[0]?.message?.content?.trim() ?? '', usage, model };
+  }
+
+  const anthropic = client('anthropic', apiKeyOverride);
+  let res;
+  try {
+    res = await anthropic.messages.create({
+      ...requestParams(model),
+      max_tokens: maxTokens,
+      ...(system ? { system } : {}),
+      messages: [{ role: 'user', content: userText }]
+    });
+  } catch (e) {
+    throw new Error(friendlyError(e, provider));
+  }
+  const usage = { input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0 };
+  return { text: res.content.find((x) => x.type === 'text')?.text?.trim() ?? '', usage, model };
 }
 
 const SYSTEM =
@@ -77,15 +197,13 @@ const SYSTEM =
   'submit_categorisation with one assignment per transaction ref.';
 
 /**
- * Core loop: ask Claude to categorise `items` against `categories`.
+ * Core loop: ask the configured AI provider to categorise `items` against `categories`.
  * @param {{name:string,kind:string}[]} categories
  * @param {{ref:string,date:string,amount:number,description:string}[]} items
  * @returns {Promise<{ byRef: Map<string,string>, usage:{input:number,output:number} }>}
  * `byRef` maps ref -> a category name that exists in `categories` (validated).
  */
 async function runCategorisation(categories, items) {
-  const anthropic = client();
-  const model = getModel();
   const byName = new Map(categories.map((c) => [c.name.trim().toLowerCase(), c.name]));
   const catList = categories.map((c) => `- ${c.name} (${c.kind})`).join('\n');
 
@@ -98,38 +216,20 @@ async function runCategorisation(categories, items) {
       .map((t) => `${t.ref}\t${t.date}\t${Number(t.amount).toFixed(2)}\t${t.description || '(no description)'}`)
       .join('\n');
 
-    let res;
-    try {
-      res = await anthropic.messages.create({
-        ...requestParams(model),
-        system: SYSTEM,
-        tools: [CATEGORISE_TOOL],
-        // force the tool — all models in the picker (Opus 5 / Sonnet 5 / Haiku 4.5)
-        // support forced tool_choice, and `auto` was letting Claude reply in prose
-        tool_choice: { type: 'tool', name: 'submit_categorisation' },
-        messages: [
-          {
-            role: 'user',
-            content:
-              `Categories:\n${catList}\n\n` +
-              `Transactions (ref, date, amount, description):\n${txList}\n\n` +
-              `Assign a category to every ref above.`
-          }
-        ]
-      });
-    } catch (e) {
-      throw new Error(friendlyError(e));
-    }
+    const { input, usage: u } = await callTool({
+      system: SYSTEM,
+      userText:
+        `Categories:\n${catList}\n\n` +
+        `Transactions (ref, date, amount, description):\n${txList}\n\n` +
+        `Assign a category to every ref above.`,
+      toolName: 'submit_categorisation'
+    });
+    usage.input += u.input;
+    usage.output += u.output;
 
-    usage.input += res.usage?.input_tokens ?? 0;
-    usage.output += res.usage?.output_tokens ?? 0;
-
-    const call = res.content.find(
-      (b) => b.type === 'tool_use' && b.name === 'submit_categorisation'
-    );
-    const assignments = call?.input?.assignments;
+    const assignments = input?.assignments;
     if (!Array.isArray(assignments)) {
-      console.warn('[ai] no assignments in response:', JSON.stringify(res.content).slice(0, 300));
+      console.warn('[ai] no assignments in response:', JSON.stringify(input).slice(0, 300));
       continue;
     }
 
@@ -192,7 +292,7 @@ const SUMMARY_SYSTEM =
   'problem.';
 
 /**
- * The exact text sent to Claude for a period summary: every figure already
+ * The exact text sent to the AI for a period summary: every figure already
  * formatted, so the model narrates rather than calculates. Exported so it is
  * easy to audit what leaves the server — category names and totals, never an
  * individual transaction.
@@ -262,44 +362,30 @@ export function buildPeriodFacts(insights, currency) {
  */
 export async function summarisePeriod(insights, currency) {
   const model = getModel();
-  let res;
-  try {
-    res = await client().messages.create({
-      ...requestParams(model),
-      max_tokens: 200,
-      system: SUMMARY_SYSTEM,
-      messages: [{ role: 'user', content: buildPeriodFacts(insights, currency) }]
-    });
-  } catch (e) {
-    throw new Error(friendlyError(e));
-  }
-
-  const usage = { input: res.usage?.input_tokens ?? 0, output: res.usage?.output_tokens ?? 0 };
-  return {
-    text: res.content.find((x) => x.type === 'text')?.text?.trim() ?? '',
-    usage,
-    costUsd: estimateCost(usage, model)
-  };
+  const { text, usage } = await callText({
+    system: SUMMARY_SYSTEM,
+    userText: buildPeriodFacts(insights, currency),
+    maxTokens: 200,
+    model
+  });
+  return { text, usage, costUsd: estimateCost(usage, model) };
 }
 
 /**
- * Cheap round-trip to verify the key + model work. Pass `apiKey`/`model` to
- * test values that haven't been saved yet (e.g. still sitting in a form) —
- * omit either to fall back to whatever is already configured.
- * @param {{ apiKey?: string, model?: string }} [overrides]
+ * Cheap round-trip to verify the key + model work. Pass `apiKey`/`model`/`provider`
+ * to test values that haven't been saved yet (e.g. still sitting in a form) —
+ * omit any of them to fall back to whatever is already configured.
+ * @param {{ provider?: string, apiKey?: string, model?: string }} [overrides]
  */
-export async function testConnection({ apiKey, model } = {}) {
-  model = model || getModel();
-  let res;
-  try {
-    res = await client(apiKey).messages.create({
-      ...requestParams(model),
-      max_tokens: 16,
-      messages: [{ role: 'user', content: 'Reply with the word: ok' }]
-    });
-  } catch (e) {
-    throw new Error(friendlyError(e));
-  }
-  const text = res.content.find((b) => b.type === 'text')?.text?.trim() ?? '';
+export async function testConnection({ provider, apiKey, model } = {}) {
+  provider = provider || getProvider();
+  model = model || getModel(provider);
+  const { text } = await callText({
+    userText: 'Reply with the word: ok',
+    maxTokens: 16,
+    apiKeyOverride: apiKey,
+    provider,
+    model
+  });
   return { model, reply: text.slice(0, 40) };
 }

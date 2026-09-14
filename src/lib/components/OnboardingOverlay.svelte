@@ -6,7 +6,7 @@
   import ColorPicker from './ColorPicker.svelte';
   import { toast } from '$lib/toast.svelte.js';
 
-  /** @type {{ onboarding: { isAdmin: boolean, ai: { configured: boolean, keyFromEnv: boolean, model: string, models: {id:string,label:string}[] }, accounts: any[], categories: any[] } }} */
+  /** @type {{ onboarding: { isAdmin: boolean, ai: { provider: string, providers: {id:string,label:string}[], configured: boolean, keyFromEnv: boolean, model: string, models: {id:string,label:string}[], modelsByProvider: Record<string,{id:string,label:string}[]> }, accounts: any[], categories: any[] } }} */
   let { onboarding } = $props();
 
   // Fixed for the life of this overlay instance — whether the API key step
@@ -24,7 +24,16 @@
   let step = $state(0);
   let apiKeyError = $state('');
   let apiKeySaved = $state(untrack(() => onboarding.ai.configured));
+  let selectedProvider = $state(untrack(() => onboarding.ai.provider));
   let selectedModel = $state(untrack(() => onboarding.ai.model));
+  let models = $derived(onboarding.ai.modelsByProvider[selectedProvider] ?? []);
+  function defaultModelFor(provider) {
+    if (provider === onboarding.ai.provider) return onboarding.ai.model;
+    return onboarding.ai.modelsByProvider[provider]?.[0]?.id ?? '';
+  }
+  $effect(() => {
+    selectedModel = defaultModelFor(selectedProvider);
+  });
   let testing = $state(false);
   let testResult = $state('');
   let testError = $state('');
@@ -89,12 +98,12 @@
       <span class="mb-3 grid h-10 w-10 place-items-center rounded-[11px]" style="background:var(--accent-wash)">
         <Icon name="sparkle" size={19} class="text-[var(--accent)]" />
       </span>
-      <h2 class="text-xl" style="font-family:var(--font-display)">Connect Claude</h2>
+      <h2 class="text-xl" style="font-family:var(--font-display)">Connect an AI assistant</h2>
       <p class="mt-1.5 text-[13px] text-[var(--ink-faint)]">
-        Add an Anthropic API key so everyone on this instance can opt in to AI transaction
-        categorisation. Usage is billed to this key by Anthropic — create one at
-        <span class="text-[var(--ink-soft)]">console.anthropic.com</span>. You can skip this and add
-        it later in Server settings.
+        Add an API key so everyone on this instance can opt in to AI transaction
+        categorisation. Usage is billed to this key by the provider — create one at
+        <span class="text-[var(--ink-soft)]">{selectedProvider === 'openai' ? 'platform.openai.com' : 'console.anthropic.com'}</span>.
+        You can skip this and add it later in Server settings.
       </p>
       <form
         method="POST"
@@ -130,14 +139,21 @@
           };
         }}
       >
-        <label class="label" for="ob-api-key">API key</label>
-        <input class="input" id="ob-api-key" name="api_key" type="password" autocomplete="off" placeholder="sk-ant-…" />
+        <label class="label" for="ob-provider">Provider</label>
+        <select class="input" id="ob-provider" name="provider" bind:value={selectedProvider}>
+          {#each onboarding.ai.providers as p}<option value={p.id}>{p.label}</option>{/each}
+        </select>
+        <div class="mt-3">
+          <label class="label" for="ob-api-key">API key</label>
+          <input class="input" id="ob-api-key" name="api_key" type="password" autocomplete="off"
+            placeholder={selectedProvider === 'openai' ? 'sk-…' : 'sk-ant-…'} />
+        </div>
         <div class="mt-3">
           <label class="label" for="ob-model">Model</label>
           <select class="input" id="ob-model" name="model" bind:value={selectedModel}>
-            {#each onboarding.ai.models as m}<option value={m.id}>{m.label}</option>{/each}
+            {#each models as m}<option value={m.id}>{m.label}</option>{/each}
           </select>
-          <p class="mt-1 text-xs text-[var(--ink-faint)]">Haiku is the cheapest and is usually plenty for categorisation.</p>
+          <p class="mt-1 text-xs text-[var(--ink-faint)]">The cheapest model is usually plenty for categorisation.</p>
         </div>
         {#if apiKeyError}<p class="mt-1.5 text-xs" style="color:var(--negative)">{apiKeyError}</p>{/if}
         {#if testResult}<p class="mt-1.5 text-xs" style="color:var(--positive)">{testResult}</p>{/if}

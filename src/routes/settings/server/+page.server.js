@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db.js';
 import { hashPassword } from '$lib/server/auth.js';
-import { aiStatus, aiEnabled, setSetting } from '$lib/server/ai-settings.js';
+import { aiStatus, aiEnabled, setSetting, AI_PROVIDERS, providerStatus, looksLikeApiKey } from '$lib/server/ai-settings.js';
 import { testConnection } from '$lib/server/ai.js';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -16,7 +16,8 @@ export function load({ locals }) {
          FROM users u ORDER BY u.id`
       )
       .all(),
-    ai: aiStatus()
+    ai: aiStatus(),
+    aiByProvider: Object.fromEntries(AI_PROVIDERS.map((p) => [p.id, providerStatus(p.id)]))
   };
 }
 
@@ -64,12 +65,16 @@ export const actions = {
   aiKey: async ({ request, locals }) => {
     requireAdmin(locals);
     const f = await request.formData();
+    const provider = String(f.get('provider') || '');
+    if (!AI_PROVIDERS.some((p) => p.id === provider)) return fail(400, { section: 'ai', error: 'Unknown provider.' });
     const key = String(f.get('api_key') || '').trim();
     const model = String(f.get('model') || '');
-    if (key && !/^sk-ant-/.test(key))
-      return fail(400, { section: 'ai', error: 'That does not look like an Anthropic API key (starts with sk-ant-).' });
-    setSetting('anthropic_api_key', key || null);
-    if (model) setSetting('anthropic_model', model);
+    const providerLabel = AI_PROVIDERS.find((p) => p.id === provider)?.label || provider;
+    if (key && !looksLikeApiKey(provider, key))
+      return fail(400, { section: 'ai', error: `That does not look like an API key for ${providerLabel}.` });
+    setSetting('ai_provider', provider);
+    setSetting(`${provider}_api_key`, key || null);
+    if (model) setSetting(`${provider}_model`, model);
     return {
       section: 'ai',
       ok: true,
@@ -77,18 +82,13 @@ export const actions = {
     };
   },
 
-  aiModel: async ({ request, locals }) => {
+  aiTest: async ({ request, locals }) => {
     requireAdmin(locals);
     const f = await request.formData();
-    setSetting('anthropic_model', String(f.get('model') || ''));
-    return { section: 'ai', ok: true, msg: 'Model updated.' };
-  },
-
-  aiTest: async ({ locals }) => {
-    requireAdmin(locals);
+    const provider = String(f.get('provider') || '');
     if (!aiEnabled()) return fail(400, { section: 'ai', error: 'Add an API key first.' });
     try {
-      const r = await testConnection();
+      const r = await testConnection({ provider });
       return { section: 'ai', ok: true, msg: `Connected — ${r.model} replied “${r.reply || '…'}”.` };
     } catch (e) {
       return fail(400, { section: 'ai', error: `Test failed: ${e?.message || 'unknown error'}` });

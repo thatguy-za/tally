@@ -1,4 +1,5 @@
 <script>
+  import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import Icon from '$lib/components/Icon.svelte';
   import { toast } from '$lib/toast.svelte.js';
@@ -8,6 +9,14 @@
   let testing = $state(false);
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
+
+  let selectedProvider = $state(untrack(() => data.ai.provider));
+  let selectedModel = $state(untrack(() => data.ai.model));
+  let current = $derived(data.aiByProvider[selectedProvider]);
+  $effect(() => {
+    // switching provider resets the model picker to that provider's current/default model
+    selectedModel = current.model;
+  });
 
   let seenForm;
   $effect(() => {
@@ -34,42 +43,49 @@
       <Icon name="sparkle" size={16} class="text-[var(--accent)]" /> AI assistant
     </h2>
     <p class="mb-4 mt-1 max-w-xl text-[13px] text-[var(--ink-faint)]">
-      Add an Anthropic (Claude) API key so users can opt in to AI transaction
-      categorisation. All usage is billed to this key by Anthropic. Create a key at
-      <span class="text-[var(--ink-soft)]">console.anthropic.com</span>.
+      Add an API key so users can opt in to AI transaction categorisation. All usage is
+      billed to this key by the provider. Create one at
+      <span class="text-[var(--ink-soft)]">{selectedProvider === 'openai' ? 'platform.openai.com' : 'console.anthropic.com'}</span>.
     </p>
 
-    {#if data.ai.keyFromEnv}
-      <p class="mb-3 rounded-[9px] px-3 py-2 text-[13px]"
-        style="background:var(--accent-wash);color:var(--accent-strong)">
-        Key supplied via the <code>ANTHROPIC_API_KEY</code> environment variable
-        ({data.ai.keyMask}). Choose a model below.
-      </p>
-    {/if}
+    <form method="POST" action="?/aiKey"
+      use:enhance={() => async ({ update }) => update({ reset: false })}
+      class="grid gap-3 sm:max-w-xl">
+      <div>
+        <label class="label" for="ai-provider">Provider</label>
+        <select class="input" id="ai-provider" name="provider" bind:value={selectedProvider}>
+          {#each data.ai.providers as p}<option value={p.id}>{p.label}</option>{/each}
+        </select>
+      </div>
 
-    <form method="POST" action="?/aiKey" use:enhance class="grid gap-3 sm:max-w-xl">
-      {#if !data.ai.keyFromEnv}
+      {#if current.keyFromEnv}
+        <p class="rounded-[9px] px-3 py-2 text-[13px]"
+          style="background:var(--accent-wash);color:var(--accent-strong)">
+          Key supplied via the <code>{selectedProvider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY'}</code>
+          environment variable ({current.keyMask}). Choose a model below.
+        </p>
+      {:else}
         <div>
           <label class="label" for="ai-key">
-            API key {#if data.ai.configured}<span class="text-[var(--ink-faint)]">· currently {data.ai.keyMask}</span>{/if}
+            API key {#if current.configured}<span class="text-[var(--ink-faint)]">· currently {current.keyMask}</span>{/if}
           </label>
           <input class="input" id="ai-key" name="api_key" type="password" autocomplete="off"
-            placeholder={data.ai.configured ? 'Enter a new key to replace it' : 'sk-ant-…'} />
+            placeholder={current.configured ? 'Enter a new key to replace it' : (selectedProvider === 'openai' ? 'sk-…' : 'sk-ant-…')} />
           <p class="mt-1 text-xs text-[var(--ink-faint)]">Leave blank and save to remove the key and disable AI features.</p>
         </div>
       {/if}
       <div>
         <label class="label" for="ai-model">Model</label>
-        <select class="input" id="ai-model" name="model" value={data.ai.model}>
-          {#each data.ai.models as m}<option value={m.id}>{m.label}</option>{/each}
+        <select class="input" id="ai-model" name="model" bind:value={selectedModel}>
+          {#each current.models as m}<option value={m.id}>{m.label}</option>{/each}
         </select>
         <p class="mt-1 text-xs text-[var(--ink-faint)]">
-          Haiku is the cheapest and is usually plenty for categorisation.
+          The cheapest model is usually plenty for categorisation.
         </p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <button class="btn btn-primary">Save</button>
-        {#if data.ai.configured}
+        {#if current.configured}
           <button class="btn btn-ghost" formaction="?/aiTest" onclick={() => (testing = true)}>
             {testing ? 'Testing…' : 'Test connection'}
           </button>

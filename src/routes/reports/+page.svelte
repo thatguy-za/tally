@@ -4,8 +4,22 @@
   import { formatMoney, formatMonth } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
   import StackedMonths from '$lib/components/StackedMonths.svelte';
+  import SpendingDoughnut from '$lib/components/SpendingDoughnut.svelte';
   import AccountPicker from '$lib/components/AccountPicker.svelte';
   let { data } = $props();
+
+  let ins = $derived(data.insights);
+  let singleMonth = $derived(data.from === data.to);
+  let showMovers = $derived(!!ins && ins.reason !== 'empty' && ins.movers.length > 0);
+  // paired with "In a nutshell": the chart for one month, "What changed" for a range
+  let showPairedRight = $derived(singleMonth || showMovers);
+  let spendingSegments = $derived(
+    singleMonth
+      ? data.chart.expense
+          .map((c) => ({ id: c.id, name: c.name, color: c.color, value: Math.abs(data.chart.values[data.from]?.expense[c.id] || 0) }))
+          .filter((s) => s.value > 0)
+      : []
+  );
 
   const money = (n) => formatMoney(n, data.currency);
   const shortMonth = (ym) => {
@@ -47,6 +61,7 @@
   let summary = $state(null);
   let summaryLoading = $state(false);
   let summaryError = $state(null);
+  let showSummary = $derived(data.aiSummary && (summaryLoading || summary || summaryError));
 
   $effect(() => {
     const ins = data.insights;
@@ -105,8 +120,7 @@
   </div>
 </div>
 
-{#if data.insights && data.insights.reason !== 'empty'}
-  {@const ins = data.insights}
+{#if ins && ins.reason !== 'empty'}
   <div class="mb-4 grid gap-4 rise rise-1 {data.savings.configured ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}">
     <div class="card">
       <p class="kicker">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
@@ -137,15 +151,65 @@
       </div>
     {/if}
   </div>
+{/if}
 
-  {@const showSummary = data.aiSummary && (summaryLoading || summary || summaryError)}
-  {@const showMovers = ins.movers.length > 0}
+{#snippet spendingChart()}
+  {#if singleMonth}
+    {#if spendingSegments.length}
+      <SpendingDoughnut title="Your spending for this month" segments={spendingSegments} currency={data.currency} />
+    {:else}
+      <h2 class="mb-4 text-lg">Your spending for this month</h2>
+      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
+    {/if}
+  {:else if data.chart.income.length || data.chart.expense.length}
+    <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
+      expense={data.chart.expense} values={data.chart.values} currency={data.currency} />
+  {:else}
+    <h2 class="mb-4 text-lg">Your spending by month</h2>
+    <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
+  {/if}
+{/snippet}
 
-  <!-- side by side when both are there, full width when only one is -->
-  {#if showSummary || showMovers}
-  <div class="mb-4 grid gap-4 {showSummary && showMovers ? 'lg:grid-cols-5' : ''}">
+{#snippet whatChanged()}
+  <div class="mb-1 flex items-baseline justify-between gap-3">
+    <h2 class="text-lg">What changed</h2>
+    <span class="text-xs text-[var(--ink-faint)]">biggest moves, not biggest totals</span>
+  </div>
+  <p class="mb-4 text-[13px] text-[var(--ink-faint)]">
+    {#if ins.single}
+      Against your own average over {ins.baseline.months} earlier month{ins.baseline.months === 1 ? '' : 's'}{ins.partial
+        ? `, scaled to the ${Math.round(ins.share * 100)}% of ${formatMonth(ins.from)} gone so far`
+        : ''}.
+    {:else}
+      Monthly averages for this period, against the {ins.baseline.months} month{ins.baseline.months === 1 ? '' : 's'} before it.
+    {/if}
+  </p>
+  <ul class="space-y-2.5">
+    {#each ins.movers as m}
+      <li class="flex items-center justify-between gap-3 text-[13px]">
+        <span class="flex min-w-0 items-center gap-2">
+          <span class="dot shrink-0" style="background:{m.color}"></span>
+          <span class="truncate">{m.name}</span>
+        </span>
+        <span class="flex shrink-0 items-baseline gap-3">
+          <span class="hidden text-xs text-[var(--ink-faint)] sm:inline">usual {money(m.usual)}</span>
+          <span class="tnum font-medium">{money(m.spent)}</span>
+          <span class="tnum w-[96px] text-right font-semibold"
+            style="color:{m.delta > 0 ? 'var(--ink)' : 'var(--ink-faint)'}">
+            {m.delta > 0 ? '↑' : '↓'} {money(Math.abs(m.delta))}
+          </span>
+        </span>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
+<!-- "In a nutshell" always sits on the left; its partner on the right is the
+     chart for a single month, or "What changed" for a range -->
+{#if showSummary || showPairedRight}
+<div class="mb-4 grid gap-4 rise rise-2 {showSummary && showPairedRight ? 'lg:grid-cols-5' : ''}">
   {#if showSummary}
-    <div class="card rise rise-1 {showMovers ? 'lg:col-span-2' : ''}">
+    <div class="card {showPairedRight ? 'lg:col-span-2' : ''}">
       <h2 class="mb-3 flex items-center gap-2 text-lg">
         <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
         In a nutshell
@@ -164,47 +228,35 @@
     </div>
   {/if}
 
-  {#if showMovers}
-    <div class="card rise rise-2 {showSummary ? 'lg:col-span-3' : ''}">
-      <div class="mb-1 flex items-baseline justify-between gap-3">
-        <h2 class="text-lg">What changed</h2>
-        <span class="text-xs text-[var(--ink-faint)]">biggest moves, not biggest totals</span>
-      </div>
-      <p class="mb-4 text-[13px] text-[var(--ink-faint)]">
-        {#if ins.single}
-          Against your own average over {ins.baseline.months} earlier month{ins.baseline.months === 1 ? '' : 's'}{ins.partial
-            ? `, scaled to the ${Math.round(ins.share * 100)}% of ${formatMonth(ins.from)} gone so far`
-            : ''}.
-        {:else}
-          Monthly averages for this period, against the {ins.baseline.months} month{ins.baseline.months === 1 ? '' : 's'} before it.
-        {/if}
-      </p>
-      <ul class="space-y-2.5">
-        {#each ins.movers as m}
-          <li class="flex items-center justify-between gap-3 text-[13px]">
-            <span class="flex min-w-0 items-center gap-2">
-              <span class="dot shrink-0" style="background:{m.color}"></span>
-              <span class="truncate">{m.name}</span>
-            </span>
-            <span class="flex shrink-0 items-baseline gap-3">
-              <span class="hidden text-xs text-[var(--ink-faint)] sm:inline">usual {money(m.usual)}</span>
-              <span class="tnum font-medium">{money(m.spent)}</span>
-              <span class="tnum w-[96px] text-right font-semibold"
-                style="color:{m.delta > 0 ? 'var(--ink)' : 'var(--ink-faint)'}">
-                {m.delta > 0 ? '↑' : '↓'} {money(Math.abs(m.delta))}
-              </span>
-            </span>
-          </li>
-        {/each}
-      </ul>
+  {#if singleMonth}
+    <div class="card {showSummary ? 'lg:col-span-3' : ''}">
+      {@render spendingChart()}
+    </div>
+  {:else if showMovers}
+    <div class="card {showSummary ? 'lg:col-span-3' : ''}">
+      {@render whatChanged()}
     </div>
   {/if}
-  </div>
-  {/if}
+</div>
+{/if}
 
+<!-- the other one: "What changed" below for a single month, the chart below for a range -->
+{#if singleMonth}
+  {#if showMovers}
+    <div class="card mb-4 rise rise-3">
+      {@render whatChanged()}
+    </div>
+  {/if}
+{:else}
+  <div class="card mb-4 rise rise-3">
+    {@render spendingChart()}
+  </div>
+{/if}
+
+{#if ins && ins.reason !== 'empty'}
   <!-- only worth saying for a single month; a range that covers all your data has nothing to compare to and that is obvious -->
   {#if ins.single && !showMovers && !ins.comparable}
-    <div class="nudge mb-4 rise rise-2">
+    <div class="nudge mb-4 rise rise-4">
       <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
       <span>
         {#if ins.reason === 'no-history'}
@@ -216,13 +268,3 @@
     </div>
   {/if}
 {/if}
-
-<div class="card rise rise-3">
-  {#if data.chart.income.length || data.chart.expense.length}
-    <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
-      expense={data.chart.expense} values={data.chart.values} currency={data.currency} />
-  {:else}
-    <h2 class="mb-4 text-lg">Your spending by month</h2>
-    <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
-  {/if}
-</div>
