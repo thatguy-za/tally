@@ -68,11 +68,11 @@
   }
 </script>
 
-<div class="flex items-start gap-5">
+<div class="flex flex-col gap-5 sm:flex-row sm:items-start">
   <div class="min-w-0 flex-1">
     {#if title}<h2 class="mb-4 text-lg">{title}</h2>{/if}
     <div class="relative flex justify-center" bind:this={wrap}>
-      <svg viewBox="0 0 200 200" width="260" height="260" class="block" role="img"
+      <svg viewBox="0 0 200 200" class="block h-auto w-[220px] max-w-full sm:w-[260px]" role="img"
         aria-label="Spending by category this month">
         {#each arcs as seg (seg.id)}
           <path d={seg.path} fill={fill(seg.color)} style="cursor:default" role="presentation"
@@ -97,7 +97,7 @@
     </div>
   </div>
 
-  <div class="flex w-[150px] shrink-0 flex-col gap-[3px] text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
+  <div class="flex w-full flex-col gap-[3px] text-[12px] text-[var(--ink-soft)] sm:w-[170px] sm:shrink-0">
     <p class="kicker mb-1">Spending</p>
     {#each arcs as s (s.id)}
       <div class="flex items-center gap-2 py-[3px]">

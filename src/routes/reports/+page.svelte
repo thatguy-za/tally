@@ -11,8 +11,6 @@
   let ins = $derived(data.insights);
   let singleMonth = $derived(data.from === data.to);
   let showMovers = $derived(!!ins && ins.reason !== 'empty' && ins.movers.length > 0);
-  // paired with "In a nutshell": the chart for one month, "What changed" for a range
-  let showPairedRight = $derived(singleMonth || showMovers);
   let spendingSegments = $derived(
     singleMonth
       ? data.chart.expense
@@ -204,12 +202,11 @@
   </ul>
 {/snippet}
 
-<!-- "In a nutshell" always sits on the left; its partner on the right is the
-     chart for a single month, or "What changed" for a range -->
-{#if showSummary || showPairedRight}
-<div class="mb-4 grid gap-4 rise rise-2 {showSummary && showPairedRight ? 'lg:grid-cols-5' : ''}">
+<!-- "In a nutshell" always sits on the left, paired with "What changed" -->
+{#if showSummary || showMovers}
+<div class="mb-4 grid gap-4 rise rise-2 {showSummary && showMovers ? 'lg:grid-cols-5' : ''}">
   {#if showSummary}
-    <div class="card {showPairedRight ? 'lg:col-span-2' : ''}">
+    <div class="card {showMovers ? 'lg:col-span-2' : ''}">
       <h2 class="mb-3 flex items-center gap-2 text-lg">
         <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
         In a nutshell
@@ -228,11 +225,7 @@
     </div>
   {/if}
 
-  {#if singleMonth}
-    <div class="card {showSummary ? 'lg:col-span-3' : ''}">
-      {@render spendingChart()}
-    </div>
-  {:else if showMovers}
+  {#if showMovers}
     <div class="card {showSummary ? 'lg:col-span-3' : ''}">
       {@render whatChanged()}
     </div>
@@ -240,18 +233,9 @@
 </div>
 {/if}
 
-<!-- the other one: "What changed" below for a single month, the chart below for a range -->
-{#if singleMonth}
-  {#if showMovers}
-    <div class="card mb-4 rise rise-3">
-      {@render whatChanged()}
-    </div>
-  {/if}
-{:else}
-  <div class="card mb-4 rise rise-3">
-    {@render spendingChart()}
-  </div>
-{/if}
+<div class="card mb-4 rise rise-3">
+  {@render spendingChart()}
+</div>
 
 {#if ins && ins.reason !== 'empty'}
   <!-- only worth saying for a single month; a range that covers all your data has nothing to compare to and that is obvious -->
