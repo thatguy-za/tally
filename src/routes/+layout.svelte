@@ -11,10 +11,9 @@
   let { data, children } = $props();
 
   const nav = [
-    { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
+    { href: '/insights', label: 'Insights', icon: 'reports' },
     { href: '/transactions', label: 'Transactions', icon: 'transactions' },
-    { href: '/budgets', label: 'Budgets', icon: 'budgets' },
-    { href: '/reports', label: 'Reports', icon: 'reports' }
+    { href: '/budgets', label: 'Budgets', icon: 'budgets' }
   ];
 
   let current = $derived($page.url.pathname);
@@ -49,7 +48,7 @@
   <div class="shell flex min-h-full flex-col">
     <header class="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--paper)]/85 backdrop-blur-md">
       <div class="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
-        <a href="/dashboard" class="flex items-center gap-2.5">
+        <a href="/insights" class="flex items-center gap-2.5">
           <span class="grid h-8 w-8 place-items-center rounded-[9px] bg-[var(--accent)] text-[var(--accent-contrast)]">
             <Icon name="wallet" size={17} stroke={2} />
           </span>

@@ -56,7 +56,7 @@ export async function handle({ event, resolve }) {
     throw redirect(303, '/login');
   }
   if (event.locals.user && isPublic) {
-    throw redirect(303, '/dashboard');
+    throw redirect(303, '/insights');
   }
 
   return resolve(event);

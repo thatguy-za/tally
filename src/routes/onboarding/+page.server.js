@@ -6,7 +6,7 @@ import { testConnection } from '$lib/server/ai.js';
 // Not a page anyone navigates to directly — the wizard is an overlay mounted
 // in the root layout. This route exists only to host its form actions.
 export function load() {
-  throw redirect(303, '/dashboard');
+  throw redirect(303, '/insights');
 }
 
 export const actions = {

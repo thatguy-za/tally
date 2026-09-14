@@ -1,11 +1,12 @@
 <script>
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { formatMoney, formatMonth } from '$lib/currency.js';
+  import { formatMoney, formatMonth, currentMonth } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
   import StackedMonths from '$lib/components/StackedMonths.svelte';
   import SpendingDoughnut from '$lib/components/SpendingDoughnut.svelte';
   import AccountPicker from '$lib/components/AccountPicker.svelte';
+  import PeriodPicker from '$lib/components/PeriodPicker.svelte';
   let { data } = $props();
 
   let ins = $derived(data.insights);
@@ -28,17 +29,47 @@
   let periodLabel = $derived(
     data.from === data.to ? formatMonth(data.from) : `${shortMonth(data.from)} – ${shortMonth(data.to)}`
   );
-  // every month with data, plus whatever the URL asked for, newest first
-  let monthOptions = $derived(
-    [...new Set([data.from, data.to, ...data.months])].sort().reverse()
-  );
 
-  function setPeriod(key, value) {
+  function applyRange(from, to) {
     const url = new URL($page.url);
-    url.searchParams.set('from', key === 'from' ? value : data.from);
-    url.searchParams.set('to', key === 'to' ? value : data.to);
+    url.searchParams.set('from', from);
+    url.searchParams.set('to', to);
     goto(url, { keepFocus: true, noScroll: true });
   }
+
+  /** `n` months before `ym`, as YYYY-MM. */
+  function shiftMonth(ym, n) {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(y, m - 1 + n, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  const PERIOD_PRESETS = [
+    { id: 'current-month', label: 'Current month' },
+    { id: 'last-3-months', label: 'Last 3 months' },
+    { id: 'last-12-months', label: 'Last 12 months' },
+    { id: 'current-year', label: 'Current year' }
+  ];
+
+  function presetRange(id) {
+    const cm = currentMonth();
+    if (id === 'current-month') return { from: cm, to: cm };
+    if (id === 'last-3-months') return { from: shiftMonth(cm, -2), to: cm };
+    if (id === 'last-12-months') return { from: shiftMonth(cm, -11), to: cm };
+    if (id === 'current-year') return { from: `${cm.slice(0, 4)}-01`, to: cm };
+    return null;
+  }
+
+  function matchPreset(from, to) {
+    for (const p of PERIOD_PRESETS) {
+      const r = presetRange(p.id);
+      if (r && r.from === from && r.to === to) return p.id;
+    }
+    return 'custom';
+  }
+
+  let activePreset = $derived(matchPreset(data.from, data.to));
+  let pickerLabel = $derived(PERIOD_PRESETS.find((p) => p.id === activePreset)?.label ?? periodLabel);
 
   /** "€57.00 more than usual" — the phrase under each headline figure. */
   function vsUsual(actual, usual, partial) {
@@ -76,7 +107,7 @@
     summary = null;
     summaryError = null;
     summaryLoading = true;
-    fetch('/reports/summary', {
+    fetch('/insights/summary', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ from, to, accountId: accountId || undefined })
@@ -93,28 +124,26 @@
   });
 </script>
 
-<svelte:head><title>Reports · Tally</title></svelte:head>
+<svelte:head><title>Insights · Tally</title></svelte:head>
 
 <div class="mb-7 flex flex-wrap items-end justify-between gap-3 rise">
   <div>
-    <p class="kicker mb-2">Reports · {periodLabel}</p>
+    <p class="kicker mb-2">Insights · {periodLabel}</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Where your money went</h1>
   </div>
-  <div class="flex items-center gap-2">
+  <div class="flex flex-wrap items-center gap-2">
     {#if data.accounts.length > 1}
       <AccountPicker accounts={data.accounts} selected={data.accountId ?? ''} />
     {/if}
-    <label class="sr-only" for="p-from">From</label>
-    <select class="input max-w-[170px]" id="p-from" value={data.from}
-      onchange={(e) => setPeriod('from', e.currentTarget.value)}>
-      {#each monthOptions as m}<option value={m}>{shortMonth(m)}</option>{/each}
-    </select>
-    <span class="text-[13px] text-[var(--ink-faint)]">to</span>
-    <label class="sr-only" for="p-to">To</label>
-    <select class="input max-w-[170px]" id="p-to" value={data.to}
-      onchange={(e) => setPeriod('to', e.currentTarget.value)}>
-      {#each monthOptions as m}<option value={m}>{shortMonth(m)}</option>{/each}
-    </select>
+    <PeriodPicker
+      presets={PERIOD_PRESETS}
+      activePreset={activePreset}
+      from={data.from}
+      to={data.to}
+      triggerLabel={pickerLabel}
+      onPreset={(id) => applyRange(presetRange(id).from, presetRange(id).to)}
+      onRange={(from, to) => applyRange(from, to)}
+    />
   </div>
 </div>
 

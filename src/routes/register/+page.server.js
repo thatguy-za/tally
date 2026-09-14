@@ -28,6 +28,6 @@ export const actions = {
 
     const user = createUser(email, password);
     setSessionCookie(event, createSession(user.id));
-    throw redirect(303, '/dashboard');
+    throw redirect(303, '/insights');
   }
 };

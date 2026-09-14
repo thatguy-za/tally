@@ -3,7 +3,7 @@
 
   /**
    * A single month's spending by category, as a doughnut with a legend and a
-   * centred total. Used by Reports when the period picker is set to one month
+   * centred total. Used by Insights when the period picker is set to one month
    * (StackedMonths needs several months to be worth a bar chart).
    * @type {{ segments: { id: any, name: string, color: string|null, value: number }[], currency: string, title?: string }}
    */
