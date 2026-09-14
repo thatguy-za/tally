@@ -17,8 +17,10 @@ import {
   getLogoDomains,
   setUncategorisedDismissed,
   setLogoDomain,
-  resetLogoDomain
+  resetLogoDomain,
+  getUserAiCategorise
 } from '$lib/server/queries.js';
+import { aiEnabled } from '$lib/server/ai-settings.js';
 
 const num = (v) => {
   const n = parseAmount(String(v ?? ''));
@@ -76,7 +78,11 @@ export function load({ locals, url }) {
     accounts: listAccounts(userId),
     months: listMonths(userId),
     filters,
-    currency: locals.user.currency
+    currency: locals.user.currency,
+    // for the combined add/import overlay's CSV-import tab
+    rules: listRules(userId),
+    aiAvailable: aiEnabled() && getUserAiCategorise(userId),
+    dateFormat: locals.user.date_format
   };
 }
 
@@ -96,6 +102,38 @@ export const actions = {
     if (!accountId) accountId = listAccounts(locals.user.id)[0]?.id ?? null;
     addTransaction(locals.user.id, { date, description, amount: signed, category_id: categoryId, account_id: accountId });
     return { added: true };
+  },
+
+  addMany: async ({ request, locals }) => {
+    const f = await request.formData();
+    let payload;
+    try {
+      payload = JSON.parse(String(f.get('payload') || '{}'));
+    } catch {
+      return fail(400, { error: 'Could not read those rows — please try again.' });
+    }
+    const incoming = Array.isArray(payload.rows) ? payload.rows : [];
+    if (!incoming.length) return fail(400, { error: 'Add at least one transaction.' });
+
+    const accounts = listAccounts(locals.user.id);
+    const chosenAccountId = Number(payload.accountId) || null;
+    const accountId = accounts.some((a) => a.id === chosenAccountId)
+      ? chosenAccountId
+      : (accounts[0]?.id ?? null);
+
+    let added = 0;
+    for (const r of incoming) {
+      const date = String(r.date || '').slice(0, 10);
+      const amount = Number(r.amount);
+      if (!date || !Number.isFinite(amount)) continue;
+      const description = String(r.description || '').trim();
+      let categoryId = r.category_id ? Number(r.category_id) : null;
+      if (!categoryId) categoryId = categoriseByRules(locals.user.id, description);
+      addTransaction(locals.user.id, { date, description, amount, category_id: categoryId, account_id: accountId });
+      added++;
+    }
+    if (!added) return fail(400, { error: 'None of the rows had a valid date and amount.' });
+    return { addedMany: added };
   },
 
   categorise: async ({ request, locals }) => {

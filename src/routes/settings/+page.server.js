@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { CURRENCIES } from '$lib/currency.js';
+import { DATE_FORMATS } from '$lib/csv.js';
 import { db } from '$lib/server/db.js';
 import {
   listCategories,
@@ -35,6 +36,8 @@ export function load({ locals }) {
   return {
     currencies: CURRENCIES,
     currency: locals.user.currency,
+    dateFormats: DATE_FORMATS,
+    dateFormat: locals.user.date_format,
     email: locals.user.email,
     isAdmin: !!locals.user.is_admin,
     categories: listCategories(userId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
@@ -52,6 +55,14 @@ export const actions = {
     if (!CURRENCIES.some((c) => c.code === code)) return fail(400, { error: 'Unknown currency.' });
     db.prepare('UPDATE users SET currency = ? WHERE id = ?').run(code, locals.user.id);
     return { section: 'currency', ok: true };
+  },
+
+  dateFormat: async ({ request, locals }) => {
+    const f = await request.formData();
+    const value = String(f.get('date_format') || '');
+    if (!DATE_FORMATS.some((d) => d.value === value)) return fail(400, { error: 'Unknown date format.' });
+    db.prepare('UPDATE users SET date_format = ? WHERE id = ?').run(value, locals.user.id);
+    return { section: 'dateFormat', ok: true };
   },
 
   addAccount: async ({ request, locals }) => {

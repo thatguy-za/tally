@@ -38,6 +38,7 @@ db.exec(`
     email         TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     currency      TEXT NOT NULL DEFAULT 'EUR',
+    date_format   TEXT NOT NULL DEFAULT 'dmy',
     is_admin      INTEGER NOT NULL DEFAULT 0,
     onboarded_at  TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -145,6 +146,12 @@ if (!userCols.includes('ai_off')) {
 if (!userCols.includes('onboarded_at')) {
   db.exec("ALTER TABLE users ADD COLUMN onboarded_at TEXT");
   db.exec("UPDATE users SET onboarded_at = datetime('now')");
+}
+// the CSV import review's date column used to carry its own per-import
+// format dropdown — moved here since it rarely changes, so each column only
+// needs one dropdown (the column mapping) instead of two.
+if (!userCols.includes('date_format')) {
+  db.exec("ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT 'dmy'");
 }
 
 // Existing databases predate the accounts table's column on transactions.

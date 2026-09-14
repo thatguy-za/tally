@@ -13,6 +13,7 @@
 
   const messages = {
     currency: 'Currency saved',
+    dateFormat: 'Date format saved',
     account: 'Account saved',
     category: 'Categories updated',
     rule: 'Rules updated',
@@ -52,8 +53,24 @@
     </form>
   </div>
 
-  <!-- Accounts -->
+  <!-- Date format -->
   <div class="card rise rise-2">
+    <h2 class="text-lg">Date format</h2>
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
+      How ambiguous numeric dates (e.g. 03/04/2026) are read when importing a CSV.
+    </p>
+    <form method="POST" action="?/dateFormat" use:enhance class="flex flex-wrap items-center gap-3">
+      <select class="input max-w-xs" name="date_format" value={data.dateFormat}>
+        {#each data.dateFormats as d}<option value={d.value}>{d.label}</option>{/each}
+      </select>
+      <button class="btn btn-primary">Save</button>
+      {#if ok('dateFormat')}<span class="text-sm" style="color:var(--positive)">Saved</span>{/if}
+      {#if err('dateFormat')}<span class="text-sm" style="color:var(--negative)">{err('dateFormat')}</span>{/if}
+    </form>
+  </div>
+
+  <!-- Accounts -->
+  <div class="card rise rise-3">
     <h2 class="text-lg">Accounts</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       Track more than one bank account — a current account and a savings account, say. Choose
@@ -108,7 +125,7 @@
   </div>
 
   <!-- Categories -->
-  <div class="card rise rise-2">
+  <div class="card rise rise-4">
     <h2 class="text-lg">Categories</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       Money in a <b>Savings</b> category counts as money you kept, not money you spent — it stays
@@ -174,7 +191,7 @@
   </div>
 
   <!-- Auto-categorisation rules -->
-  <div class="card rise rise-3">
+  <div class="card rise rise-5">
     <div class="mb-1 flex items-center justify-between">
       <h2 class="text-lg">Auto-categorisation rules</h2>
       <form method="POST" action="?/applyRules" use:enhance>
@@ -231,7 +248,7 @@
 
   <!-- AI categorisation opt-in (any user, when enabled) -->
   {#if data.aiAvailable}
-    <div class="card rise rise-3">
+    <div class="card rise rise-6">
       <div class="flex items-start justify-between gap-4">
         <div>
           <h2 class="flex items-center gap-2 text-lg">
@@ -253,7 +270,7 @@
   {/if}
 
   <!-- Password -->
-  <div class="card rise rise-4">
+  <div class="card rise rise-6">
     <h2 class="text-lg">Change password</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Signed in as {data.email}</p>
     <form method="POST" action="?/password" use:enhance class="grid max-w-md gap-3">
@@ -269,7 +286,7 @@
   </div>
 
   {#if data.isAdmin}
-    <a href="/settings/server" class="nudge rise rise-5">
+    <a href="/settings/server" class="nudge rise rise-7">
       <Icon name="settings" size={16} class="text-[var(--accent)]" />
       <span>Server settings — users &amp; AI assistant</span>
       <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />

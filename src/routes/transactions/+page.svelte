@@ -8,16 +8,16 @@
   import EmptyState from '$lib/components/EmptyState.svelte';
   import MerchantLogo from '$lib/components/MerchantLogo.svelte';
   import LogoPicker from '$lib/components/LogoPicker.svelte';
+  import AddImportOverlay from '$lib/components/AddImportOverlay.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
-  let showAdd = $state($page.url.searchParams.has('new'));
+  let showAddImport = $state($page.url.searchParams.has('new'));
   let showFilters = $state(false);
   let editingId = $state(null);
   let rulingId = $state(null);
   let editingLogoFor = $state(null);
   let selected = $state(new Set());
-  const today = new Date().toISOString().slice(0, 10);
 
   // optimistic UI state
   let catOverride = $state(new Map()); // id -> categoryId string ('' = uncategorised)
@@ -112,7 +112,8 @@
   $effect(() => {
     if (form === seenForm) return;
     seenForm = form;
-    if (form?.added) { showAdd = false; toast('Transaction added'); }
+    if (form?.added) { showAddImport = false; toast('Transaction added'); }
+    if (form?.addedMany) { showAddImport = false; toast(`Added ${form.addedMany} transaction${form.addedMany === 1 ? '' : 's'}`); }
     if (form?.updated) { editingId = null; toast('Transaction updated'); }
     if (form?.ruleSaved) {
       rulingId = null;
@@ -135,57 +136,11 @@
     <button class="btn btn-ghost" onclick={() => (showFilters = !showFilters)}>
       <Icon name="filter" size={14} /> Filters{activeFilterCount ? ` · ${activeFilterCount}` : ''}
     </button>
-    <a href="/transactions/import" class="btn btn-ghost"><Icon name="upload" size={14} /> Import</a>
-    <button class="btn btn-primary" onclick={() => (showAdd = !showAdd)}>
-      <Icon name="plus" size={14} /> Add
+    <button class="btn btn-primary" onclick={() => (showAddImport = !showAddImport)}>
+      <Icon name="plus" size={14} /> Add/Import
     </button>
   </div>
 </div>
-
-{#if showAdd}
-  <form transition:slide method="POST" action="?/add" use:enhance
-    class="card mb-4 grid gap-3 sm:grid-cols-6">
-    <div class="sm:col-span-2">
-      <label class="label" for="a-date">Date</label>
-      <input class="input" id="a-date" name="date" type="date" value={today} required />
-    </div>
-    <div class="sm:col-span-2">
-      <label class="label" for="a-desc">Description</label>
-      <input class="input" id="a-desc" name="description" placeholder="e.g. Supermarket" />
-    </div>
-    <div>
-      <label class="label" for="a-amount">Amount</label>
-      <input class="input" id="a-amount" name="amount" inputmode="decimal" placeholder="0.00" required />
-    </div>
-    <div>
-      <label class="label" for="a-dir">Type</label>
-      <select class="input" id="a-dir" name="direction">
-        <option value="out">Outgoing</option>
-        <option value="in">Incoming</option>
-      </select>
-    </div>
-    <div class="{data.accounts.length > 1 ? 'sm:col-span-2' : 'sm:col-span-3'}">
-      <label class="label" for="a-cat">Category</label>
-      <select class="input" id="a-cat" name="category_id">
-        <option value="">Auto (rules) / uncategorised</option>
-        {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
-      </select>
-    </div>
-    {#if data.accounts.length > 1}
-      <div class="sm:col-span-1">
-        <label class="label" for="a-acct">Account</label>
-        <select class="input" id="a-acct" name="account_id">
-          {#each data.accounts as a}<option value={String(a.id)}>{a.name}</option>{/each}
-        </select>
-      </div>
-    {/if}
-    <div class="flex items-end gap-2 sm:col-span-3">
-      <button class="btn btn-primary">Save</button>
-      <button type="button" class="btn btn-ghost" onclick={() => (showAdd = false)}>Cancel</button>
-      {#if form?.error}<span class="self-center text-sm" style="color:var(--negative)">{form.error}</span>{/if}
-    </div>
-  </form>
-{/if}
 
 {#if showFilters}
   <div transition:slide class="card mb-4 grid gap-3 sm:grid-cols-4">
@@ -259,12 +214,6 @@
     </span>
     <input class="input pl-9" placeholder="Search description…" value={data.filters.search}
       onchange={(e) => setParam('q', e.currentTarget.value)} />
-  </div>
-  <div class="ml-auto flex items-center gap-4 text-[13px]">
-    <span>In <Money value={data.sum.incoming} currency={data.currency} colour="positive" class="font-medium" /></span>
-    <span>Out <Money value={data.sum.outgoing} currency={data.currency} colour="ink" class="font-medium" /></span>
-    <span class="text-[var(--ink-faint)]">·</span>
-    <span>Net <Money value={data.sum.incoming - data.sum.outgoing} currency={data.currency} colour="auto" class="font-semibold" /></span>
   </div>
 </div>
 
@@ -454,7 +403,7 @@
       hint={activeFilterCount
         ? 'Try widening the date range or clearing a filter.'
         : 'Add one by hand, or import a CSV from your bank.'}
-      cta={activeFilterCount ? { href: '/transactions', label: 'Clear filters' } : { href: '/transactions/import', label: 'Import CSV' }}
+      cta={activeFilterCount ? { href: '/transactions', label: 'Clear filters' } : { onClick: () => (showAddImport = true), label: 'Add/Import' }}
     />
   {/if}
 </div>
@@ -465,4 +414,8 @@
     currentDomain={editingLogoFor.logo_domain}
     onClose={() => (editingLogoFor = null)}
   />
+{/if}
+
+{#if showAddImport}
+  <AddImportOverlay {data} {form} onClose={() => (showAddImport = false)} />
 {/if}

@@ -1,6 +1,6 @@
 <script>
   import Icon from './Icon.svelte';
-  /** @type {{ icon?: string, title: string, hint?: string, cta?: {href:string,label:string} }} */
+  /** @type {{ icon?: string, title: string, hint?: string, cta?: {href?:string, onClick?:()=>void, label:string} }} */
   let { icon = 'sparkle', title, hint = '', cta = null } = $props();
 </script>
 
@@ -11,5 +11,11 @@
   </span>
   <p class="text-[15px] font-medium" style="font-family:var(--font-display)">{title}</p>
   {#if hint}<p class="max-w-xs text-[13px] text-[var(--ink-faint)]">{hint}</p>{/if}
-  {#if cta}<a href={cta.href} class="btn btn-primary mt-2">{cta.label}</a>{/if}
+  {#if cta}
+    {#if cta.onClick}
+      <button type="button" class="btn btn-primary mt-2" onclick={cta.onClick}>{cta.label}</button>
+    {:else}
+      <a href={cta.href} class="btn btn-primary mt-2">{cta.label}</a>
+    {/if}
+  {/if}
 </div>

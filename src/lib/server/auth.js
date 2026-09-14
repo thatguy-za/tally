@@ -54,7 +54,7 @@ export function getSessionUser(sessionId) {
   if (!sessionId) return null;
   const row = db
     .prepare(
-      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.currency, u.is_admin, u.onboarded_at
+      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.currency, u.date_format, u.is_admin, u.onboarded_at
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`
     )
     .get(sessionId);
@@ -67,6 +67,7 @@ export function getSessionUser(sessionId) {
     id: row.user_id,
     email: row.email,
     currency: row.currency,
+    date_format: row.date_format,
     is_admin: row.is_admin,
     onboarded_at: row.onboarded_at
   };

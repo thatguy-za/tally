@@ -23,7 +23,8 @@ export function load({ locals }) {
     accounts: listAccounts(locals.user.id),
     // matched client-side during review, before a row is ever sent to AI
     rules: listRules(locals.user.id),
-    aiAvailable: aiEnabled() && getUserAiCategorise(locals.user.id)
+    aiAvailable: aiEnabled() && getUserAiCategorise(locals.user.id),
+    dateFormat: locals.user.date_format
   };
 }
 

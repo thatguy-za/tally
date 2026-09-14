@@ -62,7 +62,7 @@
     closing = true;
     await fetch('/onboarding?/finish', { method: 'POST', body: new FormData() });
     await invalidateAll();
-    goto('/transactions/import');
+    goto('/transactions?new=1');
   }
 </script>
 
