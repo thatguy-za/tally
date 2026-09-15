@@ -5,7 +5,6 @@ import {
   budgetStatus,
   setBudget,
   deleteBudget,
-  listMonths,
   categoryMonthlyAverages
 } from '$lib/server/queries.js';
 
@@ -17,7 +16,6 @@ export function load({ locals, url }) {
   const withTarget = expenses.filter((e) => e.target != null);
   return {
     month,
-    months: listMonths(locals.user.id),
     expenses,
     savings: rows.filter((r) => r.kind === 'saving'),
     income: rows.filter((r) => r.kind === 'income'),

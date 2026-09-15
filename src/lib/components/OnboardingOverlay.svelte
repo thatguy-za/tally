@@ -42,6 +42,10 @@
   let newCategoryName = $state('');
   let newCategoryKind = $state('expense');
   let newCategoryColor = $state('#7b8a5a');
+  // which bucket's inline "add" row is open, or null
+  let addingKind = $state(null);
+  let quickCategoryName = $state('');
+  let quickCategoryColor = $state('#7b8a5a');
   let closing = $state(false);
 
   const kindLabel = {
@@ -245,7 +249,26 @@
               {#each g.items as c (c.id)}
                 <li class="flex items-center justify-between gap-2 px-3 py-1.5 text-[13px]">
                   <span class="flex min-w-0 items-center gap-2">
-                    <span class="dot shrink-0" style="background:{c.color}"></span>
+                    <form
+                      method="POST"
+                      action="/settings?/categoryColor"
+                      use:enhance={() => async ({ result }) => {
+                        if (result.type === 'success') await invalidateAll();
+                      }}
+                    >
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="color" id="ob-cat-color-{c.id}" value={c.color} />
+                      <ColorPicker
+                        value={c.color}
+                        size="h-5 w-5"
+                        label="Colour for {c.name}"
+                        onchange={(col) => {
+                          const input = document.getElementById(`ob-cat-color-${c.id}`);
+                          input.value = col;
+                          input.form?.requestSubmit();
+                        }}
+                      />
+                    </form>
                     <span class="truncate">{c.name}</span>
                   </span>
                   <form
@@ -273,6 +296,35 @@
                 </li>
               {/each}
             </ul>
+
+            {#if addingKind === g.kind}
+              <form
+                method="POST"
+                action="/settings?/addCategory"
+                class="mt-2 flex items-center gap-2"
+                use:enhance={() => async ({ result }) => {
+                  if (result.type === 'success') {
+                    quickCategoryName = '';
+                    addingKind = null;
+                    await invalidateAll();
+                  }
+                }}
+              >
+                <input type="hidden" name="color" value={quickCategoryColor} />
+                <input type="hidden" name="kind" value={g.kind} />
+                <ColorPicker bind:value={quickCategoryColor} size="h-7 w-7" label="Colour for new category" />
+                <input class="input min-w-0 flex-1" name="name" placeholder="{kindLabel[g.kind]} category name…"
+                  bind:value={quickCategoryName} />
+                <button class="btn btn-ghost btn-sm" disabled={!quickCategoryName.trim()}>Add</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick={() => (addingKind = null)}>Cancel</button>
+              </form>
+            {:else}
+              <button type="button"
+                class="mt-2 flex items-center gap-1.5 text-[13px] text-[var(--ink-faint)] hover:text-[var(--ink)]"
+                onclick={() => { addingKind = g.kind; quickCategoryColor = '#7b8a5a'; }}>
+                <Icon name="plus" size={14} /> Add {kindLabel[g.kind].toLowerCase()} category
+              </button>
+            {/if}
           </div>
         {/each}
       </div>

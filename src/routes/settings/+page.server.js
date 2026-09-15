@@ -7,6 +7,7 @@ import {
   createCategory,
   deleteCategory,
   setCategoryKind,
+  setCategoryColor,
   listAccounts,
   createAccount,
   renameAccount,
@@ -119,6 +120,15 @@ export const actions = {
     const kind = String(f.get('kind') || '');
     if (!id) return fail(400, { section: 'category', error: 'Unknown category.' });
     setCategoryKind(locals.user.id, id, kind);
+    return { section: 'category', ok: true, msg: 'Category updated' };
+  },
+
+  categoryColor: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    const color = String(f.get('color') || '#64748b');
+    if (!id) return fail(400, { section: 'category', error: 'Unknown category.' });
+    setCategoryColor(locals.user.id, id, color);
     return { section: 'category', ok: true, msg: 'Category updated' };
   },
 

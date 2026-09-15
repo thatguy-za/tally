@@ -1,9 +1,17 @@
 <script>
   import { enhance } from '$app/forms';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { formatMoney, formatMonth } from '$lib/currency.js';
-  import MonthPicker from '$lib/components/MonthPicker.svelte';
+  import MonthCalendarPicker from '$lib/components/MonthCalendarPicker.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
+
+  function setMonth(month) {
+    const url = new URL($page.url);
+    url.searchParams.set('month', month);
+    goto(url, { keepFocus: true, noScroll: true });
+  }
 
   let seenForm;
   $effect(() => {
@@ -29,9 +37,11 @@
   <div class="flex items-center gap-2">
     <form method="POST" action="?/generateTargets" use:enhance
       onsubmit={(e) => { if (!confirm('Set every expense target to its average monthly spend so far? This overwrites existing targets.')) e.preventDefault(); }}>
-      <button class="btn btn-ghost whitespace-nowrap">Generate targets</button>
+      <button class="input flex items-center justify-center gap-1.5 whitespace-nowrap font-medium hover:bg-[var(--paper-sunk)]">
+        Generate targets
+      </button>
     </form>
-    <MonthPicker months={data.months} selected={data.month} />
+    <MonthCalendarPicker value={data.month} onChange={setMonth} />
   </div>
 </div>
 
@@ -70,8 +80,13 @@
             </span>
             <span class="flex items-center gap-2">
               <span class="tnum text-[var(--ink-faint)]">{formatMoney(c.actual, data.currency)} /</span>
-              <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
-                placeholder="No target" value={c.target ?? ''} />
+              <!-- keyed on the target so a server-generated value (e.g. from
+                   "Generate targets") always shows, even if the user already
+                   focused this field once this page load -->
+              {#key c.target}
+                <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
+                  placeholder="No target" value={c.target ?? ''} />
+              {/key}
             </span>
           </div>
           {#if c.target != null}
@@ -107,8 +122,10 @@
                   <span class="tnum text-[var(--ink-faint)]">
                     {formatMoney(c.actual, data.currency)}{#if c.target != null} / {formatMoney(c.target, data.currency)}{/if}
                   </span>
-                  <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
-                    placeholder="No target" value={c.target ?? ''} />
+                  {#key c.target}
+                    <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
+                      placeholder="No target" value={c.target ?? ''} />
+                  {/key}
                 </span>
               </div>
               {#if c.target != null}

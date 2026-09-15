@@ -40,6 +40,10 @@ export function setCategoryKind(userId, id, kind) {
   );
 }
 
+export function setCategoryColor(userId, id, color) {
+  db.prepare('UPDATE categories SET color = ? WHERE id = ? AND user_id = ?').run(color, id, userId);
+}
+
 export function deleteCategory(userId, id) {
   db.prepare('DELETE FROM categories WHERE id = ? AND user_id = ?').run(id, userId);
 }
