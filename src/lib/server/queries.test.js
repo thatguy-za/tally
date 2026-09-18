@@ -32,8 +32,8 @@ let nextUser = 1;
 function makeUser() {
   const id = nextUser++;
   db.prepare(
-    "INSERT INTO users (id, email, password_hash, currency) VALUES (?, ?, 'x', 'EUR')"
-  ).run(id, `test-user-${id}@example.com`);
+    "INSERT INTO users (id, username, password_hash, currency) VALUES (?, ?, 'x', 'EUR')"
+  ).run(id, `test-user-${id}`);
   return id;
 }
 

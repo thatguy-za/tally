@@ -17,6 +17,7 @@
     account: 'Account saved',
     category: 'Categories updated',
     rule: 'Rules updated',
+    username: 'Username updated',
     password: 'Password updated',
     aiuser: 'Preference saved'
   };
@@ -269,10 +270,22 @@
     </div>
   {/if}
 
+  <!-- Username -->
+  <div class="card rise rise-6">
+    <h2 class="text-lg">Username</h2>
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Used to sign in. Can be anything — even an email address.</p>
+    <form method="POST" action="?/username" use:enhance class="flex max-w-md flex-wrap items-center gap-3">
+      <input class="input flex-1" name="username" type="text" autocomplete="username"
+        value={data.username} required />
+      <button class="btn btn-primary">Save</button>
+      {#if err('username')}<span class="text-sm" style="color:var(--negative)">{err('username')}</span>{/if}
+    </form>
+  </div>
+
   <!-- Password -->
   <div class="card rise rise-6">
     <h2 class="text-lg">Change password</h2>
-    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Signed in as {data.email}</p>
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Signed in as {data.username}</p>
     <form method="POST" action="?/password" use:enhance class="grid max-w-md gap-3">
       <input class="input" name="current" type="password" placeholder="Current password" autocomplete="current-password" required />
       <input class="input" name="next" type="password" placeholder="New password" autocomplete="new-password" minlength="8" required />

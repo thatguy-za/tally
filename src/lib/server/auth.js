@@ -18,24 +18,24 @@ export function verifyPassword(password, stored) {
   return derived.length === expected.length && timingSafeEqual(derived, expected);
 }
 
-export function createUser(email, password) {
+export function createUser(username, password) {
   const count = Number(db.prepare('SELECT COUNT(*) AS n FROM users').get().n);
   const info = db
-    .prepare('INSERT INTO users (email, password_hash, is_admin) VALUES (?, ?, ?)')
-    .run(email.toLowerCase().trim(), hashPassword(password), count === 0 ? 1 : 0);
+    .prepare('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)')
+    .run(username.toLowerCase().trim(), hashPassword(password), count === 0 ? 1 : 0);
   const id = Number(info.lastInsertRowid);
   seedCategories(id);
   seedDefaultAccount(id);
   return getUserById(id);
 }
 
-export function getUserByEmail(email) {
-  return db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim());
+export function getUserByUsername(username) {
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(username.toLowerCase().trim());
 }
 
 export function getUserById(id) {
   return db
-    .prepare('SELECT id, email, currency, is_admin, onboarded_at FROM users WHERE id = ?')
+    .prepare('SELECT id, username, currency, is_admin, onboarded_at FROM users WHERE id = ?')
     .get(id);
 }
 
@@ -54,7 +54,7 @@ export function getSessionUser(sessionId) {
   if (!sessionId) return null;
   const row = db
     .prepare(
-      `SELECT s.id, s.expires_at, u.id AS user_id, u.email, u.currency, u.date_format, u.is_admin, u.onboarded_at
+      `SELECT s.id, s.expires_at, u.id AS user_id, u.username, u.currency, u.date_format, u.is_admin, u.onboarded_at
        FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`
     )
     .get(sessionId);
@@ -65,7 +65,7 @@ export function getSessionUser(sessionId) {
   }
   return {
     id: row.user_id,
-    email: row.email,
+    username: row.username,
     currency: row.currency,
     date_format: row.date_format,
     is_admin: row.is_admin,

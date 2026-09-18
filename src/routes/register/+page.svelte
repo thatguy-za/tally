@@ -35,9 +35,10 @@
 
     <form method="POST" use:enhance={submit} class="space-y-4">
       <div>
-        <label class="label" for="email">Email</label>
-        <input class="input" id="email" name="email" type="email" autocomplete="email"
-          value={form?.email ?? ''} required />
+        <label class="label" for="username">Username</label>
+        <input class="input" id="username" name="username" type="text" autocomplete="username"
+          value={form?.username ?? ''} required />
+        <p class="mt-1 text-xs text-[var(--ink-faint)]">Anything you like — even your email address.</p>
       </div>
       <div>
         <label class="label" for="password">Password</label>

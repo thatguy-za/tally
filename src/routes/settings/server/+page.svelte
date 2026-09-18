@@ -105,7 +105,7 @@
         <li class="py-2.5 text-[13px]">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="flex items-center gap-2 font-medium">
-              {u.email}
+              {u.username}
               {#if u.is_admin}<span class="chip chip-accent">admin</span>{/if}
               {#if data.ai.configured && u.ai_off}<span class="chip">AI off</span>{/if}
               <span class="text-xs font-normal text-[var(--ink-faint)]">{u.tx_count} tx</span>
@@ -120,7 +120,7 @@
               </form>
               {#if u.id !== data.myId}
                 <form method="POST" action="?/deleteUser" use:enhance
-                  onsubmit={(e) => { if (!confirm(`Delete ${u.email} and all their data?`)) e.preventDefault(); }}>
+                  onsubmit={(e) => { if (!confirm(`Delete ${u.username} and all their data?`)) e.preventDefault(); }}>
                   <input type="hidden" name="id" value={u.id} />
                   <button style="color:var(--negative)" class="hover:underline">Delete</button>
                 </form>

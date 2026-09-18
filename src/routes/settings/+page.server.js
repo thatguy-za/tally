@@ -19,7 +19,7 @@ import {
   setUserAiCategorise,
   getUserAiCategorise
 } from '$lib/server/queries.js';
-import { verifyPassword, hashPassword } from '$lib/server/auth.js';
+import { verifyPassword, hashPassword, getUserByUsername } from '$lib/server/auth.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -39,7 +39,7 @@ export function load({ locals }) {
     currency: locals.user.currency,
     dateFormats: DATE_FORMATS,
     dateFormat: locals.user.date_format,
-    email: locals.user.email,
+    username: locals.user.username,
     isAdmin: !!locals.user.is_admin,
     categories: listCategories(userId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
     accounts: listAccounts(userId).map((a) => ({ ...a, count: acctCountMap[a.id] || 0 })),
@@ -169,6 +169,18 @@ export const actions = {
     const f = await request.formData();
     setUserAiCategorise(locals.user.id, f.get('on') === '1');
     return { section: 'aiuser', ok: true };
+  },
+
+  username: async ({ request, locals }) => {
+    const f = await request.formData();
+    const username = String(f.get('username') || '').trim();
+    if (!username || username.length > 64 || /\s/.test(username))
+      return fail(400, { section: 'username', error: 'Choose a username with no spaces (up to 64 characters).' });
+    const existing = getUserByUsername(username);
+    if (existing && existing.id !== locals.user.id)
+      return fail(400, { section: 'username', error: 'That username is already taken.' });
+    db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username.toLowerCase(), locals.user.id);
+    return { section: 'username', ok: true, msg: 'Username updated' };
   },
 
   password: async ({ request, locals }) => {

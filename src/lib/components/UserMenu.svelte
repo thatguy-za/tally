@@ -1,7 +1,7 @@
 <script>
   import { page } from '$app/stores';
   import Icon from './Icon.svelte';
-  /** @type {{ user: { email: string, is_admin: number } }} */
+  /** @type {{ user: { username: string, is_admin: number } }} */
   let { user } = $props();
 
   let open = $state(false);
@@ -28,9 +28,9 @@
   >
     <span class="grid h-6 w-6 place-items-center rounded-full text-[11px] font-semibold"
       style="background:var(--accent-wash);color:var(--accent-strong)">
-      {user.email[0]?.toUpperCase() ?? '?'}
+      {user.username[0]?.toUpperCase() ?? '?'}
     </span>
-    <span class="hidden max-w-[160px] truncate sm:inline">{user.email}</span>
+    <span class="hidden max-w-[160px] truncate sm:inline">{user.username}</span>
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
       stroke-linecap="round" class="text-[var(--ink-faint)] transition-transform {open ? 'rotate-180' : ''}">
       <path d="M4 6l4 4 4-4" />
@@ -42,7 +42,7 @@
       class="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-[11px] border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-[var(--shadow-lg)]"
       role="menu"
     >
-      <p class="truncate px-3 py-1.5 text-[11px] text-[var(--ink-faint)]">{user.email}</p>
+      <p class="truncate px-3 py-1.5 text-[11px] text-[var(--ink-faint)]">{user.username}</p>
       <a
         href="/settings"
         role="menuitem"

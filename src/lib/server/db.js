@@ -35,7 +35,7 @@ export function tx(fn) {
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    email         TEXT NOT NULL UNIQUE,
+    username      TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     currency      TEXT NOT NULL DEFAULT 'EUR',
     date_format   TEXT NOT NULL DEFAULT 'dmy',
@@ -133,6 +133,12 @@ db.exec(`
 
 // --- lightweight migrations for existing databases ---
 const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+// Users used to be identified by email. Renaming keeps the UNIQUE constraint
+// and existing values intact, so everyone's old email becomes their username.
+if (userCols.includes('email') && !userCols.includes('username')) {
+  db.exec('ALTER TABLE users RENAME COLUMN email TO username');
+  userCols[userCols.indexOf('email')] = 'username';
+}
 if (!userCols.includes('ai_categorise')) {
   db.exec('ALTER TABLE users ADD COLUMN ai_categorise INTEGER NOT NULL DEFAULT 0');
 }
