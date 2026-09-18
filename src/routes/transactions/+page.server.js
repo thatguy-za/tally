@@ -21,6 +21,7 @@ import {
   getUserAiCategorise
 } from '$lib/server/queries.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
+import { categoriseUncategorisedTransactions } from '$lib/server/ai.js';
 
 const num = (v) => {
   const n = parseAmount(String(v ?? ''));
@@ -232,5 +233,30 @@ export const actions = {
     if (!description) return fail(400, { section: 'logo', error: 'Missing description.' });
     resetLogoDomain(description);
     return { section: 'logo', ok: true };
+  },
+
+  // "re-run categorisation": the user's own rules get first pick, then
+  // whatever they miss goes to the AI (same order as a CSV import) — only
+  // ever touches transactions that were uncategorised when the run started
+  recategorise: async ({ locals }) => {
+    const userId = locals.user.id;
+    const beforeIds = new Set(listTransactions(userId, { categoryId: 'none' }).map((t) => t.id));
+    if (!beforeIds.size) return { section: 'recategorise', ok: true, changed: [], byRules: 0, byAi: 0 };
+
+    const byRules = applyRules(userId, { onlyUncategorised: true });
+
+    let byAi = 0;
+    let aiNote = '';
+    if (aiEnabled() && getUserAiCategorise(userId)) {
+      try {
+        const r = await categoriseUncategorisedTransactions(userId);
+        byAi = r.updated;
+      } catch (e) {
+        aiNote = e?.message || 'AI categorisation failed.';
+      }
+    }
+
+    const changed = listTransactions(userId, {}).filter((t) => beforeIds.has(t.id) && t.category_id != null);
+    return { section: 'recategorise', ok: true, changed, byRules, byAi, aiNote };
   }
 };

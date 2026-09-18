@@ -1,5 +1,5 @@
 <script>
-  import { enhance } from '$app/forms';
+  import { enhance, deserialize } from '$app/forms';
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import { fly, slide } from 'svelte/transition';
@@ -101,6 +101,28 @@
     }
   }
 
+  // ---- re-run categorisation: rules first, then whatever the AI can add ----
+  let recatRunning = $state(false);
+  let recatResult = $state(null);
+  async function runRecategorise() {
+    recatRunning = true;
+    try {
+      const res = await fetch('?/recategorise', { method: 'POST', body: new FormData(), headers: { 'x-sveltekit-action': 'true' } });
+      const result = deserialize(await res.text());
+      if (result.type === 'success') {
+        recatResult = result.data;
+        if (recatResult.changed.length) await invalidateAll();
+        else toast('Nothing new to categorise.');
+      } else {
+        toast(result.data?.error || 'Could not re-run categorisation.', { type: 'info' });
+      }
+    } catch {
+      toast('Could not re-run categorisation.', { type: 'info' });
+    } finally {
+      recatRunning = false;
+    }
+  }
+
   function deleteSubmit(id) {
     removed.add(id);
     removed = new Set(removed);
@@ -143,11 +165,77 @@
     <button class="btn btn-ghost" onclick={() => (showFilters = !showFilters)}>
       <Icon name="filter" size={14} /> Filters{activeFilterCount ? ` · ${activeFilterCount}` : ''}
     </button>
+    <button type="button" class="flex items-center gap-1.5 px-1 text-[13px] text-[var(--ink-faint)] transition-colors hover:text-[var(--ink)] disabled:opacity-50"
+      onclick={runRecategorise} disabled={recatRunning}>
+      <Icon name="repeat" size={13} class={recatRunning ? 'animate-spin' : ''} />
+      {recatRunning ? 'Re-running…' : 'Re-run categorisation'}
+    </button>
     <button class="btn btn-primary" onclick={() => (showAddImport = !showAddImport)}>
       <Icon name="plus" size={14} /> Add/Import
     </button>
   </div>
 </div>
+
+{#if recatResult}
+  <div class="mb-4 rise" transition:slide>
+    <div class="card mb-3" style="border-color:var(--accent);background:var(--accent-wash)">
+      <div class="flex items-start justify-between gap-3">
+        <p class="font-semibold" style="color:var(--accent-strong)">
+          {recatResult.changed.length
+            ? `Categorised ${recatResult.changed.length} transaction${recatResult.changed.length === 1 ? '' : 's'}.`
+            : 'Nothing new to categorise.'}
+        </p>
+        <button type="button" class="shrink-0 text-[var(--accent-strong)] hover:opacity-70" aria-label="Dismiss" onclick={() => (recatResult = null)}>
+          <Icon name="x" size={16} />
+        </button>
+      </div>
+      {#if recatResult.changed.length}
+        <ul class="mt-1.5 space-y-0.5 text-[13px]" style="color:var(--accent-strong)">
+          {#if recatResult.byRules}<li>· {recatResult.byRules} by your rules.</li>{/if}
+          {#if recatResult.byAi}<li>· {recatResult.byAi} by AI.</li>{/if}
+          {#if recatResult.aiNote}<li>· AI couldn't finish — {recatResult.aiNote}</li>{/if}
+        </ul>
+      {/if}
+    </div>
+
+    {#if recatResult.changed.length}
+      <div class="card card-flush">
+        <div class="overflow-x-auto">
+          <table class="w-full text-[13px]">
+            <thead>
+              <tr class="border-b border-[var(--border)] text-left">
+                <th class="th px-3 py-2">Date</th>
+                <th class="th px-3 py-2">Description</th>
+                <th class="th px-3 py-2 text-right">Amount</th>
+                <th class="th px-3 py-2">Category</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each recatResult.changed as t (t.id)}
+                <tr class="border-b border-[var(--border)] last:border-0">
+                  <td class="tnum whitespace-nowrap px-3 py-2 text-[var(--ink-faint)]">{t.date}</td>
+                  <td class="px-3 py-2">{t.description || '—'}</td>
+                  <td class="px-3 py-2 text-right">
+                    <Money value={t.amount} currency={data.currency} colour="auto" class="font-medium" />
+                  </td>
+                  <td class="px-3 py-2">
+                    <div class="flex items-center gap-1.5">
+                      <span class="dot shrink-0" style="background:{catColor(currentCat(t))}"></span>
+                      <CategorySelect categories={data.categories} value={currentCat(t)}
+                        triggerClass="cell text-[13px]"
+                        onChange={(v) => categoriseViaPicker(t, v)}
+                        onCreated={() => invalidateAll()} />
+                    </div>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {/if}
+  </div>
+{/if}
 
 {#if showFilters}
   <div transition:slide class="card mb-4 grid gap-3 sm:grid-cols-4">

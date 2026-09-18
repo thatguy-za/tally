@@ -3,6 +3,7 @@ import { db } from '$lib/server/db.js';
 import {
   listCategories,
   createCategory,
+  updateCategory,
   deleteCategory,
   setCategoryKind,
   setCategoryColor,
@@ -39,6 +40,21 @@ export const actions = {
       return fail(400, { section: 'category', error: 'A category with that name already exists.' });
     }
     return { section: 'category', ok: true, created };
+  },
+
+  updateCategory: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    const name = String(f.get('name') || '').trim();
+    const kind = String(f.get('kind') || 'expense');
+    const color = String(f.get('color') || '#64748b');
+    if (!id || !name) return fail(400, { section: 'category', error: 'Name is required.' });
+    try {
+      updateCategory(locals.user.id, id, { name, kind, color });
+    } catch {
+      return fail(400, { section: 'category', error: 'A category with that name already exists.' });
+    }
+    return { section: 'category', ok: true, msg: 'Category updated' };
   },
 
   categoryKind: async ({ request, locals }) => {

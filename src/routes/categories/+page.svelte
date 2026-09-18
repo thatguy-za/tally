@@ -7,8 +7,15 @@
   let { data, form } = $props();
 
   let newColor = $state('#7b8a5a');
+  let editingId = $state(null);
+  let editColor = $state('#64748b');
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
+
+  function startEdit(c) {
+    editingId = c.id;
+    editColor = c.color;
+  }
 
   const kindLabel = {
     expense: 'Spending',
@@ -24,8 +31,10 @@
     if (form === seenForm) return;
     seenForm = form;
     if (form?.section === 'category') {
-      if (form?.ok) toast(form.msg || messages[form.section] || 'Saved');
-      else if (form?.error) toast(form.error, { type: 'info' });
+      if (form?.ok) {
+        toast(form.msg || messages[form.section] || 'Saved');
+        editingId = null;
+      } else if (form?.error) toast(form.error, { type: 'info' });
     }
   });
 
@@ -133,45 +142,74 @@
       for the starting balance a bank statement often includes when you begin tracking an account —
       it's excluded from income and spending too.
     </p>
-    <ul class="mb-4 divide-y divide-[var(--border)]">
-      {#each data.categories as c}
-        <li class="flex items-center justify-between gap-3 py-2 text-[13px]">
-          <span class="flex min-w-0 items-center gap-2">
-            <form method="POST" action="?/categoryColor" use:enhance>
-              <input type="hidden" name="id" value={c.id} />
-              <input type="hidden" name="color" id="cat-color-{c.id}" value={c.color} />
-              <ColorPicker value={c.color} size="h-5 w-5" label="Colour for {c.name}"
-                onchange={(col) => {
-                  const input = document.getElementById(`cat-color-${c.id}`);
-                  input.value = col;
-                  input.form?.requestSubmit();
-                }} />
-            </form>
-            <span class="truncate">{c.name}</span>
-            <form method="POST" action="?/categoryKind" use:enhance>
-              <input type="hidden" name="id" value={c.id} />
-              <select name="kind" class="cell text-[12px]" value={c.kind}
-                aria-label="What kind of category {c.name} is"
-                onchange={(e) => e.currentTarget.form.requestSubmit()}>
-                <option value="expense">Spending</option>
-                <option value="income">Income</option>
-                <option value="saving">Savings</option>
-                <option value="transfer">Transfer</option>
-                <option value="opening_balance">Opening balance</option>
-              </select>
-            </form>
-          </span>
-          <span class="flex items-center gap-3">
-            <span class="text-xs text-[var(--ink-faint)]">{c.count} tx</span>
-            <form method="POST" action="?/deleteCategory" use:enhance
-              onsubmit={(e) => { if (c.count && !confirm(`${c.count} transactions will become uncategorised. Continue?`)) e.preventDefault(); }}>
-              <input type="hidden" name="id" value={c.id} />
-              <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete"><Icon name="trash" size={14} /></button>
-            </form>
-          </span>
-        </li>
-      {/each}
-    </ul>
+    <div class="mb-4 overflow-x-auto rounded-[10px] border border-[var(--border)]">
+      <table class="w-full text-[13px]">
+        <thead>
+          <tr class="border-b border-[var(--border)] text-left">
+            <th class="th px-3 py-2">Name</th>
+            <th class="th px-3 py-2">Type</th>
+            <th class="th px-3 py-2 text-right">Transactions</th>
+            <th class="w-16"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each data.categories as c (c.id)}
+            {#if editingId === c.id}
+              <tr class="border-b border-[var(--border)] last:border-0">
+                <td colspan="4" class="p-3" style="background:var(--paper-sunk)">
+                  <form method="POST" action="?/updateCategory" use:enhance class="grid gap-2 sm:grid-cols-6">
+                    <input type="hidden" name="id" value={c.id} />
+                    <div class="flex items-center gap-2 sm:col-span-2">
+                      <input type="hidden" name="color" value={editColor} />
+                      <ColorPicker bind:value={editColor} size="h-[38px] w-10 shrink-0 rounded-[9px]" label="Colour for {c.name}" />
+                      <input class="input min-w-0 flex-1" name="name" value={c.name} required />
+                    </div>
+                    <select class="input sm:col-span-2" name="kind" value={c.kind}>
+                      <option value="expense">Spending</option>
+                      <option value="income">Income</option>
+                      <option value="saving">Savings</option>
+                      <option value="transfer">Transfer</option>
+                      <option value="opening_balance">Opening balance</option>
+                    </select>
+                    <div class="flex items-center gap-2 sm:col-span-2">
+                      <button class="btn btn-primary btn-sm">Save</button>
+                      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingId = null)}>Cancel</button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+            {:else}
+              <tr class="group border-b border-[var(--border)] last:border-0 transition-colors hover:bg-[var(--paper-sunk)]/60">
+                <td class="px-3 py-2.5">
+                  <span class="flex min-w-0 items-center gap-2">
+                    <span class="dot shrink-0" style="background:{c.color}"></span>
+                    <span class="truncate font-medium">{c.name}</span>
+                  </span>
+                </td>
+                <td class="px-3 py-2.5 text-[var(--ink-faint)]">{kindLabel[c.kind] || c.kind}</td>
+                <td class="px-3 py-2.5 text-right tnum text-[var(--ink-faint)]">{c.count}</td>
+                <td class="px-3 py-2.5">
+                  <div class="flex justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
+                    <button type="button" class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"
+                      data-tip="Edit" aria-label="Edit {c.name}" onclick={() => startEdit(c)}>
+                      <Icon name="edit" size={14} />
+                    </button>
+                    <form method="POST" action="?/deleteCategory" use:enhance
+                      onsubmit={(e) => { if (c.count && !confirm(`${c.count} transactions will become uncategorised. Continue?`)) e.preventDefault(); }}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"
+                        data-tip="Delete" aria-label="Delete {c.name}">
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {/if}
+          {/each}
+        </tbody>
+      </table>
+    </div>
     <form method="POST" action="?/addCategory" use:enhance class="flex flex-wrap items-end gap-3">
       <div>
         <label class="label" for="c-name">New category</label>

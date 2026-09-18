@@ -48,6 +48,17 @@ export function setCategoryColor(userId, id, color) {
   db.prepare('UPDATE categories SET color = ? WHERE id = ? AND user_id = ?').run(color, id, userId);
 }
 
+/** Full edit — name, kind and colour together, for the Categories page's edit row. */
+export function updateCategory(userId, id, { name, kind, color }) {
+  db.prepare('UPDATE categories SET name = ?, kind = ?, color = ? WHERE id = ? AND user_id = ?').run(
+    name.trim(),
+    normaliseKind(kind),
+    color || '#64748b',
+    id,
+    userId
+  );
+}
+
 export function deleteCategory(userId, id) {
   db.prepare('DELETE FROM categories WHERE id = ? AND user_id = ?').run(id, userId);
 }

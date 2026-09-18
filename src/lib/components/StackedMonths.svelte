@@ -1,5 +1,6 @@
 <script>
   import { formatMoney } from '$lib/currency.js';
+  import Icon from './Icon.svelte';
 
   /**
    * One pair of stacked bars per month — income on the left, spending on the
@@ -34,10 +35,33 @@
   const short = (v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v)));
   const fill = (c) => c || 'var(--border-strong)';
 
-  const sumOf = (o) => Object.values(o).reduce((s, v) => s + v, 0);
+  const sumSeries = (bucket, series) => series.reduce((s, c) => s + (bucket[c.id] || 0), 0);
+
+  // ---- click a legend entry to isolate that category across every month ----
+  let focused = $state(null); // { id, source: 'income' | 'expense', name, color }
+  function toggleFocus(seg, source) {
+    focused = focused?.id === seg.id && focused.source === source ? null : { ...seg, source };
+  }
+  let activeIncome = $derived(
+    !focused ? income : focused.source === 'income' ? income.filter((s) => s.id === focused.id) : []
+  );
+  let activeExpense = $derived(
+    !focused ? expense : focused.source === 'expense' ? expense.filter((s) => s.id === focused.id) : []
+  );
+
+  // ---- vertical zoom: a multiplier on top of the auto-fit ceiling ----
+  const ZOOM_MIN = 0.25;
+  const ZOOM_MAX = 8;
+  let zoom = $state(1);
+  function zoomIn() { zoom = Math.min(ZOOM_MAX, zoom * 1.5); }
+  function zoomOut() { zoom = Math.max(ZOOM_MIN, zoom / 1.5); }
+  function zoomReset() { zoom = 1; }
 
   let max = $derived(
-    Math.max(1, ...months.flatMap((m) => [sumOf(values[m].income), sumOf(values[m].expense)]))
+    Math.max(
+      1,
+      ...months.flatMap((m) => [sumSeries(values[m].income, activeIncome), sumSeries(values[m].expense, activeExpense)])
+    ) / zoom
   );
   // a tidy ceiling: 1, 2 or 5 × a power of ten
   let ceil = $derived.by(() => {
@@ -96,8 +120,8 @@
         xIn,
         xOut,
         label: label(ym),
-        income: stack(xIn, income, values[ym].income),
-        expense: stack(xOut, expense, values[ym].expense)
+        income: stack(xIn, activeIncome, values[ym].income),
+        expense: stack(xOut, activeExpense, values[ym].expense)
       };
     })
   );
@@ -120,7 +144,30 @@
 
 <div class="flex items-start gap-5">
   <div class="min-w-0 flex-1">
-    {#if title}<h2 class="mb-4 text-lg">{title}</h2>{/if}
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+      {#if title}<h2 class="text-lg">{title}</h2>{/if}
+      <div class="ml-auto flex items-center gap-2">
+        {#if focused}
+          <button type="button" class="chip flex items-center gap-1.5 text-[12px]" onclick={() => (focused = null)}>
+            <span class="h-2 w-2 rounded-full" style="background:{fill(focused.color)}"></span>
+            {focused.name}
+            <Icon name="x" size={11} />
+          </button>
+        {/if}
+        <div class="flex items-center gap-0.5 rounded-[8px] border border-[var(--border)] p-0.5">
+          <button type="button" class="grid h-6 w-6 place-items-center rounded-[6px] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)] disabled:opacity-40"
+            aria-label="Zoom out" onclick={zoomOut} disabled={zoom <= ZOOM_MIN}>
+            <Icon name="minus" size={12} />
+          </button>
+          <button type="button" class="min-w-[36px] px-0.5 text-center text-[11px] tnum text-[var(--ink-faint)] hover:text-[var(--ink)]"
+            onclick={zoomReset} title="Reset zoom">{Math.round(zoom * 100)}%</button>
+          <button type="button" class="grid h-6 w-6 place-items-center rounded-[6px] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)] disabled:opacity-40"
+            aria-label="Zoom in" onclick={zoomIn} disabled={zoom >= ZOOM_MAX}>
+            <Icon name="plus" size={12} />
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="relative" bind:this={wrap} bind:clientWidth={cw}>
     <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"
       aria-label="Monthly income and spending, each stacked by category">
@@ -168,15 +215,19 @@
   </div>
 
   <div class="flex w-[150px] shrink-0 flex-col gap-4 text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
-    {#each [['Income', income], ['Spending', expense]] as [title, series]}
+    {#each [['Income', income, 'income'], ['Spending', expense, 'expense']] as [groupTitle, series, source]}
       {#if series.length}
         <div>
-          <p class="kicker mb-1.5">{title}</p>
+          <p class="kicker mb-1.5">{groupTitle}</p>
           {#each series as s (s.id)}
-            <div class="flex items-center gap-2 py-[3px]">
+            {@const isFocused = focused?.id === s.id && focused.source === source}
+            {@const dimmed = focused && !isFocused}
+            <button type="button"
+              class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''}"
+              onclick={() => toggleFocus(s, source)}>
               <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
-              <span class="truncate">{s.name}</span>
-            </div>
+              <span class="truncate {isFocused ? 'font-semibold text-[var(--ink)]' : ''}">{s.name}</span>
+            </button>
           {/each}
         </div>
       {/if}

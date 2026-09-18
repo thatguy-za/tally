@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { formatMoney, formatMonth } from '$lib/currency.js';
 import { getApiKey, getModel, getProvider, findModelInfo } from './ai-settings.js';
-import { listCategories, sampleDescriptionsForSuggestion } from './queries.js';
+import { listCategories, listTransactions, updateTransaction, sampleDescriptionsForSuggestion } from './queries.js';
 
 const BATCH_SIZE = 40;
 const MAX_PER_RUN = 300;
@@ -353,6 +353,37 @@ export async function suggestCategoriesForRows(userId, rows) {
     usage,
     costUsd: estimateCost(usage, getModel())
   };
+}
+
+/**
+ * The AI half of "re-run categorisation": whatever is still uncategorised
+ * after the user's own rules have had a pass gets sent to the model, and
+ * anything it's confident about is saved immediately (unlike
+ * suggestCategoriesForRows, which only previews before an import).
+ * @param {number} userId
+ * @returns {Promise<{ updated: number, considered: number, usage: object, costUsd: number }>}
+ */
+export async function categoriseUncategorisedTransactions(userId) {
+  const empty = { updated: 0, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
+  const categories = listCategories(userId);
+  if (!categories.length) return empty;
+
+  const rows = listTransactions(userId, { categoryId: 'none' }).slice(0, MAX_PER_RUN);
+  if (!rows.length) return empty;
+
+  const items = rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, description: r.description }));
+  const { byRef, usage } = await runCategorisation(categories, items);
+  const byName = new Map(categories.map((c) => [c.name, c.id]));
+
+  let updated = 0;
+  for (const [ref, name] of byRef) {
+    const categoryId = byName.get(name);
+    if (!categoryId) continue;
+    updateTransaction(userId, Number(ref), { category_id: categoryId });
+    updated++;
+  }
+
+  return { updated, considered: items.length, usage, costUsd: estimateCost(usage, getModel()) };
 }
 
 /**
