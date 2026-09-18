@@ -1,8 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { formatMoney, formatMonth } from '$lib/currency.js';
+import { PALETTE } from '$lib/palette.js';
 import { getApiKey, getModel, getProvider, findModelInfo } from './ai-settings.js';
-import { listCategories, listTransactions, updateTransaction, sampleDescriptionsForSuggestion } from './queries.js';
+import {
+  listCategories,
+  listTransactions,
+  updateTransaction,
+  sampleDescriptionsForSuggestion,
+  monthlyCategoryTotals,
+  periodInsights,
+  budgetStatus
+} from './queries.js';
 
 const BATCH_SIZE = 40;
 const MAX_PER_RUN = 300;
@@ -485,6 +494,330 @@ export async function summarisePeriod(insights, currency) {
     model
   });
   return { text, usage, costUsd: estimateCost(usage, model) };
+}
+
+/* ------------------------------------------------------------ chat with your data */
+
+const CHAT_MAX_ROUNDS = 4; // tool round-trips per user message, before giving up
+const CHAT_TOOL_TIMEOUT_TEXT =
+  "That needed more digging than I can do in one go — try asking something narrower, like a shorter date range or one category.";
+
+/**
+ * Read-only tools the chat assistant can call — each one runs against a
+ * single `userId` supplied by the server, never by the model, so a chat
+ * message can only ever see that person's own data. Every property is
+ * `required` (using a `null` branch for "optional") because OpenAI's strict
+ * function-calling mode rejects schemas that omit properties from `required`.
+ */
+const CHAT_TOOLS = [
+  {
+    name: 'list_categories',
+    description: "List every one of the user's categories, with id, name and kind.",
+    input_schema: { type: 'object', additionalProperties: false, required: [], properties: {} }
+  },
+  {
+    name: 'category_totals',
+    description: 'Total income/expense/savings per category over a month range — for "how much did I spend on X" questions.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['from', 'to', 'account_id'],
+      properties: {
+        from: { type: 'string', description: 'Start month, YYYY-MM, inclusive' },
+        to: { type: 'string', description: 'End month, YYYY-MM, inclusive' },
+        account_id: { type: ['integer', 'null'], description: 'Restrict to one account id, or null for every account' }
+      }
+    }
+  },
+  {
+    name: 'search_transactions',
+    description: 'List individual transactions matching a filter — for "show me" / "when did I" questions about specific line items.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['from', 'to', 'category_id', 'search', 'direction', 'limit'],
+      properties: {
+        from: { type: ['string', 'null'], description: 'YYYY-MM-DD lower bound, inclusive, or null' },
+        to: { type: ['string', 'null'], description: 'YYYY-MM-DD upper bound, inclusive, or null' },
+        category_id: { type: ['integer', 'null'], description: 'Restrict to one category id, or null' },
+        search: { type: ['string', 'null'], description: 'Case-insensitive substring of the description, or null' },
+        direction: { type: ['string', 'null'], description: '"in" for money received, "out" for money spent, or null for both' },
+        limit: { type: 'integer', description: 'Max rows to return, 1-30' }
+      }
+    }
+  },
+  {
+    name: 'period_summary',
+    description: 'Earned/spent/saved for a period, and how it compares to this person\'s usual (median) month — for "how am I doing" / "is this more than usual" questions.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['from', 'to'],
+      properties: {
+        from: { type: 'string', description: 'Start month, YYYY-MM, inclusive' },
+        to: { type: 'string', description: 'End month, YYYY-MM, inclusive' }
+      }
+    }
+  },
+  {
+    name: 'budget_status',
+    description: "Target vs. actual per category for one month — for questions about budgets or targets.",
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['month'],
+      properties: { month: { type: 'string', description: 'YYYY-MM' } }
+    }
+  },
+  {
+    name: 'show_chart',
+    description:
+      'Render a simple bar chart alongside your reply, for questions comparing amounts across ' +
+      'categories or months (e.g. "chart my spending by category"). Call this in addition to ' +
+      'your normal text answer, using numbers you already got from another tool — it does not ' +
+      'look anything up itself. The chart always uses each category\'s own colour from this app, ' +
+      'so pass category_id whenever a bar represents one category.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['title', 'bars'],
+      properties: {
+        title: { type: 'string', description: 'Short chart title, e.g. "Spending by category, September 2026"' },
+        bars: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['label', 'value', 'category_id'],
+            properties: {
+              label: { type: 'string', description: 'Bar label, e.g. a category or month name' },
+              value: { type: 'number', description: 'Bar value as a plain positive number' },
+              category_id: {
+                type: ['integer', 'null'],
+                description: "If this bar is one category from list_categories, its id — otherwise null"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+];
+
+/** Turns a validated `show_chart` call into render-ready bars with real, on-platform colours. */
+function normaliseChart(userId, input) {
+  const colorById = new Map(listCategories(userId).map((c) => [c.id, c.color]));
+  const bars = (Array.isArray(input?.bars) ? input.bars : []).slice(0, 12).map((b, i) => {
+    const value = Number(b?.value);
+    const catId = Number.isInteger(b?.category_id) ? b.category_id : null;
+    return {
+      label: String(b?.label || '').trim().slice(0, 40) || `#${i + 1}`,
+      value: Number.isFinite(value) ? value : 0,
+      color: (catId && colorById.get(catId)) || PALETTE[i % PALETTE.length]
+    };
+  });
+  return { title: String(input?.title || '').trim().slice(0, 80), bars };
+}
+
+/**
+ * Runs one chat tool against `userId`'s own data and returns a plain
+ * JSON-able result. `charts` collects any `show_chart` calls made this turn,
+ * so the caller can hand them back to the client alongside the reply.
+ */
+function executeChatTool(userId, name, input, charts) {
+  switch (name) {
+    case 'show_chart':
+      charts.push(normaliseChart(userId, input));
+      return { ok: true };
+    case 'list_categories':
+      return listCategories(userId).map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
+
+    case 'category_totals': {
+      const rows = monthlyCategoryTotals(userId, input.from, input.to, input.account_id ?? null);
+      const byCat = new Map();
+      for (const r of rows) {
+        const e = byCat.get(r.id) || { id: r.id, name: r.name, kind: r.kind, total: 0 };
+        e.total += r.total;
+        byCat.set(r.id, e);
+      }
+      return [...byCat.values()];
+    }
+
+    case 'search_transactions': {
+      const limit = Math.min(Math.max(1, Number(input.limit) || 20), 30);
+      const rows = listTransactions(userId, {
+        dateFrom: input.from || undefined,
+        dateTo: input.to || undefined,
+        categoryId: input.category_id ?? undefined,
+        search: input.search || undefined,
+        direction: input.direction === 'in' || input.direction === 'out' ? input.direction : undefined
+      }).slice(0, limit);
+      return rows.map((r) => ({
+        date: r.date,
+        description: r.description,
+        amount: r.amount,
+        category: r.category_name || null
+      }));
+    }
+
+    case 'period_summary': {
+      const ins = periodInsights(userId, input.from, input.to);
+      return {
+        earned: ins.earned,
+        spent: ins.spent,
+        saved: ins.saved,
+        kept: ins.kept,
+        savingsRate: ins.rate,
+        avgPerMonth: ins.avg,
+        usualBaseline: ins.baseline,
+        biggestMovesVsUsual: ins.movers
+      };
+    }
+
+    case 'budget_status':
+      return budgetStatus(userId, input.month).map((r) => ({
+        name: r.name,
+        kind: r.kind,
+        target: r.target,
+        actual: r.actual,
+        remaining: r.remaining
+      }));
+
+    default:
+      return { error: `Unknown tool: ${name}` };
+  }
+}
+
+const chatToolSpecs = CHAT_TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
+
+async function chatTurnAnthropic({ system, messages, userId, model, apiKeyOverride }) {
+  const anthropic = client('anthropic', apiKeyOverride);
+  const usage = { input: 0, output: 0 };
+  const charts = [];
+  const convo = messages.map((m) => ({ role: m.role, content: m.content }));
+
+  for (let round = 0; round < CHAT_MAX_ROUNDS; round++) {
+    let res;
+    try {
+      res = await anthropic.messages.create({
+        ...requestParams(model),
+        max_tokens: 1024,
+        system,
+        tools: chatToolSpecs,
+        messages: convo
+      });
+    } catch (e) {
+      throw new Error(friendlyError(e, 'anthropic'));
+    }
+    usage.input += res.usage?.input_tokens ?? 0;
+    usage.output += res.usage?.output_tokens ?? 0;
+
+    const toolUses = res.content.filter((b) => b.type === 'tool_use');
+    if (!toolUses.length) {
+      return { text: res.content.find((b) => b.type === 'text')?.text?.trim() ?? '', usage, charts };
+    }
+
+    convo.push({ role: 'assistant', content: res.content });
+    convo.push({
+      role: 'user',
+      content: toolUses.map((tu) => {
+        let content;
+        try {
+          content = JSON.stringify(executeChatTool(userId, tu.name, tu.input || {}, charts)).slice(0, 8000);
+        } catch (e) {
+          content = JSON.stringify({ error: e?.message || 'That lookup failed.' });
+        }
+        return { type: 'tool_result', tool_use_id: tu.id, content };
+      })
+    });
+  }
+  return { text: CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+}
+
+async function chatTurnOpenAI({ system, messages, userId, model, apiKeyOverride }) {
+  const openai = client('openai', apiKeyOverride);
+  const usage = { input: 0, output: 0 };
+  const charts = [];
+  const tools = CHAT_TOOLS.map((t) => ({
+    type: 'function',
+    function: { name: t.name, description: t.description, parameters: t.input_schema, strict: true }
+  }));
+  const convo = [{ role: 'system', content: system }, ...messages.map((m) => ({ role: m.role, content: m.content }))];
+
+  for (let round = 0; round < CHAT_MAX_ROUNDS; round++) {
+    let res;
+    try {
+      res = await openai.chat.completions.create({
+        model,
+        max_completion_tokens: 1024,
+        messages: convo,
+        tools
+      });
+    } catch (e) {
+      throw new Error(friendlyError(e, 'openai'));
+    }
+    usage.input += res.usage?.prompt_tokens ?? 0;
+    usage.output += res.usage?.completion_tokens ?? 0;
+
+    const msg = res.choices?.[0]?.message;
+    const calls = msg?.tool_calls || [];
+    if (!calls.length) return { text: msg?.content?.trim() ?? '', usage, charts };
+
+    convo.push(msg);
+    for (const c of calls) {
+      let args = {};
+      try {
+        args = JSON.parse(c.function.arguments || '{}');
+      } catch {
+        /* treat as no args */
+      }
+      let content;
+      try {
+        content = JSON.stringify(executeChatTool(userId, c.function.name, args, charts)).slice(0, 8000);
+      } catch (e) {
+        content = JSON.stringify({ error: e?.message || 'That lookup failed.' });
+      }
+      convo.push({ role: 'tool', tool_call_id: c.id, content });
+    }
+  }
+  return { text: CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+}
+
+const CHAT_SYSTEM = (currency, today) =>
+  "You are Tally's budgeting assistant, answering this person's questions about their own " +
+  'transactions, spending and budgets. Today is ' +
+  `${today} (current month ${today.slice(0, 7)}). Amounts are in ${currency}. ` +
+  'Always call a tool before stating any figure — never guess, calculate from memory, or ' +
+  'reuse a number from earlier in the conversation without re-checking it. Use list_categories ' +
+  'to resolve a category name to its id, category_totals for spending/income by category, ' +
+  'search_transactions for specific line items, period_summary for how a period compares to ' +
+  'usual, and budget_status for target-vs-actual in a month. If a question needs a date range ' +
+  'and none is given, assume the current month unless context suggests otherwise. When a ' +
+  'comparison across categories or months would be clearer as a chart, call show_chart with ' +
+  'the numbers you already looked up (it does not fetch anything itself) — still give your ' +
+  'normal text answer too, don\'t reply with only a chart. Keep answers short and concrete — a ' +
+  'sentence or two, or a brief list for multiple items. Plain English, no markdown headings. ' +
+  'Never invent a transaction, category or number that did not come from a tool result; if the ' +
+  'data does not answer the question, say so.';
+
+/**
+ * One turn of "chat with your data": `history` is the visible conversation so
+ * far (already ending with the latest user message), as
+ * `{ role: 'user'|'assistant', content: string }[]`. The model gathers
+ * whatever it needs itself via the tools above, scoped to `userId` — the
+ * request never carries data the model didn't ask a tool for.
+ * @param {number} userId
+ * @param {{role:string,content:string}[]} history
+ * @param {string} currency
+ */
+export async function chatWithData(userId, history, currency) {
+  const provider = getProvider();
+  const model = getModel(provider);
+  const system = CHAT_SYSTEM(currency, new Date().toISOString().slice(0, 10));
+
+  const turn = provider === 'openai' ? chatTurnOpenAI : chatTurnAnthropic;
+  const { text, usage, charts } = await turn({ system, messages: history, userId, model });
+  return { text, usage, charts, costUsd: estimateCost(usage, model) };
 }
 
 /**

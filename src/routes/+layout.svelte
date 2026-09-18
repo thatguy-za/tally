@@ -10,12 +10,13 @@
   import { theme, initTheme, toggleTheme } from '$lib/theme.svelte.js';
   let { data, children } = $props();
 
-  const nav = [
+  let nav = $derived([
     { href: '/insights', label: 'Insights', icon: 'reports' },
     { href: '/transactions', label: 'Transactions', icon: 'transactions' },
     { href: '/budgets', label: 'Budgets', icon: 'budgets' },
-    { href: '/categories', label: 'Categories', icon: 'tag' }
-  ];
+    { href: '/categories', label: 'Categories', icon: 'tag' },
+    ...(data.aiAvailable ? [{ href: '/chat', label: 'Ask', icon: 'sparkle' }] : [])
+  ]);
 
   let current = $derived($page.url.pathname);
 
