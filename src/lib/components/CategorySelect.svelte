@@ -104,8 +104,41 @@
   function onWindowClick(e) {
     if (open && !anchor.contains(e.target) && !popoverEl?.contains(e.target)) open = false;
   }
+
+  // type-ahead: pressing a letter while the list is open jumps focus to (and
+  // cycles through, on repeat presses) categories starting with that letter
+  let typeahead = { query: '', ts: 0 };
   function onWindowKey(e) {
-    if (e.key === 'Escape') open = false;
+    if (e.key === 'Escape') {
+      open = false;
+      return;
+    }
+    if (!open || adding || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key.length !== 1 || !/[a-z0-9]/i.test(e.key)) return;
+    e.preventDefault();
+
+    const now = Date.now();
+    const repeat = now - typeahead.ts < 800 && typeahead.query.length && e.key.toLowerCase() === typeahead.query[0];
+    typeahead.query = repeat ? typeahead.query : '';
+    typeahead.query += e.key.toLowerCase();
+    typeahead.ts = now;
+
+    const buttons = [...popoverEl.querySelectorAll('button[data-cat-name]')];
+    if (!buttons.length) return;
+    let matches = buttons.filter((b) => b.dataset.catName.toLowerCase().startsWith(typeahead.query));
+    if (!matches.length && typeahead.query.length > 1) {
+      typeahead.query = e.key.toLowerCase();
+      matches = buttons.filter((b) => b.dataset.catName.toLowerCase().startsWith(typeahead.query));
+    }
+    if (!matches.length) return;
+
+    let next = matches[0];
+    if (repeat && matches.length > 1) {
+      const currentIndex = buttons.indexOf(document.activeElement);
+      next = matches.find((b) => buttons.indexOf(b) > currentIndex) ?? matches[0];
+    }
+    next.focus();
+    next.scrollIntoView({ block: 'nearest' });
   }
 </script>
 
@@ -128,7 +161,8 @@
         {placeholder}
       </button>
       {#each categories as c}
-        <button type="button" class="flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)]"
+        <button type="button" class="flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)] focus:bg-[var(--paper-sunk)] focus:outline-none"
+          data-cat-name={c.name}
           onclick={() => pick(c.id)}>
           <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{c.color}"></span>
           <span class="truncate">{c.name}</span>

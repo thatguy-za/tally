@@ -390,7 +390,7 @@ export async function categoriseUncategorisedTransactions(userId) {
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 5;
+export const SUMMARY_VERSION = 6;
 
 const SUMMARY_SYSTEM =
   'You write a very short money summary for someone new to budgeting, covering ' +
@@ -454,12 +454,12 @@ export function buildPeriodFacts(insights, currency) {
   }
   lines.push(
     b
-      ? `"Usual" means this person's own monthly average across the ${b.months} month${b.months === 1 ? '' : 's'} before this period.`
+      ? `"Usual" means this person's own median month across the ${b.months} month${b.months === 1 ? '' : 's'} before this period — the middle value, not the average, so one unusually big or quiet month doesn't skew it.`
       : 'There is nothing before this period to compare against.'
   );
 
   if (insights.movers.length) {
-    lines.push('', `Biggest changes vs usual${insights.single ? '' : ' (monthly averages)'}:`);
+    lines.push('', `Biggest changes vs usual${insights.single ? '' : ' (medians)'}:`);
     for (const m of insights.movers) {
       lines.push(
         `- ${m.name}: ${money(m.spent)} (usual ${money(m.usual)} — ` +

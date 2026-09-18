@@ -321,7 +321,7 @@ describe('categoryMonthlyAverages', () => {
 });
 
 describe('periodInsights', () => {
-  it('reads a single complete month against the average of the months before it', () => {
+  it('reads a single complete month against the median of the months before it', () => {
     const u = makeUser();
     const salary = makeCategory(u, 'Salary', 'income');
     const groceries = makeCategory(u, 'Groceries', 'expense');
@@ -344,7 +344,7 @@ describe('periodInsights', () => {
     expect(ins.kept).toBe(700); // earned - spent; saving is not spending
     expect(ins.comparable).toBe(true);
     expect(ins.baseline.months).toBe(2);
-    expect(ins.baseline.spent).toBe(150); // average of 100 and 200
+    expect(ins.baseline.spent).toBe(150); // median of 100 and 200
 
     const mover = ins.movers.find((m) => m.id === groceries);
     expect(mover.usual).toBe(150);
@@ -365,6 +365,21 @@ describe('periodInsights', () => {
     const u = makeUser();
     const ins = periodInsights(u, '2025-01', '2025-01');
     expect(ins.reason).toBe('empty');
+  });
+
+  it('is not skewed by one outlier month when computing the baseline', () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    // three ordinary months and one wildly expensive one (e.g. a one-off bill)
+    for (const [ym, spend] of [['2025-01', 100], ['2025-02', 110], ['2025-03', 90], ['2025-04', 900]]) {
+      addTx(u, { date: `${ym}-01`, amount: -spend, category_id: groceries });
+    }
+    addTx(u, { date: '2025-05-01', amount: -105, category_id: groceries });
+
+    const ins = periodInsights(u, '2025-05', '2025-05');
+    // median of [100, 110, 90, 900] is 105 — the mean (300) would call a
+    // perfectly ordinary €105 month "63% under usual"
+    expect(ins.baseline.spent).toBe(105);
   });
 
   it('averages a multi-month range and compares it to the months before the range', () => {

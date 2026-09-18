@@ -5,8 +5,16 @@
   import { formatMoney, formatMonth } from '$lib/currency.js';
   import MonthCalendarPicker from '$lib/components/MonthCalendarPicker.svelte';
   import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
+  import Icon from '$lib/components/Icon.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
+
+  /** `n` months from `ym` (YYYY-MM), signed. */
+  function shiftMonth(ym, n) {
+    const [y, m] = ym.split('-').map(Number);
+    const d = new Date(y, m - 1 + n, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
 
   // every category, across kinds — the transaction-picker inside the modal
   // below needs the full list, not just whichever section was clicked
@@ -54,14 +62,16 @@
     <p class="kicker mb-2">Budgets · {formatMonth(data.month)}</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Monthly targets</h1>
   </div>
-  <div class="flex items-center gap-2">
-    <form method="POST" action="?/generateTargets" use:enhance
-      onsubmit={(e) => { if (!confirm('Set every expense target to its average monthly spend so far? This overwrites existing targets.')) e.preventDefault(); }}>
-      <button class="input flex items-center justify-center gap-1.5 whitespace-nowrap font-medium hover:bg-[var(--paper-sunk)]">
-        Generate targets
-      </button>
-    </form>
+  <div class="flex items-center gap-1">
+    <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+      aria-label="Previous month" onclick={() => setMonth(shiftMonth(data.month, -1))}>
+      <Icon name="arrowRight" size={16} class="rotate-180" />
+    </button>
     <MonthCalendarPicker value={data.month} onChange={setMonth} />
+    <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+      aria-label="Next month" onclick={() => setMonth(shiftMonth(data.month, 1))}>
+      <Icon name="arrowRight" size={16} />
+    </button>
   </div>
 </div>
 
@@ -87,9 +97,15 @@
 {/if}
 
 <div class="card rise rise-2">
-  <p class="mb-5 text-[13px] text-[var(--ink-faint)]">
-    Set a monthly target per category. Clear a field to remove its target. Spending is matched to the selected month.
-  </p>
+  <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <p class="text-[13px] text-[var(--ink-faint)]">
+      Set a monthly target per category. Clear a field to remove its target. Spending is matched to the selected month.
+    </p>
+    <form method="POST" action="?/generateTargets" use:enhance
+      onsubmit={(e) => { if (!confirm('Set every expense target to its average monthly spend so far? This overwrites existing targets.')) e.preventDefault(); }}>
+      <button class="btn btn-ghost btn-sm whitespace-nowrap">Calculate targets</button>
+    </form>
+  </div>
   <form method="POST" action="?/save" use:enhance={submitSave}>
     <ul class="space-y-4">
       {#each data.expenses as c (c.id)}

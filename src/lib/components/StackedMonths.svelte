@@ -82,7 +82,7 @@
   });
 
   let groupW = $derived(plotW / months.length);
-  let barW = $derived(Math.max(8, Math.min(30, (groupW - 10) / 2 - 2)));
+  let barW = $derived(Math.max(8, Math.min(30, (groupW - 10) / 2 - 2)) * 0.85);
   let gapBars = $derived(barW >= 20 ? 8 : 4);
   // totals above bars only when they can't collide with the neighbour's
   let showTotals = $derived(groupW >= 110);

@@ -42,6 +42,7 @@
 
   let ins = $derived(data.insights);
   let singleMonth = $derived(data.from === data.to);
+  let canGoNext = $derived(data.from < currentMonth());
   let showMovers = $derived(!!ins && ins.reason !== 'empty' && ins.movers.length > 0);
   let spendingSegments = $derived(
     singleMonth
@@ -166,15 +167,29 @@
     {#if data.accounts.length > 1}
       <AccountPicker accounts={data.accounts} selected={data.accountId ?? ''} />
     {/if}
-    <PeriodPicker
-      presets={PERIOD_PRESETS}
-      activePreset={activePreset}
-      from={data.from}
-      to={data.to}
-      triggerLabel={pickerLabel}
-      onPreset={(id) => applyRange(presetRange(id).from, presetRange(id).to)}
-      onRange={(from, to) => applyRange(from, to)}
-    />
+    <div class="flex shrink-0 items-center gap-1">
+      {#if singleMonth}
+        <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+          aria-label="Previous month" onclick={() => applyRange(shiftMonth(data.from, -1), shiftMonth(data.from, -1))}>
+          <Icon name="arrowRight" size={16} class="rotate-180" />
+        </button>
+      {/if}
+      <PeriodPicker
+        presets={PERIOD_PRESETS}
+        activePreset={activePreset}
+        from={data.from}
+        to={data.to}
+        triggerLabel={pickerLabel}
+        onPreset={(id) => applyRange(presetRange(id).from, presetRange(id).to)}
+        onRange={(from, to) => applyRange(from, to)}
+      />
+      {#if singleMonth && canGoNext}
+        <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+          aria-label="Next month" onclick={() => applyRange(shiftMonth(data.from, 1), shiftMonth(data.from, 1))}>
+          <Icon name="arrowRight" size={16} />
+        </button>
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -237,11 +252,11 @@
   </div>
   <p class="mb-4 text-[13px] text-[var(--ink-faint)]">
     {#if ins.single}
-      Against your own average over {ins.baseline.months} earlier month{ins.baseline.months === 1 ? '' : 's'}{ins.partial
+      Against your own median month over {ins.baseline.months} earlier month{ins.baseline.months === 1 ? '' : 's'}{ins.partial
         ? `, scaled to the ${Math.round(ins.share * 100)}% of ${formatMonth(ins.from)} gone so far`
         : ''}.
     {:else}
-      Monthly averages for this period, against the {ins.baseline.months} month{ins.baseline.months === 1 ? '' : 's'} before it.
+      Monthly averages for this period, against the median of the {ins.baseline.months} month{ins.baseline.months === 1 ? '' : 's'} before it.
     {/if}
   </p>
   <ul class="space-y-2.5">

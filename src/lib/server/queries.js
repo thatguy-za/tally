@@ -548,6 +548,14 @@ function monthElapsed(month) {
   return Math.min(1, now.getDate() / days);
 }
 
+/** The middle value of `nums` (average of the two middle values for an even count). */
+function median(nums) {
+  if (!nums.length) return 0;
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
 /** Every calendar month from `from` to `to` inclusive, as YYYY-MM. */
 export function monthRange(from, to) {
   const out = [];
@@ -563,13 +571,17 @@ export function monthRange(from, to) {
 
 /**
  * A beginner-facing read of a period: what came in, went out and was put aside,
- * measured as a monthly average against the months *before* the period, plus the
- * categories whose monthly average moved the most.
+ * measured against the months *before* the period, plus the categories that
+ * moved the most.
  *
- * A single-month period is the plain case ("this month vs your usual"). For
- * longer periods the same maths runs on averages, so "usual" means the months
- * leading up to the period. A month still in progress counts for the share of
- * it elapsed, so a half-finished month doesn't drag the average down.
+ * "Usual" is the median across those earlier months, not the mean — one wildly
+ * expensive or quiet month (a holiday, a one-off bill) would otherwise drag a
+ * plain average toward it and make every other month look like a deviation.
+ * The median holds steady against that kind of outlier.
+ *
+ * A single-month period is the plain case ("this month vs your usual"). A
+ * month still in progress counts for the share of it elapsed, so a
+ * half-finished month doesn't drag the baseline down.
  *
  * @param {number} userId
  * @param {string} from YYYY-MM
@@ -619,14 +631,14 @@ export function periodInsights(userId, from, to, accountId = null) {
 
   const n = Math.max(effectiveMonths, 0.01);
   const avg = { earned: earned / n, spent: spent / n, saved: saved / n };
-  const bmean = (pick) => sum(before, pick) / before.length;
+  const bmedian = (pick) => median(before.map(pick));
   const baseline = comparable
     ? {
         months: before.length,
         // income and savings land in lumps, so a part-month can't be compared
-        earned: single && partial ? null : bmean((r) => r.incoming),
-        spent: bmean((r) => r.outgoing) * share,
-        saved: single && partial ? null : bmean((r) => r.saved)
+        earned: single && partial ? null : bmedian((r) => r.incoming),
+        spent: bmedian((r) => r.outgoing) * share,
+        saved: single && partial ? null : bmedian((r) => r.saved)
       }
     : null;
 
@@ -639,22 +651,25 @@ export function periodInsights(userId, from, to, accountId = null) {
     )
     .all({ userId, ...af.params });
 
+  // per-category, per-earlier-month totals (zero-filled), so "usual" can be a
+  // median across those months rather than a mean skewed by one odd month
+  const beforeYms = before.map((r) => r.ym);
   const byCat = new Map();
   for (const r of catRows) {
     let e = byCat.get(r.id);
     if (!e) {
-      e = { id: r.id, name: r.name, color: r.color, period: 0, before: 0 };
+      e = { id: r.id, name: r.name, color: r.color, period: 0, beforeByMonth: new Map() };
       byCat.set(r.id, e);
     }
     if (r.ym >= from && r.ym <= to) e.period += r.total;
-    else if (r.ym < from) e.before += r.total;
+    else if (r.ym < from) e.beforeByMonth.set(r.ym, r.total);
   }
 
   const movers = comparable
     ? [...byCat.values()]
         .map((e) => {
           const spent = e.period / n;
-          const usual = (e.before / before.length) * share;
+          const usual = median(beforeYms.map((ym) => e.beforeByMonth.get(ym) || 0)) * share;
           return { id: e.id, name: e.name, color: e.color, spent, usual, delta: spent - usual };
         })
         .filter((e) => Math.abs(e.delta) >= 1 && (e.spent >= 1 || e.usual >= 1))
