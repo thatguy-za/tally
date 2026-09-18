@@ -35,8 +35,9 @@
   --shadow-md: 0 2px 6px rgba(46, 38, 20, 0.07), 0 8px 24px -12px rgba(46, 38, 20, 0.14);
   --shadow-lg: 0 12px 40px -12px rgba(46, 38, 20, 0.28);
 
-  --radius: 14px;
-  --radius-sm: 9px;
+  --radius: 14px; /* cards, modals, large containers */
+  --radius-sm: 9px; /* menus, dropdowns, badges, pills, chat bubbles */
+  --radius-xs: 7px; /* compact controls: tooltips, popover rows, small tabs */
 
   --font-display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
   --font-ui: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -407,23 +408,21 @@
 }
 
 /* ================================================================ motion */
+/* A small pop-in for content that just appeared from a user action — a
+   newly opened modal, a result banner after running something. Not used on
+   static page-load content: navigating between pages already crossfades via
+   the View Transitions hook in +layout.svelte, so stacking a second entrance
+   animation on top of every section would just be motion for its own sake. */
 @keyframes rise {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .rise { animation: rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-.rise-1 { animation-delay: 0.04s; }
-.rise-2 { animation-delay: 0.08s; }
-.rise-3 { animation-delay: 0.12s; }
-.rise-4 { animation-delay: 0.16s; }
-.rise-5 { animation-delay: 0.2s; }
 
 @media (prefers-reduced-motion: reduce) {
   .rise { animation: none; }
   * { transition-duration: 0.01ms !important; }
 }
-
-.rise-6 { animation-delay: 0.24s; }
 
 @keyframes shimmer {
   100% { transform: translateX(100%); }
@@ -515,6 +514,10 @@ kbd, .kbd {
   z-index: 60;
   display: flex;
   justify-content: center;
+  /* align-items: flex-start (not center/stretch) so a modal's card is only
+     ever as tall as its own content — a modal that forgets this would
+     otherwise stretch to the full viewport height by flex default */
+  align-items: flex-start;
   padding: 12vh 1rem 1rem;
   background: color-mix(in srgb, var(--ink) 28%, transparent);
   backdrop-filter: blur(3px);

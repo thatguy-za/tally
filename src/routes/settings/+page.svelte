@@ -32,14 +32,14 @@
 
 <svelte:head><title>Settings · Tally</title></svelte:head>
 
-<div class="mb-7 rise">
+<div class="mb-7">
   <p class="kicker mb-2">Settings</p>
   <h1 class="text-3xl" style="font-family:var(--font-display)">Make it yours</h1>
 </div>
 
 <div class="space-y-4">
   <!-- Currency -->
-  <div class="card rise rise-1">
+  <div class="card">
     <h2 class="text-lg">Currency</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       Display formatting only (single currency per user). Preview: <span class="tnum">{formatMoney(1234.5, data.currency)}</span>
@@ -55,7 +55,7 @@
   </div>
 
   <!-- Date format -->
-  <div class="card rise rise-2">
+  <div class="card">
     <h2 class="text-lg">Date format</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       How ambiguous numeric dates (e.g. 03/04/2026) are read when importing a CSV.
@@ -71,7 +71,7 @@
   </div>
 
   <!-- Accounts -->
-  <div class="card rise rise-3">
+  <div class="card">
     <h2 class="text-lg">Accounts</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       Track more than one bank account — a current account and a savings account, say. Choose
@@ -118,7 +118,7 @@
       <div>
         <span class="label">Colour</span>
         <input type="hidden" name="color" value={newAccountColor} />
-        <ColorPicker bind:value={newAccountColor} size="h-[38px] w-14 rounded-[9px]" label="Colour for new account" />
+        <ColorPicker bind:value={newAccountColor} size="h-[38px] w-14 rounded-[var(--radius-sm)]" label="Colour for new account" />
       </div>
       <button class="btn btn-primary">Add</button>
       {#if err('account')}<span class="text-sm" style="color:var(--negative)">{err('account')}</span>{/if}
@@ -126,13 +126,11 @@
   </div>
 
   <!-- Auto-categorisation rules -->
-  <div class="rise rise-4">
-    <RulesSection categories={data.categories} rules={data.rules} />
-  </div>
+  <RulesSection categories={data.categories} rules={data.rules} />
 
   <!-- AI categorisation opt-in (any user, when enabled) -->
   {#if data.aiAvailable}
-    <div class="card rise rise-6">
+    <div class="card">
       <div class="flex items-start justify-between gap-4">
         <div>
           <h2 class="flex items-center gap-2 text-lg">
@@ -154,7 +152,7 @@
   {/if}
 
   <!-- Username -->
-  <div class="card rise rise-6">
+  <div class="card">
     <h2 class="text-lg">Username</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Used to sign in. Can be anything — even an email address.</p>
     <form method="POST" action="?/username" use:enhance class="flex max-w-md flex-wrap items-center gap-3">
@@ -166,7 +164,7 @@
   </div>
 
   <!-- Password -->
-  <div class="card rise rise-6">
+  <div class="card">
     <h2 class="text-lg">Change password</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Signed in as {data.username}</p>
     <form method="POST" action="?/password" use:enhance class="grid max-w-md gap-3">
@@ -182,7 +180,7 @@
   </div>
 
   <!-- Danger zone -->
-  <div class="card rise rise-7" style="border-color:var(--negative)">
+  <div class="card" style="border-color:var(--negative)">
     <h2 class="text-lg" style="color:var(--negative)">Danger zone</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       Permanently delete every transaction on this account. Categories, accounts and rules are kept.
@@ -197,7 +195,7 @@
   </div>
 
   {#if data.isAdmin}
-    <a href="/settings/server" class="nudge rise rise-8">
+    <a href="/settings/server" class="nudge">
       <Icon name="settings" size={16} class="text-[var(--accent)]" />
       <span>Server settings — users &amp; AI assistant</span>
       <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />

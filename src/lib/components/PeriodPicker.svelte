@@ -1,5 +1,6 @@
 <script>
   import { untrack } from 'svelte';
+  import { portal } from '$lib/actions/portal.js';
   import Icon from './Icon.svelte';
   import { currentMonth } from '$lib/currency.js';
 
@@ -76,10 +77,6 @@
     open = false;
   }
 
-  function portal(node) {
-    document.body.appendChild(node);
-    return { destroy: () => node.remove() };
-  }
   function onWindowClick(e) {
     if (open && !anchor.contains(e.target) && !popoverEl?.contains(e.target)) open = false;
   }
@@ -104,7 +101,7 @@
     <div class="flex flex-col gap-0.5 {showCalendar ? 'mb-2' : ''}">
       {#each presets as p}
         <button type="button"
-          class="rounded-[7px] px-2.5 py-1.5 text-left text-[13px] transition-colors {activePreset === p.id
+          class="rounded-[var(--radius-xs)] px-2.5 py-1.5 text-left text-[13px] transition-colors {activePreset === p.id
             ? 'bg-[var(--accent-wash)] font-medium text-[var(--accent-strong)]'
             : 'text-[var(--ink-soft)] hover:bg-[var(--paper-sunk)]'}"
           onclick={() => pickPreset(p.id)}>
@@ -112,7 +109,7 @@
         </button>
       {/each}
       <button type="button"
-        class="rounded-[7px] px-2.5 py-1.5 text-left text-[13px] transition-colors {activePreset === 'custom'
+        class="rounded-[var(--radius-xs)] px-2.5 py-1.5 text-left text-[13px] transition-colors {activePreset === 'custom'
           ? 'bg-[var(--accent-wash)] font-medium text-[var(--accent-strong)]'
           : 'text-[var(--ink-soft)] hover:bg-[var(--paper-sunk)]'}"
         onclick={() => pickPreset('custom')}>

@@ -32,7 +32,7 @@
 {#if onEdit}
   <button
     type="button"
-    class="group relative grid shrink-0 place-items-center overflow-hidden rounded-[7px]"
+    class="group relative grid shrink-0 place-items-center overflow-hidden rounded-[var(--radius-xs)]"
     style="width:{size}px;height:{size}px;background:var(--paper-sunk)"
     onclick={onEdit}
     title="Change logo"
@@ -47,7 +47,7 @@
   </button>
 {:else}
   <span
-    class="grid shrink-0 place-items-center overflow-hidden rounded-[7px]"
+    class="grid shrink-0 place-items-center overflow-hidden rounded-[var(--radius-xs)]"
     style="width:{size}px;height:{size}px;background:var(--paper-sunk)"
   >
     {@render content()}

@@ -30,7 +30,7 @@
 
 <svelte:head><title>Server settings · Tally</title></svelte:head>
 
-<div class="mb-7 rise">
+<div class="mb-7">
   <p class="kicker mb-2">Settings · Server</p>
   <h1 class="text-3xl" style="font-family:var(--font-display)">Server settings</h1>
   <p class="mt-1 text-[13px] text-[var(--ink-faint)]">Everyone signed into this instance. Admins only.</p>
@@ -38,7 +38,7 @@
 
 <div class="space-y-4">
   <!-- AI assistant -->
-  <div class="card rise rise-1">
+  <div class="card">
     <h2 class="flex items-center gap-2 text-lg">
       <Icon name="sparkle" size={16} class="text-[var(--accent)]" /> AI assistant
     </h2>
@@ -59,7 +59,7 @@
       </div>
 
       {#if current.keyFromEnv}
-        <p class="rounded-[9px] px-3 py-2 text-[13px]"
+        <p class="rounded-[var(--radius-sm)] px-3 py-2 text-[13px]"
           style="background:var(--accent-wash);color:var(--accent-strong)">
           Key supplied via the <code>{selectedProvider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY'}</code>
           environment variable ({current.keyMask}). Choose a model below.
@@ -96,7 +96,7 @@
   </div>
 
   <!-- Users -->
-  <div class="card rise rise-2">
+  <div class="card">
     <h2 class="text-lg">Users</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Reset a password, grant admin, or remove an account and all its data.</p>
     {#if err('user')}<p class="mb-3 text-sm" style="color:var(--negative)">{err('user')}</p>{/if}

@@ -89,13 +89,13 @@
 
 <svelte:head><title>Categories · Tally</title></svelte:head>
 
-<div class="mb-7 rise">
+<div class="mb-7">
   <p class="kicker mb-2">Categories</p>
   <h1 class="text-3xl" style="font-family:var(--font-display)">Sort your money</h1>
 </div>
 
 <div class="space-y-4">
-  <div class="card rise rise-2">
+  <div class="card">
     <div class="mb-1 flex flex-wrap items-start justify-between gap-3">
       <h2 class="text-lg">Categories</h2>
       {#if data.aiAvailable}
@@ -115,7 +115,7 @@
       for the starting balance a bank statement often includes when you begin tracking an account —
       it's excluded from income and spending too.
     </p>
-    <div class="mb-4 overflow-x-auto rounded-[10px] border border-[var(--border)]">
+    <div class="mb-4 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border)]">
       <table class="w-full text-[13px]">
         <thead>
           <tr class="border-b border-[var(--border)] text-left">
@@ -134,7 +134,7 @@
                     <input type="hidden" name="id" value={c.id} />
                     <div class="flex items-center gap-2 sm:col-span-2">
                       <input type="hidden" name="color" value={editColor} />
-                      <ColorPicker bind:value={editColor} size="h-[38px] w-10 shrink-0 rounded-[9px]" label="Colour for {c.name}" />
+                      <ColorPicker bind:value={editColor} size="h-[38px] w-10 shrink-0 rounded-[var(--radius-sm)]" label="Colour for {c.name}" />
                       <input class="input min-w-0 flex-1" name="name" value={c.name} required />
                     </div>
                     <select class="input sm:col-span-2" name="kind" value={c.kind}>
@@ -186,7 +186,7 @@
                 <form method="POST" action="?/addCategory" use:enhance class="grid gap-2 sm:grid-cols-6">
                   <div class="flex items-center gap-2 sm:col-span-2">
                     <input type="hidden" name="color" value={newColor} />
-                    <ColorPicker bind:value={newColor} size="h-[38px] w-10 shrink-0 rounded-[9px]" label="Colour for new category" />
+                    <ColorPicker bind:value={newColor} size="h-[38px] w-10 shrink-0 rounded-[var(--radius-sm)]" label="Colour for new category" />
                     <input class="input min-w-0 flex-1" name="name" placeholder="e.g. Childcare" required />
                   </div>
                   <select class="input sm:col-span-2" name="kind">
@@ -219,14 +219,15 @@
     </div>
   </div>
 
-  <div class="rise rise-3">
-    <RulesSection categories={data.categories} rules={data.rules} />
-  </div>
+  <RulesSection categories={data.categories} rules={data.rules} />
 </div>
 
 {#if suggestions}
-  <div class="overlay" role="dialog" aria-modal="true" aria-label="AI category suggestions">
-    <div class="card w-full max-w-lg self-start rise max-h-[85vh] overflow-y-auto">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_interactive_supports_focus -->
+<div class="overlay" role="dialog" aria-modal="true" aria-label="AI category suggestions"
+    onclick={(e) => e.target === e.currentTarget && (suggestions = null)}>
+    <div class="card w-full max-w-lg rise max-h-[85vh] overflow-y-auto">
       <div class="mb-4 flex items-start justify-between gap-3">
         <div>
           <p class="kicker mb-1 flex items-center gap-1.5">

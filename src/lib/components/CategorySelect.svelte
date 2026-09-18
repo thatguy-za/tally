@@ -1,5 +1,6 @@
 <script>
   import { deserialize } from '$app/forms';
+  import { portal } from '$lib/actions/portal.js';
   import Icon from './Icon.svelte';
   import ColorPicker from './ColorPicker.svelte';
 
@@ -41,12 +42,6 @@
   let newColor = $state('#7b8a5a');
 
   let current = $derived(categories.find((c) => String(c.id) === String(value)));
-
-  // see ColorPicker.svelte for why popovers portal to <body>
-  function portal(node) {
-    document.body.appendChild(node);
-    return { destroy: () => node.remove() };
-  }
 
   function openPopover() {
     const r = anchor.getBoundingClientRect();
@@ -156,12 +151,12 @@
     class="card"
     style="position:absolute;top:{pos.top}px;left:{pos.left}px;z-index:65;width:220px;padding:6px;max-height:320px;overflow-y:auto">
     {#if !adding}
-      <button type="button" class="flex w-full items-center rounded-[7px] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)]"
+      <button type="button" class="flex w-full items-center rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)]"
         onclick={() => pick('')}>
         {placeholder}
       </button>
       {#each categories as c}
-        <button type="button" class="flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)] focus:bg-[var(--paper-sunk)] focus:outline-none"
+        <button type="button" class="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)] focus:bg-[var(--paper-sunk)] focus:outline-none"
           data-cat-name={c.name}
           onclick={() => pick(c.id)}>
           <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{c.color}"></span>
@@ -169,7 +164,7 @@
         </button>
       {/each}
       <div class="my-1 border-t border-[var(--border)]"></div>
-      <button type="button" class="flex w-full items-center gap-1.5 rounded-[7px] px-2 py-1.5 text-left text-[13px] text-[var(--accent-strong)] hover:bg-[var(--paper-sunk)]"
+      <button type="button" class="flex w-full items-center gap-1.5 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] text-[var(--accent-strong)] hover:bg-[var(--paper-sunk)]"
         onclick={startAdding}>
         <Icon name="plus" size={13} /> Add category
       </button>

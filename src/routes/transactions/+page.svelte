@@ -156,7 +156,7 @@
 
 <svelte:head><title>Transactions · Tally</title></svelte:head>
 
-<div class="mb-7 flex flex-wrap items-end justify-between gap-3 rise">
+<div class="mb-7 flex flex-wrap items-end justify-between gap-3">
   <div>
     <p class="kicker mb-2">Activity</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Transactions</h1>
@@ -302,7 +302,7 @@
   </div>
 {/if}
 
-<div class="card mb-4 flex flex-wrap items-center gap-3 rise rise-1">
+<div class="card mb-4 flex flex-wrap items-center gap-3">
   <div class="relative min-w-[200px] flex-1">
     <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-faint)]">
       <Icon name="search" size={15} />
@@ -314,7 +314,7 @@
 
 {#if selected.size > 0}
   <div transition:fly={{ y: -8, duration: 160 }}
-    class="sticky top-[68px] z-20 mb-3 flex flex-wrap items-center gap-3 rounded-[11px] px-4 py-2.5 text-[13px] shadow-[var(--shadow-lg)]"
+    class="sticky top-[68px] z-20 mb-3 flex flex-wrap items-center gap-3 rounded-[var(--radius-sm)] px-4 py-2.5 text-[13px] shadow-[var(--shadow-lg)]"
     style="background:var(--ink);color:var(--paper)">
     <span class="font-semibold">{selected.size} selected</span>
     <form method="POST" action="?/bulkCategorise" use:enhance class="flex items-center gap-2">
@@ -352,7 +352,7 @@
   </th>
 {/snippet}
 
-<div class="card card-flush rise rise-2">
+<div class="card card-flush">
   {#if data.transactions.length}
     <table class="w-full text-sm">
       <thead>

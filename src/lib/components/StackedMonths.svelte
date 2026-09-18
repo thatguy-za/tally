@@ -159,7 +159,7 @@
             <Icon name="x" size={11} />
           </button>
         {/if}
-        <div class="flex items-center gap-0.5 rounded-[8px] border border-[var(--border)] p-0.5">
+        <div class="flex items-center gap-0.5 rounded-[var(--radius-xs)] border border-[var(--border)] p-0.5">
           <button type="button" class="grid h-6 w-6 place-items-center rounded-[6px] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)] disabled:opacity-40"
             aria-label="Zoom out" onclick={zoomOut} disabled={zoom <= ZOOM_MIN}>
             <Icon name="minus" size={12} />
@@ -210,7 +210,7 @@
     </svg>
 
     {#if tip}
-      <div class="pointer-events-none absolute z-10 whitespace-nowrap rounded-[8px] border border-[var(--border-strong)] px-2.5 py-1.5 text-[12px] shadow-[var(--shadow-lg)]"
+      <div class="pointer-events-none absolute z-10 whitespace-nowrap rounded-[var(--radius-xs)] border border-[var(--border-strong)] px-2.5 py-1.5 text-[12px] shadow-[var(--shadow-lg)]"
         style="left:{tip.x}px;top:{tip.y}px;background:var(--surface-raised);color:var(--ink)">
         <span class="mr-1.5 inline-block h-2 w-2 rounded-[2px] align-middle" style="background:{tip.color}"></span>
         {tip.name} · <b class="tnum">{tip.amount}</b>

@@ -89,7 +89,7 @@
       </svg>
 
       {#if tip}
-        <div class="pointer-events-none absolute z-10 whitespace-nowrap rounded-[8px] border border-[var(--border-strong)] px-2.5 py-1.5 text-[12px] shadow-[var(--shadow-lg)]"
+        <div class="pointer-events-none absolute z-10 whitespace-nowrap rounded-[var(--radius-xs)] border border-[var(--border-strong)] px-2.5 py-1.5 text-[12px] shadow-[var(--shadow-lg)]"
           style="left:{tip.x}px;top:{tip.y}px;background:var(--surface-raised);color:var(--ink)">
           <span class="mr-1.5 inline-block h-2 w-2 rounded-[2px] align-middle" style="background:{tip.color}"></span>
           {tip.name} · <b class="tnum">{tip.amount}</b>

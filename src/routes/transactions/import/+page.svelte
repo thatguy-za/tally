@@ -7,7 +7,7 @@
 
 <svelte:head><title>Import · Tally</title></svelte:head>
 
-<div class="mb-6 flex items-center gap-3 rise">
+<div class="mb-6 flex items-center gap-3">
   <a href="/transactions" class="text-[var(--ink-faint)] hover:text-[var(--ink)]">
     <Icon name="arrowRight" size={18} class="rotate-180" />
   </a>

@@ -21,7 +21,7 @@
 
 <div class="w-full max-w-sm rise">
   <div class="mb-7 flex flex-col items-center text-center">
-    <span class="mb-4 grid h-11 w-11 place-items-center rounded-[12px] bg-[var(--accent)] text-[var(--accent-contrast)]">
+    <span class="mb-4 grid h-11 w-11 place-items-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-contrast)]">
       <Icon name="wallet" size={22} stroke={2} />
     </span>
     <h1 class="text-2xl" style="font-family:var(--font-display)">Create your account</h1>
@@ -30,7 +30,7 @@
 
   <div class="card">
     {#if form?.error || blocked}
-      <p class="mb-4 rounded-[9px] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form?.error || blocked}</p>
+      <p class="mb-4 rounded-[var(--radius-sm)] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form?.error || blocked}</p>
     {/if}
 
     <form method="POST" use:enhance={submit} class="space-y-4">

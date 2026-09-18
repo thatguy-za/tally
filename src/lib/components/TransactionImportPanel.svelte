@@ -332,7 +332,7 @@
 </div>
 
 {#if form?.error}
-  <p class="mb-4 rounded-[9px] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form.error}</p>
+  <p class="mb-4 rounded-[var(--radius-sm)] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form.error}</p>
 {/if}
 
 {#if phase === 'done'}
@@ -388,7 +388,7 @@
     use:enhance={submitAnalyze} class="max-w-lg">
     <label
       for="file"
-      class="flex flex-col items-center gap-3 rounded-[14px] border-2 border-dashed px-6 py-12 text-center transition-colors cursor-pointer"
+      class="flex flex-col items-center gap-3 rounded-[var(--radius)] border-2 border-dashed px-6 py-12 text-center transition-colors cursor-pointer"
       style="border-color:{dragOver ? 'var(--accent)' : 'var(--border)'}; background:{dragOver ? 'var(--accent-wash)' : 'var(--paper-sunk)'}"
       ondragover={(e) => { e.preventDefault(); dragOver = true; }}
       ondragleave={() => (dragOver = false)}

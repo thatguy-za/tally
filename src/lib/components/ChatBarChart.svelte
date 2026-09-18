@@ -13,7 +13,7 @@
 </script>
 
 {#if bars.length}
-  <div class="mt-2 rounded-[10px] border border-[var(--border)] p-3">
+  <div class="mt-2 rounded-[var(--radius-sm)] border border-[var(--border)] p-3">
     {#if title}<p class="mb-2.5 text-[12px] font-medium text-[var(--ink-soft)]">{title}</p>{/if}
     <div class="space-y-2">
       {#each bars as b}

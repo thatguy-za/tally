@@ -33,7 +33,10 @@
 
 <svelte:window onkeydown={onWindowKey} />
 
-<div class="overlay" role="dialog" aria-modal="true" aria-label="Change logo">
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_interactive_supports_focus -->
+<div class="overlay" role="dialog" aria-modal="true" aria-label="Change logo"
+  onclick={(e) => e.target === e.currentTarget && onClose()}>
   <div class="card w-full max-w-sm rise">
     <div class="mb-4 flex items-start justify-between gap-3">
       <h2 class="text-lg">Change logo</h2>
@@ -47,7 +50,7 @@
     </div>
 
     <div class="mb-4 flex items-center gap-3">
-      <span class="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[10px]" style="background:var(--paper-sunk)">
+      <span class="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-[var(--radius-sm)]" style="background:var(--paper-sunk)">
         {#if previewDomain}
           {#key previewDomain}
             <img

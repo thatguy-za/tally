@@ -51,7 +51,7 @@
     <header class="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--paper)]/85 backdrop-blur-md">
       <div class="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
         <a href="/insights" class="flex items-center gap-2.5">
-          <span class="grid h-8 w-8 place-items-center rounded-[9px] bg-[var(--accent)] text-[var(--accent-contrast)]">
+          <span class="grid h-8 w-8 place-items-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-contrast)]">
             <Icon name="wallet" size={17} stroke={2} />
           </span>
           <span class="text-[17px] font-medium tracking-tight" style="font-family:var(--font-display)">Tally</span>
@@ -62,7 +62,7 @@
             {@const active = current.startsWith(item.href)}
             <a
               href={item.href}
-              class="group flex items-center gap-1.5 whitespace-nowrap rounded-[9px] px-2.5 py-1.5 text-[13px] font-medium transition-colors
+              class="group flex items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-sm)] px-2.5 py-1.5 text-[13px] font-medium transition-colors
                 {active ? 'text-[var(--ink)]' : 'text-[var(--ink-faint)] hover:text-[var(--ink-soft)]'}"
               style={active ? 'background:var(--paper-sunk)' : ''}
             >
@@ -74,7 +74,7 @@
 
         <button
           onclick={toggleTheme}
-          class="grid h-8 w-8 place-items-center rounded-[9px] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+          class="grid h-8 w-8 place-items-center rounded-[var(--radius-sm)] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
           title="Toggle theme"
           aria-label="Toggle theme"
         >

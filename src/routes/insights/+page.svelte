@@ -158,7 +158,7 @@
 
 <svelte:head><title>Insights · Tally</title></svelte:head>
 
-<div class="mb-7 flex flex-wrap items-end justify-between gap-3 rise">
+<div class="mb-7 flex flex-wrap items-end justify-between gap-3">
   <div>
     <p class="kicker mb-2">Insights · {periodLabel}</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Where your money went</h1>
@@ -169,7 +169,7 @@
     {/if}
     <div class="flex shrink-0 items-center gap-1">
       {#if singleMonth}
-        <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+        <button type="button" class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
           aria-label="Previous month" onclick={() => applyRange(shiftMonth(data.from, -1), shiftMonth(data.from, -1))}>
           <Icon name="arrowRight" size={16} class="rotate-180" />
         </button>
@@ -184,7 +184,7 @@
         onRange={(from, to) => applyRange(from, to)}
       />
       {#if singleMonth && canGoNext}
-        <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+        <button type="button" class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
           aria-label="Next month" onclick={() => applyRange(shiftMonth(data.from, 1), shiftMonth(data.from, 1))}>
           <Icon name="arrowRight" size={16} />
         </button>
@@ -194,7 +194,7 @@
 </div>
 
 {#if ins && ins.reason !== 'empty'}
-  <div class="mb-4 grid gap-4 rise rise-1 {data.savings.configured ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}">
+  <div class="mb-4 grid gap-4 {data.savings.configured ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}">
     <div class="card">
       <p class="kicker">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
       <span class="mt-2 block stat-value tnum text-[24px]" style="color:var(--positive)">{money(ins.earned)}</span>
@@ -281,7 +281,7 @@
 
 <!-- "In a nutshell" always sits on the left, paired with "What changed" -->
 {#if showSummary || showMovers}
-<div class="mb-4 grid gap-4 rise rise-2 {showSummary && showMovers ? 'lg:grid-cols-5' : ''}">
+<div class="mb-4 grid gap-4 {showSummary && showMovers ? 'lg:grid-cols-5' : ''}">
   {#if showSummary}
     <div class="card {showMovers ? 'lg:col-span-2' : ''}">
       <h2 class="mb-3 flex items-center gap-2 text-lg">
@@ -310,14 +310,14 @@
 </div>
 {/if}
 
-<div class="card mb-4 rise rise-3">
+<div class="card mb-4">
   {@render spendingChart()}
 </div>
 
 {#if ins && ins.reason !== 'empty'}
   <!-- only worth saying for a single month; a range that covers all your data has nothing to compare to and that is obvious -->
   {#if ins.single && !showMovers && !ins.comparable}
-    <div class="nudge mb-4 rise rise-4">
+    <div class="nudge mb-4">
       <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
       <span>
         {#if ins.reason === 'no-history'}
@@ -331,8 +331,11 @@
 {/if}
 
 {#if monthModal}
-  <div class="overlay" role="dialog" aria-modal="true" aria-label="{shortMonth(monthModal.month)} spending breakdown">
-    <div class="card w-full max-w-2xl self-start rise max-h-[85vh] overflow-y-auto pb-6">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_interactive_supports_focus -->
+<div class="overlay" role="dialog" aria-modal="true" aria-label="{shortMonth(monthModal.month)} spending breakdown"
+    onclick={(e) => e.target === e.currentTarget && (monthModal = null)}>
+    <div class="card w-full max-w-2xl rise max-h-[85vh] overflow-y-auto pb-6">
       <div class="mb-4 flex items-start justify-between gap-3">
         <div>
           <p class="kicker mb-1">{shortMonth(monthModal.month)}</p>

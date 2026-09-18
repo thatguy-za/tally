@@ -53,7 +53,7 @@
   <input type="hidden" name="payload" value={payload} />
 
   {#if form?.error}
-    <p class="mb-3 rounded-[9px] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form.error}</p>
+    <p class="mb-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form.error}</p>
   {/if}
 
   {#if data.accounts.length > 1}

@@ -15,20 +15,23 @@
 
 <svelte:window onkeydown={onWindowKey} />
 
-<div class="overlay" role="dialog" aria-modal="true" aria-label="Add or import transactions">
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_interactive_supports_focus -->
+<div class="overlay" role="dialog" aria-modal="true" aria-label="Add or import transactions"
+  onclick={(e) => e.target === e.currentTarget && onClose()}>
   <div class="card w-full max-w-4xl rise max-h-[90vh] overflow-y-auto">
     <div class="mb-4 flex items-start justify-between gap-3">
-      <div class="inline-flex rounded-[9px] p-0.5" style="background:var(--paper-sunk)">
+      <div class="inline-flex rounded-[var(--radius-sm)] p-0.5" style="background:var(--paper-sunk)">
         <button
           type="button"
-          class="rounded-[7px] px-3 py-1.5 text-[13px] font-medium transition-colors {tab === 'import' ? 'bg-[var(--paper)] shadow-sm' : 'text-[var(--ink-faint)]'}"
+          class="rounded-[var(--radius-xs)] px-3 py-1.5 text-[13px] font-medium transition-colors {tab === 'import' ? 'bg-[var(--paper)] shadow-sm' : 'text-[var(--ink-faint)]'}"
           onclick={() => (tab = 'import')}
         >
           Import CSV
         </button>
         <button
           type="button"
-          class="rounded-[7px] px-3 py-1.5 text-[13px] font-medium transition-colors {tab === 'add' ? 'bg-[var(--paper)] shadow-sm' : 'text-[var(--ink-faint)]'}"
+          class="rounded-[var(--radius-xs)] px-3 py-1.5 text-[13px] font-medium transition-colors {tab === 'add' ? 'bg-[var(--paper)] shadow-sm' : 'text-[var(--ink-faint)]'}"
           onclick={() => (tab = 'add')}
         >
           Add

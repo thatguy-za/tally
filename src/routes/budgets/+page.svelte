@@ -57,18 +57,18 @@
 
 <svelte:head><title>Budgets · Tally</title></svelte:head>
 
-<div class="mb-7 flex flex-wrap items-end justify-between gap-3 rise">
+<div class="mb-7 flex flex-wrap items-end justify-between gap-3">
   <div>
     <p class="kicker mb-2">Budgets · {formatMonth(data.month)}</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Monthly targets</h1>
   </div>
   <div class="flex items-center gap-1">
-    <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+    <button type="button" class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
       aria-label="Previous month" onclick={() => setMonth(shiftMonth(data.month, -1))}>
       <Icon name="arrowRight" size={16} class="rotate-180" />
     </button>
     <MonthCalendarPicker value={data.month} onChange={setMonth} />
-    <button type="button" class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+    <button type="button" class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
       aria-label="Next month" onclick={() => setMonth(shiftMonth(data.month, 1))}>
       <Icon name="arrowRight" size={16} />
     </button>
@@ -77,7 +77,7 @@
 
 {#if data.totals.count}
   {@const remaining = data.totals.target - data.totals.actual}
-  <div class="mb-4 grid gap-4 sm:grid-cols-3 rise rise-1">
+  <div class="mb-4 grid gap-4 sm:grid-cols-3">
     <div class="card">
       <p class="kicker">Budgeted</p>
       <span class="mt-2 block stat-value tnum text-[24px]">{formatMoney(data.totals.target, data.currency)}</span>
@@ -96,7 +96,7 @@
   </div>
 {/if}
 
-<div class="card rise rise-2">
+<div class="card">
   <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
     <p class="text-[13px] text-[var(--ink-faint)]">
       Set a monthly target per category. Clear a field to remove its target. Spending is matched to the selected month.

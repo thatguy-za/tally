@@ -22,7 +22,7 @@
 <div class="relative" bind:this={root}>
   <button
     onclick={() => (open = !open)}
-    class="flex items-center gap-1.5 rounded-[9px] px-2 py-1.5 text-[13px] text-[var(--ink-soft)] transition-colors hover:bg-[var(--paper-sunk)]"
+    class="flex items-center gap-1.5 rounded-[var(--radius-sm)] px-2 py-1.5 text-[13px] text-[var(--ink-soft)] transition-colors hover:bg-[var(--paper-sunk)]"
     aria-haspopup="menu"
     aria-expanded={open}
   >
@@ -39,7 +39,7 @@
 
   {#if open}
     <div
-      class="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-[11px] border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-[var(--shadow-lg)]"
+      class="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-[var(--shadow-lg)]"
       role="menu"
     >
       <p class="truncate px-3 py-1.5 text-[11px] text-[var(--ink-faint)]">{user.username}</p>

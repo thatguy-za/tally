@@ -1,5 +1,6 @@
 <script>
   import { PALETTE } from '$lib/palette.js';
+  import { portal } from '$lib/actions/portal.js';
   import Icon from './Icon.svelte';
 
   /**
@@ -17,15 +18,6 @@
   let popoverEl = $state(null);
   let pos = $state({ top: 0, left: 0 });
 
-  // Every `.card` on this app animates in with a persistent (fill-mode
-  // "both") transform/opacity animation, which per spec makes it its own
-  // stacking context for the rest of the page's life — trapping a normal
-  // z-indexed popover inside it, so a later sibling card paints over it.
-  // Portalling to <body> and positioning in document coordinates sidesteps
-  // that entirely. Once at the body level, the popover's z-index (65) has
-  // to clear every full-screen layer it might open on top of — notably the
-  // onboarding overlay (z-index 60, see .overlay in app.css) — or it opens
-  // "successfully" while rendering invisibly behind it.
   function toggle() {
     if (!open) {
       const r = root.getBoundingClientRect();
@@ -50,11 +42,6 @@
   function onKey(e) {
     if (e.key === 'Escape') open = false;
   }
-
-  function portal(node) {
-    document.body.appendChild(node);
-    return { destroy: () => node.remove() };
-  }
 </script>
 
 <svelte:window onclick={onWindowClick} onkeydown={onKey} />
@@ -75,7 +62,7 @@
   <div
     bind:this={popoverEl}
     use:portal
-    class="z-[65] grid w-[152px] grid-cols-4 gap-1.5 rounded-[11px] border border-[var(--border-strong)] bg-[var(--surface-raised)] p-2.5 shadow-[var(--shadow-lg)]"
+    class="z-[65] grid w-[152px] grid-cols-4 gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--surface-raised)] p-2.5 shadow-[var(--shadow-lg)]"
     style="position:absolute;top:{pos.top}px;left:{pos.left}px"
     role="menu"
   >

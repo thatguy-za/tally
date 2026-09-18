@@ -1,5 +1,6 @@
 <script>
   import { untrack } from 'svelte';
+  import { portal } from '$lib/actions/portal.js';
   import Icon from './Icon.svelte';
   import { currentMonth, formatMonth } from '$lib/currency.js';
 
@@ -36,10 +37,6 @@
     open = false;
   }
 
-  function portal(node) {
-    document.body.appendChild(node);
-    return { destroy: () => node.remove() };
-  }
   function onWindowClick(e) {
     if (open && !anchor.contains(e.target) && !popoverEl?.contains(e.target)) open = false;
   }

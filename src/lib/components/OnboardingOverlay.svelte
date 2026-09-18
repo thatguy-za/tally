@@ -71,6 +71,10 @@
     await invalidateAll();
   }
 
+  function onWindowKey(e) {
+    if (e.key === 'Escape' && !closing) exit();
+  }
+
   async function goImport() {
     closing = true;
     await fetch('/onboarding?/finish', { method: 'POST', body: new FormData() });
@@ -79,7 +83,12 @@
   }
 </script>
 
-<div class="overlay" role="dialog" aria-modal="true" aria-label="Set up Tally">
+<svelte:window onkeydown={onWindowKey} />
+
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_interactive_supports_focus -->
+<div class="overlay" role="dialog" aria-modal="true" aria-label="Set up Tally"
+  onclick={(e) => e.target === e.currentTarget && !closing && exit()}>
   <div class="card w-full max-w-lg rise" style="max-height:85vh;overflow-y:auto">
     <div class="mb-5 flex items-start justify-between gap-3">
       <div class="flex items-center gap-2">
@@ -99,7 +108,7 @@
     </div>
 
     {#if STEPS[step] === 'api-key'}
-      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[11px]" style="background:var(--accent-wash)">
+      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[var(--radius-sm)]" style="background:var(--accent-wash)">
         <Icon name="sparkle" size={19} class="text-[var(--accent)]" />
       </span>
       <h2 class="text-xl" style="font-family:var(--font-display)">Connect an AI assistant</h2>
@@ -171,7 +180,7 @@
         </div>
       </form>
     {:else if STEPS[step] === 'accounts'}
-      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[11px]" style="background:var(--accent-wash)">
+      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[var(--radius-sm)]" style="background:var(--accent-wash)">
         <Icon name="wallet" size={19} class="text-[var(--accent)]" />
       </span>
       <h2 class="text-xl" style="font-family:var(--font-display)">Your accounts</h2>
@@ -233,7 +242,7 @@
         <button class="btn btn-primary" onclick={next}>Continue</button>
       </div>
     {:else if STEPS[step] === 'categories'}
-      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[11px]" style="background:var(--accent-wash)">
+      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[var(--radius-sm)]" style="background:var(--accent-wash)">
         <Icon name="reports" size={19} class="text-[var(--accent)]" />
       </span>
       <h2 class="text-xl" style="font-family:var(--font-display)">Confirm your categories</h2>
@@ -245,7 +254,7 @@
         {#each grouped as g}
           <div>
             <p class="kicker mb-1.5">{kindLabel[g.kind]}</p>
-            <ul class="divide-y divide-[var(--border)] rounded-[9px] border border-[var(--border)]">
+            <ul class="divide-y divide-[var(--border)] rounded-[var(--radius-sm)] border border-[var(--border)]">
               {#each g.items as c (c.id)}
                 <li class="flex items-center justify-between gap-2 px-3 py-1.5 text-[13px]">
                   <span class="flex min-w-0 items-center gap-2">
@@ -355,7 +364,7 @@
         <button class="btn btn-primary" onclick={next}>Continue</button>
       </div>
     {:else if STEPS[step] === 'import'}
-      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[11px]" style="background:var(--accent-wash)">
+      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[var(--radius-sm)]" style="background:var(--accent-wash)">
         <Icon name="upload" size={19} class="text-[var(--accent)]" />
       </span>
       <h2 class="text-xl" style="font-family:var(--font-display)">Add your first transactions</h2>
