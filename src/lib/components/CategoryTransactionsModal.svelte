@@ -10,17 +10,19 @@
    * so a mis-categorised or wrong-amount transaction can be fixed without
    * leaving the chart.
    * @type {{
-   *   categoryId: number|'none',
+   *   categoryId: number|'none'|'other',
    *   categoryName: string,
    *   color: string,
    *   month: string,
+   *   kind?: 'income'|'expense',
+   *   excludeIds?: number[],
    *   currency: string,
    *   categories: {id:number,name:string}[],
    *   onClose: () => void,
    *   onChanged?: () => void
    * }}
    */
-  let { categoryId, categoryName, color, month, currency, categories, onClose, onChanged } = $props();
+  let { categoryId, categoryName, color, month, kind, excludeIds = [], currency, categories, onClose, onChanged } = $props();
 
   let rows = $state([]);
   let loading = $state(true);
@@ -30,7 +32,12 @@
     loading = true;
     loadError = '';
     try {
-      const res = await fetch(`/insights/category-transactions?category=${categoryId}&month=${month}`);
+      const params = new URLSearchParams({ category: String(categoryId), month });
+      if (categoryId === 'other') {
+        params.set('kind', kind || 'expense');
+        params.set('exclude', excludeIds.join(','));
+      }
+      const res = await fetch(`/insights/category-transactions?${params}`);
       if (!res.ok) throw new Error();
       const j = await res.json();
       rows = j.transactions;
@@ -62,8 +69,10 @@
     body.set('id', String(row.id));
     body.set('category_id', newCategoryId || '');
     await fetch('/transactions?/categorise', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
-    // moved out of the category this popup is showing — drop it from the list
-    if (String(newCategoryId || '') !== String(categoryId)) {
+    // moved out of the bucket this popup is showing — drop it from the list
+    const staysInOther = categoryId === 'other' && newCategoryId && !excludeIds.includes(Number(newCategoryId));
+    const staysPut = categoryId !== 'other' && String(newCategoryId || '') === String(categoryId);
+    if (!staysInOther && !staysPut) {
       rows = rows.filter((r) => r.id !== row.id);
     }
     onChanged?.();
@@ -89,7 +98,7 @@
     <div class="mb-4 flex items-start justify-between gap-3">
       <div>
         <p class="kicker mb-1 flex items-center gap-1.5">
-          <span class="h-2.5 w-2.5 rounded-full" style="background:{color}"></span>
+          <span class="h-2.5 w-2.5 rounded-full" style="background:{color || 'var(--border-strong)'}"></span>
           {formatMonth(month)}
         </p>
         <h2 class="text-xl" style="font-family:var(--font-display)">{categoryName}</h2>

@@ -15,11 +15,12 @@
    *   values: Record<string, { income: Record<string, number>, expense: Record<string, number> }>,
    *   currency: string,
    *   title?: string,
-   *   onSegmentClick?: (seg: object, ym: string) => void
+   *   onSegmentClick?: (seg: object, ym: string, source: 'income'|'expense') => void,
+   *   onMonthClick?: (ym: string) => void
    * }}
    */
   // the title renders inside the plot column so the legend can use the card's full height
-  let { months, income, expense, values, currency, title = '', onSegmentClick } = $props();
+  let { months, income, expense, values, currency, title = '', onSegmentClick, onMonthClick } = $props();
 
   // drawn at the wrapper's real width so text stays legible on a phone
   // instead of the whole picture scaling down
@@ -57,22 +58,26 @@
   function zoomOut() { zoom = Math.max(ZOOM_MIN, zoom / 1.5); }
   function zoomReset() { zoom = 1; }
 
-  let max = $derived(
+  // auto-fit ceiling from the unzoomed data, so zoom scales smoothly instead
+  // of jumping only when the shrunk max crosses into the next tidy bracket
+  let autoMax = $derived(
     Math.max(
       1,
       ...months.flatMap((m) => [sumSeries(values[m].income, activeIncome), sumSeries(values[m].expense, activeExpense)])
-    ) / zoom
+    )
   );
   // a tidy ceiling: 1, 2 or 5 × a power of ten
-  let ceil = $derived.by(() => {
-    const mag = Math.pow(10, Math.floor(Math.log10(max)));
-    const n = Math.ceil(max / mag);
+  let autoCeil = $derived.by(() => {
+    const mag = Math.pow(10, Math.floor(Math.log10(autoMax)));
+    const n = Math.ceil(autoMax / mag);
     return (n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
   });
+  let ceil = $derived(autoCeil / zoom);
   const y = (v) => PAD.t + plotH - (v / ceil) * plotH;
-  // gridlines at round numbers: 5 steps for a 5×, 4 for a 1× or 2× ceiling
+  // gridlines evenly spaced (step count fixed by the un-zoomed ceiling so it
+  // doesn't flicker between 4 and 5 as zoom changes)
   let ticks = $derived.by(() => {
-    const steps = String(ceil)[0] === '5' ? 5 : 4;
+    const steps = String(autoCeil)[0] === '5' ? 5 : 4;
     return Array.from({ length: steps + 1 }, (_, i) => (ceil / steps) * i);
   });
 
@@ -177,13 +182,13 @@
       {/each}
 
       {#each bars as b (b.ym)}
-        {#each [[b.income, b.xIn], [b.expense, b.xOut]] as [st, x]}
+        {#each [[b.income, b.xIn, 'income'], [b.expense, b.xOut, 'expense']] as [st, x, source]}
           {#each st.segs as seg (seg.id)}
             <path d={seg.path} fill={fill(seg.color)} style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
               role="presentation"
               onmousemove={(e) => show(e, seg, b.ym)}
               onmouseleave={() => (tip = null)}
-              onclick={() => onSegmentClick?.(seg, b.ym)}>
+              onclick={() => onSegmentClick?.(seg, b.ym, source)}>
               <title>{seg.name}: {money(seg.v)} ({b.label})</title>
             </path>
           {/each}
@@ -197,7 +202,8 @@
           {/if}
         {/each}
         <text x={b.cx} y={H - PAD.b + (showInOut ? 30 : 18)} text-anchor="middle" font-size="12"
-          font-weight="500" fill="var(--ink-soft)">{b.label}</text>
+          font-weight="500" fill="var(--ink-soft)" style="cursor:{onMonthClick ? 'pointer' : 'default'}"
+          role="presentation" onclick={() => onMonthClick?.(b.ym)}>{b.label}</text>
       {/each}
 
       <line x1={PAD.l} x2={W - PAD.r} y1={y(0)} y2={y(0)} stroke="var(--border-strong)" stroke-width="1" />

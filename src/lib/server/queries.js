@@ -110,7 +110,19 @@ export function listTransactions(userId, f = {}) {
   // dismissed-uncategorised rows opted out of ever needing a category, so
   // they don't belong in a "what still needs categorising" filtered view
   if (f.categoryId === 'none') where.push('t.category_id IS NULL AND t.dismissed_uncategorised = 0');
-  else if (f.categoryId) { where.push('t.category_id = @categoryId'); params.categoryId = f.categoryId; }
+  else if (f.categoryId === 'other') {
+    // the chart's folded "Other" bucket: every categorised transaction of the
+    // given kind(s) that isn't one of the individually-shown categories
+    where.push('t.category_id IS NOT NULL');
+    if (f.categoryKinds?.length) {
+      where.push(`c.kind IN (${f.categoryKinds.map((_, i) => `@kind${i}`).join(',')})`);
+      f.categoryKinds.forEach((k, i) => { params[`kind${i}`] = k; });
+    }
+    if (f.excludeCategoryIds?.length) {
+      where.push(`t.category_id NOT IN (${f.excludeCategoryIds.map((_, i) => `@excl${i}`).join(',')})`);
+      f.excludeCategoryIds.forEach((id, i) => { params[`excl${i}`] = id; });
+    }
+  } else if (f.categoryId) { where.push('t.category_id = @categoryId'); params.categoryId = f.categoryId; }
   if (f.accountId === 'none') where.push('t.account_id IS NULL');
   else if (f.accountId) { where.push('t.account_id = @accountId'); params.accountId = f.accountId; }
   if (f.search) { where.push('lower(t.description) LIKE @search'); params.search = `%${String(f.search).toLowerCase()}%`; }

@@ -10,6 +10,7 @@
   let newColor = $state('#7b8a5a');
   let editingId = $state(null);
   let editColor = $state('#64748b');
+  let addingNew = $state(false);
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
 
@@ -35,30 +36,36 @@
       if (form?.ok) {
         toast(form.msg || messages[form.section] || 'Saved');
         editingId = null;
+        addingNew = false;
+        newColor = '#7b8a5a';
       } else if (form?.error) toast(form.error, { type: 'info' });
     }
   });
 
   // ---- AI suggestions ---------------------------------------------------
-  let showSuggest = $state(false);
   let suggesting = $state(false);
   let suggestions = $state(null); // [{name, kind, color, picked}]
-  let suggestError = $state('');
   let addingPicks = $state(false);
 
   function suggestSubmit() {
     suggesting = true;
-    suggestError = '';
     return async ({ result }) => {
       suggesting = false;
       if (result.type === 'success' && result.data?.ok) {
         const picks = result.data.suggestions || [];
+        if (!picks.length) {
+          toast("Nothing new to suggest — your categories already cover it.", { type: 'info' });
+          return;
+        }
         suggestions = picks.map((s, i) => ({ ...s, color: PALETTE[i % PALETTE.length], picked: true }));
-        if (!suggestions.length) suggestError = "Nothing new to suggest — your categories already cover it.";
       } else {
-        suggestError = result.data?.error || 'Could not generate suggestions.';
+        toast(result.data?.error || 'Could not generate suggestions.', { type: 'info' });
       }
     };
+  }
+
+  function onWindowKey(e) {
+    if (e.key === 'Escape' && suggestions) suggestions = null;
   }
 
   let pickedCount = $derived(suggestions ? suggestions.filter((s) => s.picked).length : 0);
@@ -92,10 +99,12 @@
     <div class="mb-1 flex flex-wrap items-start justify-between gap-3">
       <h2 class="text-lg">Categories</h2>
       {#if data.aiAvailable}
-        <button type="button" class="flex items-center gap-1.5 text-[12px] text-[var(--ink-faint)] transition-colors hover:text-[var(--ink)]"
-          onclick={() => (showSuggest = !showSuggest)}>
-          <Icon name="sparkle" size={12} class="text-[var(--accent)]" /> Generate with AI
-        </button>
+        <form method="POST" action="?/suggest" use:enhance={suggestSubmit}>
+          <button class="btn btn-ghost btn-sm flex items-center gap-1.5" disabled={suggesting}>
+            <Icon name="sparkle" size={13} class="text-[var(--accent)]" />
+            {suggesting ? 'Generating categories…' : 'Generate categories with AI'}
+          </button>
+        </form>
       {/if}
     </div>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
@@ -106,47 +115,6 @@
       for the starting balance a bank statement often includes when you begin tracking an account —
       it's excluded from income and spending too.
     </p>
-
-    {#if showSuggest}
-      <div class="mb-4 rounded-[10px] border border-[var(--border)] p-3">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <p class="max-w-lg text-[13px] text-[var(--ink-faint)]">
-            Looks at your own transaction history and suggests categories your current list doesn't cover yet.
-          </p>
-          <form method="POST" action="?/suggest" use:enhance={suggestSubmit}>
-            <button class="btn btn-ghost btn-sm" disabled={suggesting}>{suggesting ? 'Thinking…' : 'Generate categories'}</button>
-          </form>
-        </div>
-
-        {#if suggestError}
-          <p class="mt-3 text-sm" style="color:var(--negative)">{suggestError}</p>
-        {/if}
-
-        {#if suggestions?.length}
-          <div class="mt-4 border-t border-[var(--border)] pt-4">
-            <ul class="mb-3 divide-y divide-[var(--border)]">
-              {#each suggestions as s}
-                <li class="flex items-center gap-3 py-2 text-[13px]">
-                  <label class="flex flex-1 items-center gap-2.5">
-                    <input type="checkbox" bind:checked={s.picked} />
-                    <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{s.color}"></span>
-                    <span>{s.name}</span>
-                    <span class="text-xs text-[var(--ink-faint)]">{kindLabel[s.kind] || s.kind}</span>
-                  </label>
-                </li>
-              {/each}
-            </ul>
-            <form method="POST" action="?/addSuggested" use:enhance={addSuggestedSubmit} class="flex items-center gap-3">
-              <input type="hidden" name="picks" value={picksPayload} />
-              <button class="btn btn-primary" disabled={!pickedCount || addingPicks}>
-                {addingPicks ? 'Adding…' : `Add ${pickedCount} categor${pickedCount === 1 ? 'y' : 'ies'}`}
-              </button>
-              <button type="button" class="btn btn-ghost" onclick={() => (suggestions = null)}>Dismiss</button>
-            </form>
-          </div>
-        {/if}
-      </div>
-    {/if}
     <div class="mb-4 overflow-x-auto rounded-[10px] border border-[var(--border)]">
       <table class="w-full text-[13px]">
         <thead>
@@ -212,35 +180,92 @@
               </tr>
             {/if}
           {/each}
+          {#if addingNew}
+            <tr class="border-b border-[var(--border)] last:border-0">
+              <td colspan="4" class="p-3" style="background:var(--paper-sunk)">
+                <form method="POST" action="?/addCategory" use:enhance class="grid gap-2 sm:grid-cols-6">
+                  <div class="flex items-center gap-2 sm:col-span-2">
+                    <input type="hidden" name="color" value={newColor} />
+                    <ColorPicker bind:value={newColor} size="h-[38px] w-10 shrink-0 rounded-[9px]" label="Colour for new category" />
+                    <input class="input min-w-0 flex-1" name="name" placeholder="e.g. Childcare" required />
+                  </div>
+                  <select class="input sm:col-span-2" name="kind">
+                    <option value="expense">Spending</option>
+                    <option value="income">Income</option>
+                    <option value="saving">Savings</option>
+                    <option value="transfer">Transfer</option>
+                    <option value="opening_balance">Opening balance</option>
+                  </select>
+                  <div class="flex items-center gap-2 sm:col-span-2">
+                    <button class="btn btn-primary btn-sm">Add</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick={() => (addingNew = false)}>Cancel</button>
+                    {#if err('category')}<span class="text-sm" style="color:var(--negative)">{err('category')}</span>{/if}
+                  </div>
+                </form>
+              </td>
+            </tr>
+          {:else}
+            <tr class="border-b border-[var(--border)] last:border-0">
+              <td colspan="4" class="p-0">
+                <button type="button" class="flex w-full items-center gap-1.5 px-3 py-2.5 text-left text-[13px] text-[var(--accent-strong)] hover:bg-[var(--paper-sunk)]"
+                  onclick={() => (addingNew = true)}>
+                  <Icon name="plus" size={13} /> Add category
+                </button>
+              </td>
+            </tr>
+          {/if}
         </tbody>
       </table>
     </div>
-    <form method="POST" action="?/addCategory" use:enhance class="flex flex-wrap items-end gap-3">
-      <div>
-        <label class="label" for="c-name">New category</label>
-        <input class="input" id="c-name" name="name" placeholder="e.g. Childcare" required />
-      </div>
-      <div>
-        <label class="label" for="c-kind">Type</label>
-        <select class="input" id="c-kind" name="kind">
-          <option value="expense">Spending</option>
-          <option value="income">Income</option>
-          <option value="saving">Savings</option>
-          <option value="transfer">Transfer</option>
-          <option value="opening_balance">Opening balance</option>
-        </select>
-      </div>
-      <div>
-        <span class="label">Colour</span>
-        <input type="hidden" name="color" value={newColor} />
-        <ColorPicker bind:value={newColor} size="h-[38px] w-14 rounded-[9px]" label="Colour for new category" />
-      </div>
-      <button class="btn btn-primary">Add</button>
-      {#if err('category')}<span class="text-sm" style="color:var(--negative)">{err('category')}</span>{/if}
-    </form>
   </div>
 
   <div class="rise rise-3">
     <RulesSection categories={data.categories} rules={data.rules} />
   </div>
 </div>
+
+{#if suggestions}
+  <div class="overlay" role="dialog" aria-modal="true" aria-label="AI category suggestions">
+    <div class="card w-full max-w-lg self-start rise max-h-[85vh] overflow-y-auto">
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <p class="kicker mb-1 flex items-center gap-1.5">
+            <Icon name="sparkle" size={12} class="text-[var(--accent)]" /> AI suggestions
+          </p>
+          <h2 class="text-xl" style="font-family:var(--font-display)">New categories</h2>
+        </div>
+        <button
+          class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+          onclick={() => (suggestions = null)}
+          aria-label="Close"
+        >
+          <Icon name="x" size={16} />
+        </button>
+      </div>
+      <p class="mb-3 text-[13px] text-[var(--ink-faint)]">
+        Based on your own transaction history — pick the ones worth keeping.
+      </p>
+      <ul class="mb-4 divide-y divide-[var(--border)]">
+        {#each suggestions as s}
+          <li class="flex items-center gap-3 py-2 text-[13px]">
+            <label class="flex flex-1 items-center gap-2.5">
+              <input type="checkbox" bind:checked={s.picked} />
+              <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{s.color}"></span>
+              <span>{s.name}</span>
+              <span class="text-xs text-[var(--ink-faint)]">{kindLabel[s.kind] || s.kind}</span>
+            </label>
+          </li>
+        {/each}
+      </ul>
+      <form method="POST" action="?/addSuggested" use:enhance={addSuggestedSubmit} class="flex items-center gap-3">
+        <input type="hidden" name="picks" value={picksPayload} />
+        <button class="btn btn-primary" disabled={!pickedCount || addingPicks}>
+          {addingPicks ? 'Adding…' : `Add ${pickedCount} categor${pickedCount === 1 ? 'y' : 'ies'}`}
+        </button>
+        <button type="button" class="btn btn-ghost" onclick={() => (suggestions = null)}>Cancel</button>
+      </form>
+    </div>
+  </div>
+{/if}
+
+<svelte:window onkeydown={onWindowKey} />

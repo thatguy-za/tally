@@ -1,11 +1,31 @@
 <script>
   import { enhance } from '$app/forms';
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import { formatMoney, formatMonth } from '$lib/currency.js';
   import MonthCalendarPicker from '$lib/components/MonthCalendarPicker.svelte';
+  import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
+
+  // every category, across kinds — the transaction-picker inside the modal
+  // below needs the full list, not just whichever section was clicked
+  let allCategories = $derived([...data.expenses, ...data.savings, ...data.income]);
+
+  let txModal = $state(null);
+  function openTxModal(c) {
+    txModal = { categoryId: c.id, categoryName: c.name, color: c.color };
+  }
+
+  // the default use:enhance behaviour resets the form on success, which
+  // blanks every target input (they're plain, unbound `value={...}`, so their
+  // defaultValue is always "") — even ones whose target didn't change and so
+  // never get a fresh value from the {#key c.target} block below
+  function submitSave() {
+    return async ({ update }) => {
+      await update({ reset: false });
+    };
+  }
 
   function setMonth(month) {
     const url = new URL($page.url);
@@ -70,14 +90,14 @@
   <p class="mb-5 text-[13px] text-[var(--ink-faint)]">
     Set a monthly target per category. Clear a field to remove its target. Spending is matched to the selected month.
   </p>
-  <form method="POST" action="?/save" use:enhance>
+  <form method="POST" action="?/save" use:enhance={submitSave}>
     <ul class="space-y-4">
       {#each data.expenses as c (c.id)}
         <li>
           <div class="mb-2 flex flex-wrap items-center justify-between gap-3 text-[13px]">
-            <span class="flex items-center gap-2 font-medium">
+            <button type="button" class="flex items-center gap-2 font-medium hover:underline" onclick={() => openTxModal(c)}>
               <span class="dot" style="background:{c.color}"></span>{c.name}
-            </span>
+            </button>
             <span class="flex items-center gap-2">
               <span class="tnum text-[var(--ink-faint)]">{formatMoney(c.actual, data.currency)} /</span>
               <!-- keyed on the target so a server-generated value (e.g. from
@@ -89,11 +109,13 @@
               {/key}
             </span>
           </div>
-          {#if c.target != null}
-            <div class="h-2 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+          <div class="h-2 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+            {#if c.target != null}
               <div class="h-full rounded-full transition-[width] duration-700"
                 style="width:{Math.min(100, c.pct)}%;background:{barColour(c.pct)}"></div>
-            </div>
+            {/if}
+          </div>
+          {#if c.target != null}
             <p class="mt-1 text-xs {c.remaining < 0 ? '' : 'text-[var(--ink-faint)]'}"
               style={c.remaining < 0 ? 'color:var(--negative)' : ''}>
               {c.remaining < 0
@@ -115,9 +137,9 @@
           {#each data.savings as c (c.id)}
             <li>
               <div class="mb-2 flex flex-wrap items-center justify-between gap-3 text-[13px]">
-                <span class="flex items-center gap-2 font-medium">
+                <button type="button" class="flex items-center gap-2 font-medium hover:underline" onclick={() => openTxModal(c)}>
                   <span class="dot" style="background:{c.color}"></span>{c.name}
-                </span>
+                </button>
                 <span class="flex items-center gap-3">
                   <span class="tnum text-[var(--ink-faint)]">
                     {formatMoney(c.actual, data.currency)}{#if c.target != null} / {formatMoney(c.target, data.currency)}{/if}
@@ -128,11 +150,13 @@
                   {/key}
                 </span>
               </div>
-              {#if c.target != null}
-                <div class="h-2 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+              <div class="h-2 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
+                {#if c.target != null}
                   <div class="h-full rounded-full transition-[width] duration-700"
                     style="width:{Math.max(0, Math.min(100, c.pct))}%;background:var(--positive)"></div>
-                </div>
+                {/if}
+              </div>
+              {#if c.target != null}
                 <p class="mt-1 text-xs {c.remaining <= 0 ? '' : 'text-[var(--ink-faint)]'}"
                   style={c.remaining <= 0 ? 'color:var(--positive)' : ''}>
                   {#if c.actual < 0}
@@ -155,3 +179,16 @@
     </div>
   </form>
 </div>
+
+{#if txModal}
+  <CategoryTransactionsModal
+    categoryId={txModal.categoryId}
+    categoryName={txModal.categoryName}
+    color={txModal.color}
+    month={data.month}
+    currency={data.currency}
+    categories={allCategories}
+    onClose={() => (txModal = null)}
+    onChanged={() => invalidateAll()}
+  />
+{/if}

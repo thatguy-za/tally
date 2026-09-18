@@ -12,9 +12,32 @@
   let { data } = $props();
 
   let categoryModal = $state(null);
-  function openCategoryModal(seg, ym) {
-    if (seg.id === 'other') return; // a folded bucket of several categories, not one to open
+  function openCategoryModal(seg, ym, source = 'expense') {
+    if (seg.id === 'other') {
+      const excludeIds = (source === 'income' ? data.chart.income : data.chart.expense)
+        .filter((c) => c.id !== 'other')
+        .map((c) => c.id);
+      categoryModal = { categoryId: 'other', categoryName: seg.name, color: seg.color, month: ym, kind: source, excludeIds };
+      return;
+    }
     categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym };
+  }
+
+  let monthModal = $state(null);
+  async function openMonthModal(ym) {
+    monthModal = { month: ym, segments: null, loading: true };
+    const params = new URLSearchParams({ month: ym });
+    if (data.accountId) params.set('account', data.accountId);
+    try {
+      const res = await fetch(`/insights/month-breakdown?${params}`);
+      const j = await res.json();
+      monthModal = { month: ym, segments: j.segments || [], loading: false };
+    } catch {
+      monthModal = { month: ym, segments: [], loading: false };
+    }
+  }
+  function onWindowKey(e) {
+    if (e.key === 'Escape' && monthModal) monthModal = null;
   }
 
   let ins = $derived(data.insights);
@@ -200,7 +223,7 @@
   {:else if data.chart.income.length || data.chart.expense.length}
     <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
       expense={data.chart.expense} values={data.chart.values} currency={data.currency}
-      onSegmentClick={openCategoryModal} />
+      onSegmentClick={openCategoryModal} onMonthClick={openMonthModal} />
   {:else}
     <h2 class="mb-4 text-lg">Your spending by month</h2>
     <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
@@ -292,15 +315,47 @@
   {/if}
 {/if}
 
+{#if monthModal}
+  <div class="overlay" role="dialog" aria-modal="true" aria-label="{shortMonth(monthModal.month)} spending breakdown">
+    <div class="card w-full max-w-2xl self-start rise max-h-[85vh] overflow-y-auto pb-6">
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <p class="kicker mb-1">{shortMonth(monthModal.month)}</p>
+          <h2 class="text-xl" style="font-family:var(--font-display)">Spending breakdown</h2>
+        </div>
+        <button
+          class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+          onclick={() => (monthModal = null)}
+          aria-label="Close"
+        >
+          <Icon name="x" size={16} />
+        </button>
+      </div>
+      {#if monthModal.loading}
+        <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Loading…</p>
+      {:else if monthModal.segments.length}
+        <SpendingDoughnut segments={monthModal.segments} currency={data.currency}
+          onSegmentClick={(seg) => openCategoryModal(seg, monthModal.month, 'expense')} />
+      {:else}
+        <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Nothing spent in {shortMonth(monthModal.month)}.</p>
+      {/if}
+    </div>
+  </div>
+{/if}
+
 {#if categoryModal}
   <CategoryTransactionsModal
     categoryId={categoryModal.categoryId}
     categoryName={categoryModal.categoryName}
     color={categoryModal.color}
     month={categoryModal.month}
+    kind={categoryModal.kind}
+    excludeIds={categoryModal.excludeIds}
     currency={data.currency}
     categories={data.categories}
     onClose={() => (categoryModal = null)}
     onChanged={() => invalidateAll()}
   />
 {/if}
+
+<svelte:window onkeydown={onWindowKey} />
