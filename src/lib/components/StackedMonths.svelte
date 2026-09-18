@@ -13,11 +13,12 @@
    *   expense: { id: string|number, name: string, color: string|null }[],
    *   values: Record<string, { income: Record<string, number>, expense: Record<string, number> }>,
    *   currency: string,
-   *   title?: string
+   *   title?: string,
+   *   onSegmentClick?: (seg: object, ym: string) => void
    * }}
    */
   // the title renders inside the plot column so the legend can use the card's full height
-  let { months, income, expense, values, currency, title = '' } = $props();
+  let { months, income, expense, values, currency, title = '', onSegmentClick } = $props();
 
   // drawn at the wrapper's real width so text stays legible on a phone
   // instead of the whole picture scaling down
@@ -131,10 +132,11 @@
       {#each bars as b (b.ym)}
         {#each [[b.income, b.xIn], [b.expense, b.xOut]] as [st, x]}
           {#each st.segs as seg (seg.id)}
-            <path d={seg.path} fill={fill(seg.color)} style="cursor:default"
+            <path d={seg.path} fill={fill(seg.color)} style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
               role="presentation"
               onmousemove={(e) => show(e, seg, b.ym)}
-              onmouseleave={() => (tip = null)}>
+              onmouseleave={() => (tip = null)}
+              onclick={() => onSegmentClick?.(seg, b.ym)}>
               <title>{seg.name}: {money(seg.v)} ({b.label})</title>
             </path>
           {/each}

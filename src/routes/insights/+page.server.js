@@ -2,6 +2,7 @@ import { aiEnabled } from '$lib/server/ai-settings.js';
 import {
   listMonths,
   listAccounts,
+  listCategories,
   monthRange,
   periodInsights,
   monthlyCategoryTotals,
@@ -79,6 +80,7 @@ export function load({ locals, url }) {
     to,
     months,
     accounts,
+    categories: listCategories(userId),
     accountId,
     insights: periodInsights(userId, from, to, accountId),
     chart: {

@@ -1,13 +1,15 @@
 <script>
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import { formatMoney } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
   import ColorPicker from '$lib/components/ColorPicker.svelte';
+  import CategorySelect from '$lib/components/CategorySelect.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
-  let newColor = $state('#7b8a5a');
   let newAccountColor = $state('#6366f1');
+  let newRuleCategoryId = $state('');
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
 
@@ -15,10 +17,10 @@
     currency: 'Currency saved',
     dateFormat: 'Date format saved',
     account: 'Account saved',
-    category: 'Categories updated',
     rule: 'Rules updated',
     username: 'Username updated',
     password: 'Password updated',
+    danger: 'Done',
     aiuser: 'Preference saved'
   };
   let seenForm;
@@ -125,74 +127,8 @@
     </form>
   </div>
 
-  <!-- Categories -->
-  <div class="card rise rise-4">
-    <h2 class="text-lg">Categories</h2>
-    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
-      Money in a <b>Savings</b> category counts as money you kept, not money you spent — it stays
-      out of your spending totals and is tracked separately. If you track more than one account,
-      use <b>Transfer</b> for the receiving side of a move between them (e.g. money arriving in a
-      savings account you also import) so it isn't counted as new income. Use <b>Opening balance</b>
-      for the starting balance a bank statement often includes when you begin tracking an account —
-      it's excluded from income and spending too.
-    </p>
-    <ul class="mb-4 divide-y divide-[var(--border)]">
-      {#each data.categories as c}
-        <li class="flex items-center justify-between gap-3 py-2 text-[13px]">
-          <span class="flex min-w-0 items-center gap-2">
-            <span class="dot shrink-0" style="background:{c.color}"></span>
-            <span class="truncate">{c.name}</span>
-            <form method="POST" action="?/categoryKind" use:enhance>
-              <input type="hidden" name="id" value={c.id} />
-              <select name="kind" class="cell text-[12px]" value={c.kind}
-                aria-label="What kind of category {c.name} is"
-                onchange={(e) => e.currentTarget.form.requestSubmit()}>
-                <option value="expense">Spending</option>
-                <option value="income">Income</option>
-                <option value="saving">Savings</option>
-                <option value="transfer">Transfer</option>
-                <option value="opening_balance">Opening balance</option>
-              </select>
-            </form>
-          </span>
-          <span class="flex items-center gap-3">
-            <span class="text-xs text-[var(--ink-faint)]">{c.count} tx</span>
-            <form method="POST" action="?/deleteCategory" use:enhance
-              onsubmit={(e) => { if (c.count && !confirm(`${c.count} transactions will become uncategorised. Continue?`)) e.preventDefault(); }}>
-              <input type="hidden" name="id" value={c.id} />
-              <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete"><Icon name="trash" size={14} /></button>
-            </form>
-          </span>
-        </li>
-      {/each}
-    </ul>
-    <form method="POST" action="?/addCategory" use:enhance class="flex flex-wrap items-end gap-3">
-      <div>
-        <label class="label" for="c-name">New category</label>
-        <input class="input" id="c-name" name="name" placeholder="e.g. Childcare" required />
-      </div>
-      <div>
-        <label class="label" for="c-kind">Type</label>
-        <select class="input" id="c-kind" name="kind">
-          <option value="expense">Spending</option>
-          <option value="income">Income</option>
-          <option value="saving">Savings</option>
-          <option value="transfer">Transfer</option>
-          <option value="opening_balance">Opening balance</option>
-        </select>
-      </div>
-      <div>
-        <span class="label">Colour</span>
-        <input type="hidden" name="color" value={newColor} />
-        <ColorPicker bind:value={newColor} size="h-[38px] w-14 rounded-[9px]" label="Colour for new category" />
-      </div>
-      <button class="btn btn-primary">Add</button>
-      {#if err('category')}<span class="text-sm" style="color:var(--negative)">{err('category')}</span>{/if}
-    </form>
-  </div>
-
   <!-- Auto-categorisation rules -->
-  <div class="card rise rise-5">
+  <div class="card rise rise-4">
     <div class="mb-1 flex items-center justify-between">
       <h2 class="text-lg">Auto-categorisation rules</h2>
       <form method="POST" action="?/applyRules" use:enhance>
@@ -226,22 +162,31 @@
         <li class="py-2 text-sm text-[var(--ink-faint)]">No rules yet.</li>
       {/each}
     </ul>
-    <form method="POST" action="?/addRule" use:enhance class="flex flex-wrap items-end gap-3">
+    <form method="POST" action="?/addRule"
+      use:enhance={() => async ({ result, update }) => {
+        if (result.type === 'success') newRuleCategoryId = '';
+        await update();
+      }}
+      class="flex flex-wrap items-end gap-3">
       <div class="min-w-[160px] flex-1">
         <label class="label" for="r-match">Description contains</label>
         <input class="input" id="r-match" name="match_text" placeholder="e.g. SPAR" required />
       </div>
       <div>
         <label class="label" for="r-cat">Category</label>
-        <select class="input" id="r-cat" name="category_id" required>
-          <option value="">Choose…</option>
-          {#each data.categories as c}<option value={c.id}>{c.name}</option>{/each}
-        </select>
+        <input type="hidden" name="category_id" value={newRuleCategoryId} />
+        <CategorySelect categories={data.categories} value={newRuleCategoryId}
+          triggerClass="input" placeholder="Choose…"
+          onChange={(v) => (newRuleCategoryId = v)}
+          onCreated={() => invalidateAll()} />
       </div>
       <div class="w-20">
         <label class="label" for="r-pri">Priority</label>
         <input class="input tnum" id="r-pri" name="priority" type="number" value="0" />
       </div>
+      <label class="mb-2.5 flex items-center gap-1.5 text-[13px] text-[var(--ink-faint)]">
+        <input type="checkbox" name="overwrite" /> also recategorise matching transactions that already have one
+      </label>
       <button class="btn btn-primary">Add rule</button>
       {#if err('rule')}<span class="text-sm" style="color:var(--negative)">{err('rule')}</span>{/if}
     </form>
@@ -298,8 +243,23 @@
     </form>
   </div>
 
+  <!-- Danger zone -->
+  <div class="card rise rise-7" style="border-color:var(--negative)">
+    <h2 class="text-lg" style="color:var(--negative)">Danger zone</h2>
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
+      Permanently delete every transaction on this account. Categories, accounts and rules are kept.
+    </p>
+    <form method="POST" action="?/deleteAllTransactions" use:enhance
+      onsubmit={(e) => {
+        if (!confirm('Delete ALL of your transactions? This cannot be undone.')) e.preventDefault();
+      }}>
+      <button class="btn" style="background:var(--negative-wash);color:var(--negative)">Delete all transactions</button>
+      {#if ok('danger')}<span class="ml-3 text-sm" style="color:var(--positive)">{form.msg}</span>{/if}
+    </form>
+  </div>
+
   {#if data.isAdmin}
-    <a href="/settings/server" class="nudge rise rise-7">
+    <a href="/settings/server" class="nudge rise rise-8">
       <Icon name="settings" size={16} class="text-[var(--accent)]" />
       <span>Server settings — users &amp; AI assistant</span>
       <Icon name="arrowRight" size={14} class="ml-auto text-[var(--ink-faint)]" />

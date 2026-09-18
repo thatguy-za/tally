@@ -5,9 +5,9 @@
    * A single month's spending by category, as a doughnut with a legend and a
    * centred total. Used by Insights when the period picker is set to one month
    * (StackedMonths needs several months to be worth a bar chart).
-   * @type {{ segments: { id: any, name: string, color: string|null, value: number }[], currency: string, title?: string }}
+   * @type {{ segments: { id: any, name: string, color: string|null, value: number }[], currency: string, title?: string, onSegmentClick?: (seg: object) => void }}
    */
-  let { segments, currency, title = '' } = $props();
+  let { segments, currency, title = '', onSegmentClick } = $props();
 
   const fill = (c) => c || 'var(--border-strong)';
   const money = (v) => formatMoney(v, currency);
@@ -75,8 +75,10 @@
       <svg viewBox="0 0 200 200" class="block h-auto w-[220px] max-w-full sm:w-[260px]" role="img"
         aria-label="Spending by category this month">
         {#each arcs as seg (seg.id)}
-          <path d={seg.path} fill={fill(seg.color)} style="cursor:default" role="presentation"
-            onmousemove={(e) => show(e, seg)} onmouseleave={() => (tip = null)}>
+          <path d={seg.path} fill={fill(seg.color)} style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
+            role="presentation"
+            onmousemove={(e) => show(e, seg)} onmouseleave={() => (tip = null)}
+            onclick={() => onSegmentClick?.(seg)}>
             <title>{seg.name}: {money(seg.value)} ({Math.round(seg.pct * 100)}%)</title>
           </path>
         {/each}
@@ -100,11 +102,13 @@
   <div class="flex w-full flex-col gap-[3px] text-[12px] text-[var(--ink-soft)] sm:w-[170px] sm:shrink-0">
     <p class="kicker mb-1">Spending</p>
     {#each arcs as s (s.id)}
-      <div class="flex items-center gap-2 py-[3px]">
+      <button type="button" disabled={!onSegmentClick}
+        class="flex items-center gap-2 rounded py-[3px] text-left {onSegmentClick ? 'hover:text-[var(--ink)]' : ''}"
+        onclick={() => onSegmentClick?.(s)}>
         <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
         <span class="min-w-0 flex-1 truncate">{s.name}</span>
         <span class="tnum shrink-0 text-[var(--ink-faint)]">{Math.round(s.pct * 100)}%</span>
-      </div>
+      </button>
     {/each}
   </div>
 </div>

@@ -4,10 +4,6 @@ import { DATE_FORMATS } from '$lib/csv.js';
 import { db } from '$lib/server/db.js';
 import {
   listCategories,
-  createCategory,
-  deleteCategory,
-  setCategoryKind,
-  setCategoryColor,
   listAccounts,
   createAccount,
   renameAccount,
@@ -17,7 +13,8 @@ import {
   deleteRule,
   applyRules,
   setUserAiCategorise,
-  getUserAiCategorise
+  getUserAiCategorise,
+  deleteAllTransactions
 } from '$lib/server/queries.js';
 import { verifyPassword, hashPassword, getUserByUsername } from '$lib/server/auth.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
@@ -25,10 +22,6 @@ import { aiEnabled } from '$lib/server/ai-settings.js';
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
   const userId = locals.user.id;
-  const counts = db
-    .prepare('SELECT category_id, COUNT(*) AS n FROM transactions WHERE user_id = ? GROUP BY category_id')
-    .all(userId);
-  const countMap = Object.fromEntries(counts.map((c) => [c.category_id, c.n]));
   const acctCounts = db
     .prepare('SELECT account_id, COUNT(*) AS n FROM transactions WHERE user_id = ? GROUP BY account_id')
     .all(userId);
@@ -41,7 +34,7 @@ export function load({ locals }) {
     dateFormat: locals.user.date_format,
     username: locals.user.username,
     isAdmin: !!locals.user.is_admin,
-    categories: listCategories(userId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
+    categories: listCategories(userId),
     accounts: listAccounts(userId).map((a) => ({ ...a, count: acctCountMap[a.id] || 0 })),
     rules: listRules(userId),
     aiAvailable: aiEnabled(),
@@ -100,54 +93,16 @@ export const actions = {
     return { section: 'account', ok: true };
   },
 
-  addCategory: async ({ request, locals }) => {
-    const f = await request.formData();
-    const name = String(f.get('name') || '').trim();
-    const kind = String(f.get('kind') || 'expense');
-    const color = String(f.get('color') || '#64748b');
-    if (!name) return fail(400, { section: 'category', error: 'Name is required.' });
-    try {
-      createCategory(locals.user.id, name, kind, color);
-    } catch {
-      return fail(400, { section: 'category', error: 'A category with that name already exists.' });
-    }
-    return { section: 'category', ok: true };
-  },
-
-  categoryKind: async ({ request, locals }) => {
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    const kind = String(f.get('kind') || '');
-    if (!id) return fail(400, { section: 'category', error: 'Unknown category.' });
-    setCategoryKind(locals.user.id, id, kind);
-    return { section: 'category', ok: true, msg: 'Category updated' };
-  },
-
-  categoryColor: async ({ request, locals }) => {
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    const color = String(f.get('color') || '#64748b');
-    if (!id) return fail(400, { section: 'category', error: 'Unknown category.' });
-    setCategoryColor(locals.user.id, id, color);
-    return { section: 'category', ok: true, msg: 'Category updated' };
-  },
-
-  deleteCategory: async ({ request, locals }) => {
-    const f = await request.formData();
-    const id = Number(f.get('id'));
-    if (id) deleteCategory(locals.user.id, id);
-    return { section: 'category', ok: true };
-  },
-
   addRule: async ({ request, locals }) => {
     const f = await request.formData();
     const matchText = String(f.get('match_text') || '').trim();
     const categoryId = Number(f.get('category_id'));
     const priority = Number(f.get('priority') || 0);
+    const overwrite = f.get('overwrite') === 'on';
     if (!matchText || !categoryId)
       return fail(400, { section: 'rule', error: 'Enter text to match and a category.' });
     createRule(locals.user.id, matchText, categoryId, priority);
-    const applied = applyRules(locals.user.id, { onlyUncategorised: true });
+    const applied = applyRules(locals.user.id, { onlyUncategorised: !overwrite });
     return { section: 'rule', ok: true, applied };
   },
 
@@ -197,5 +152,10 @@ export const actions = {
       return fail(400, { section: 'password', error: 'New passwords do not match.' });
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(next), locals.user.id);
     return { section: 'password', ok: true };
+  },
+
+  deleteAllTransactions: async ({ locals }) => {
+    const n = deleteAllTransactions(locals.user.id);
+    return { section: 'danger', ok: true, msg: `Deleted ${n} transaction${n === 1 ? '' : 's'}.` };
   }
 };

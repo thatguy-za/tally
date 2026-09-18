@@ -1,7 +1,9 @@
 <script>
   import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import Icon from './Icon.svelte';
+  import CategorySelect from './CategorySelect.svelte';
   import { parseAmount } from '$lib/csv.js';
 
   /** @type {{ data: any, form: any, onClose: () => void }} */
@@ -97,10 +99,9 @@
                 </select>
               </td>
               <td class="py-1 pr-2">
-                <select class="cell min-w-[140px]" bind:value={r.category_id}>
-                  <option value="">Uncategorised</option>
-                  {#each data.categories as cat}<option value={String(cat.id)}>{cat.name}</option>{/each}
-                </select>
+                <CategorySelect categories={data.categories} value={r.category_id}
+                  onChange={(v) => (r.category_id = v)}
+                  onCreated={() => invalidateAll()} />
               </td>
               <td class="py-1 pr-3 text-right">
                 <button type="button" class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"

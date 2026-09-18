@@ -26,9 +26,13 @@ export const normaliseKind = (k) => (CATEGORY_KINDS.includes(k) ? k : 'expense')
 export const NON_SPENDING_KINDS = ['saving', 'transfer', 'opening_balance'];
 
 export function createCategory(userId, name, kind, color) {
-  return db
+  const k = normaliseKind(kind);
+  const c = color || '#64748b';
+  const trimmed = name.trim();
+  const info = db
     .prepare('INSERT INTO categories (user_id, name, kind, color) VALUES (?, ?, ?, ?)')
-    .run(userId, name.trim(), normaliseKind(kind), color || '#64748b');
+    .run(userId, trimmed, k, c);
+  return { id: Number(info.lastInsertRowid), name: trimmed, kind: k, color: c };
 }
 
 /** Change what a category *is* — the only way to mark one as savings after the fact. */
@@ -197,6 +201,11 @@ export function bulkDelete(userId, ids) {
   return Number(info.changes);
 }
 
+export function deleteAllTransactions(userId) {
+  const info = db.prepare('DELETE FROM transactions WHERE user_id = ?').run(userId);
+  return Number(info.changes);
+}
+
 // AI categorisation is opt-out — on unless the user has explicitly turned it off.
 export function setUserAiCategorise(userId, on) {
   db.prepare('UPDATE users SET ai_off = ? WHERE id = ?').run(on ? 0 : 1, userId);
@@ -204,6 +213,32 @@ export function setUserAiCategorise(userId, on) {
 
 export function getUserAiCategorise(userId) {
   return !db.prepare('SELECT ai_off FROM users WHERE id = ?').get(userId)?.ai_off;
+}
+
+/**
+ * A representative sample of this user's own transaction descriptions, one
+ * per distinct (lowercased) description, newest first — used to ask the AI
+ * for category suggestions tailored to how this person actually spends,
+ * rather than a generic list.
+ */
+export function sampleDescriptionsForSuggestion(userId, limit = 150) {
+  const rows = db
+    .prepare(
+      `SELECT description, amount FROM transactions
+       WHERE user_id = ? AND description != ''
+       ORDER BY id DESC LIMIT 2000`
+    )
+    .all(userId);
+  const seen = new Set();
+  const out = [];
+  for (const r of rows) {
+    const key = r.description.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 export function uncategorisedCount(userId, accountId = null) {

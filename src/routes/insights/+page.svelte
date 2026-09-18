@@ -3,11 +3,19 @@
   import { page } from '$app/stores';
   import { formatMoney, formatMonth, currentMonth } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
+  import { invalidateAll } from '$app/navigation';
   import StackedMonths from '$lib/components/StackedMonths.svelte';
   import SpendingDoughnut from '$lib/components/SpendingDoughnut.svelte';
   import AccountPicker from '$lib/components/AccountPicker.svelte';
   import PeriodPicker from '$lib/components/PeriodPicker.svelte';
+  import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
   let { data } = $props();
+
+  let categoryModal = $state(null);
+  function openCategoryModal(seg, ym) {
+    if (seg.id === 'other') return; // a folded bucket of several categories, not one to open
+    categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym };
+  }
 
   let ins = $derived(data.insights);
   let singleMonth = $derived(data.from === data.to);
@@ -183,14 +191,16 @@
 {#snippet spendingChart()}
   {#if singleMonth}
     {#if spendingSegments.length}
-      <SpendingDoughnut title="Your spending for this month" segments={spendingSegments} currency={data.currency} />
+      <SpendingDoughnut title="Your spending for this month" segments={spendingSegments} currency={data.currency}
+        onSegmentClick={(seg) => openCategoryModal(seg, data.from)} />
     {:else}
       <h2 class="mb-4 text-lg">Your spending for this month</h2>
       <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
     {/if}
   {:else if data.chart.income.length || data.chart.expense.length}
     <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
-      expense={data.chart.expense} values={data.chart.values} currency={data.currency} />
+      expense={data.chart.expense} values={data.chart.values} currency={data.currency}
+      onSegmentClick={openCategoryModal} />
   {:else}
     <h2 class="mb-4 text-lg">Your spending by month</h2>
     <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
@@ -280,4 +290,17 @@
       </span>
     </div>
   {/if}
+{/if}
+
+{#if categoryModal}
+  <CategoryTransactionsModal
+    categoryId={categoryModal.categoryId}
+    categoryName={categoryModal.categoryName}
+    color={categoryModal.color}
+    month={categoryModal.month}
+    currency={data.currency}
+    categories={data.categories}
+    onClose={() => (categoryModal = null)}
+    onChanged={() => invalidateAll()}
+  />
 {/if}

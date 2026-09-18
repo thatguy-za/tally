@@ -13,7 +13,8 @@
   const nav = [
     { href: '/insights', label: 'Insights', icon: 'reports' },
     { href: '/transactions', label: 'Transactions', icon: 'transactions' },
-    { href: '/budgets', label: 'Budgets', icon: 'budgets' }
+    { href: '/budgets', label: 'Budgets', icon: 'budgets' },
+    { href: '/categories', label: 'Categories', icon: 'tag' }
   ];
 
   let current = $derived($page.url.pathname);

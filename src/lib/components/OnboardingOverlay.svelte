@@ -251,7 +251,7 @@
                   <span class="flex min-w-0 items-center gap-2">
                     <form
                       method="POST"
-                      action="/settings?/categoryColor"
+                      action="/categories?/categoryColor"
                       use:enhance={() => async ({ result }) => {
                         if (result.type === 'success') await invalidateAll();
                       }}
@@ -273,7 +273,7 @@
                   </span>
                   <form
                     method="POST"
-                    action="/settings?/categoryKind"
+                    action="/categories?/categoryKind"
                     use:enhance={() => async ({ result }) => {
                       if (result.type === 'success') await invalidateAll();
                     }}
@@ -300,7 +300,7 @@
             {#if addingKind === g.kind}
               <form
                 method="POST"
-                action="/settings?/addCategory"
+                action="/categories?/addCategory"
                 class="mt-2 flex items-center gap-2"
                 use:enhance={() => async ({ result }) => {
                   if (result.type === 'success') {
@@ -330,7 +330,7 @@
       </div>
       <form
         method="POST"
-        action="/settings?/addCategory"
+        action="/categories?/addCategory"
         class="mt-3 flex flex-wrap items-center gap-2"
         use:enhance={() => async ({ result }) => {
           if (result.type === 'success') {

@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { formatMoney, formatMonth } from '$lib/currency.js';
 import { getApiKey, getModel, getProvider, findModelInfo } from './ai-settings.js';
-import { listCategories } from './queries.js';
+import { listCategories, sampleDescriptionsForSuggestion } from './queries.js';
 
 const BATCH_SIZE = 40;
 const MAX_PER_RUN = 300;
@@ -32,7 +32,12 @@ function friendlyError(e, provider) {
   return e?.message || 'unknown error';
 }
 
-/** Tool schema shared by both providers — only the wrapping shape differs. */
+/**
+ * Tool schema shared by both providers — only the wrapping shape differs.
+ * `category` is the 1-based number from the numbered list sent in the prompt,
+ * not the category's name — a number is 1 output token against several for
+ * most names, and output tokens are the pricier half of every model's rate.
+ */
 const CATEGORISE_TOOL = {
   name: 'submit_categorisation',
   description: 'Record the chosen category for each transaction by its ref.',
@@ -50,8 +55,8 @@ const CATEGORISE_TOOL = {
           properties: {
             ref: { type: 'string' },
             category: {
-              type: ['string', 'null'],
-              description: 'Exact category name from the list, or null if genuinely unclear'
+              type: ['integer', 'null'],
+              description: 'The category number from the list, or null if genuinely unclear'
             }
           }
         }
@@ -77,10 +82,10 @@ export function estimateCost(usage, model) {
 
 /**
  * Force a tool call and return its parsed input, regardless of provider.
- * @param {{ system: string, userText: string, toolName: string, maxTokens?: number, apiKeyOverride?: string, provider?: string, model?: string }} args
+ * @param {{ system: string, userText: string, tool?: object, toolName: string, maxTokens?: number, apiKeyOverride?: string, provider?: string, model?: string }} args
  * @returns {Promise<{ input: any, usage: {input:number,output:number} }>}
  */
-async function callTool({ system, userText, toolName, maxTokens = 4096, apiKeyOverride, provider, model }) {
+async function callTool({ system, userText, tool = CATEGORISE_TOOL, toolName, maxTokens = 4096, apiKeyOverride, provider, model }) {
   provider = provider || getProvider();
   model = model || getModel(provider);
 
@@ -99,9 +104,9 @@ async function callTool({ system, userText, toolName, maxTokens = 4096, apiKeyOv
           {
             type: 'function',
             function: {
-              name: CATEGORISE_TOOL.name,
-              description: CATEGORISE_TOOL.description,
-              parameters: CATEGORISE_TOOL.input_schema,
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.input_schema,
               strict: true
             }
           }
@@ -131,7 +136,7 @@ async function callTool({ system, userText, toolName, maxTokens = 4096, apiKeyOv
       ...requestParams(model),
       max_tokens: maxTokens,
       system,
-      tools: [CATEGORISE_TOOL],
+      tools: [tool],
       // force the tool — `auto` was letting Claude reply in prose
       tool_choice: { type: 'tool', name: toolName },
       messages: [{ role: 'user', content: userText }]
@@ -190,11 +195,11 @@ async function callText({ system, userText, maxTokens, apiKeyOverride, provider,
 
 const SYSTEM =
   'You are a meticulous personal-finance bookkeeper. Assign every transaction to ' +
-  'exactly one of the user’s existing categories, matching the intent of the category ' +
-  'names. Use the sign of the amount (negative = money out, positive = money in) and ' +
-  'the description. Prefer a confident choice for well-known merchants and obvious ' +
-  'cases; only use null when it is genuinely ambiguous. Respond solely by calling ' +
-  'submit_categorisation with one assignment per transaction ref.';
+  'exactly one of the user’s existing categories (by its number), matching the intent ' +
+  'of the category names. Use the sign of the amount (negative = money out, positive = ' +
+  'money in) and the description. Prefer a confident choice for well-known merchants ' +
+  'and obvious cases; only use null when it is genuinely ambiguous. Respond solely by ' +
+  'calling submit_categorisation with one assignment per transaction ref.';
 
 /**
  * Core loop: ask the configured AI provider to categorise `items` against `categories`.
@@ -204,8 +209,7 @@ const SYSTEM =
  * `byRef` maps ref -> a category name that exists in `categories` (validated).
  */
 async function runCategorisation(categories, items) {
-  const byName = new Map(categories.map((c) => [c.name.trim().toLowerCase(), c.name]));
-  const catList = categories.map((c) => `- ${c.name} (${c.kind})`).join('\n');
+  const catList = categories.map((c, i) => `${i + 1}. ${c.name} (${c.kind})`).join('\n');
 
   const byRef = new Map();
   const usage = { input: 0, output: 0 };
@@ -221,7 +225,7 @@ async function runCategorisation(categories, items) {
       userText:
         `Categories:\n${catList}\n\n` +
         `Transactions (ref, date, amount, description):\n${txList}\n\n` +
-        `Assign a category to every ref above.`,
+        `Assign a category number to every ref above.`,
       toolName: 'submit_categorisation'
     });
     usage.input += u.input;
@@ -235,11 +239,89 @@ async function runCategorisation(categories, items) {
 
     const refs = new Set(batch.map((t) => String(t.ref)));
     for (const a of assignments) {
-      const name = a?.category ? byName.get(String(a.category).trim().toLowerCase()) : null;
-      if (name && refs.has(String(a.ref))) byRef.set(String(a.ref), name);
+      const idx = Number(a?.category);
+      const cat = Number.isInteger(idx) && idx >= 1 && idx <= categories.length ? categories[idx - 1] : null;
+      if (cat && refs.has(String(a.ref))) byRef.set(String(a.ref), cat.name);
     }
   }
   return { byRef, usage };
+}
+
+const SUGGEST_CATEGORIES_TOOL = {
+  name: 'suggest_categories',
+  description: 'Propose new categories tailored to this person\'s own transaction history.',
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['categories'],
+    properties: {
+      categories: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['name', 'kind'],
+          properties: {
+            name: { type: 'string', description: 'Short, human category name, e.g. "Childcare"' },
+            kind: { type: 'string', enum: ['income', 'expense', 'saving'] }
+          }
+        }
+      }
+    }
+  },
+  strict: true
+};
+
+const SUGGEST_CATEGORIES_SYSTEM =
+  'You help someone set up categories for their personal budget. Look at a sample of their ' +
+  'own transaction descriptions (with amounts — negative is money out, positive is money in) ' +
+  'and their existing categories, then propose NEW categories that would meaningfully group ' +
+  'transactions those existing categories do not already cover well. Merge similar merchants ' +
+  'into one sensible category rather than one per merchant (e.g. all supermarkets under ' +
+  '"Groceries", not one category per store). Never repeat a category that already exists ' +
+  '(matching is case-insensitive). Suggest at most 8, and suggest none if the existing list ' +
+  'already covers the transactions reasonably. Use short, plain category names a person would ' +
+  'actually choose. Respond solely by calling suggest_categories.';
+
+/**
+ * Look at a sample of the user's own transactions and propose categories not
+ * already covered by their existing list.
+ * @param {number} userId
+ * @returns {Promise<{ suggestions: {name:string,kind:string}[], usage:object, costUsd:number }>}
+ */
+export async function suggestNewCategories(userId) {
+  const existing = listCategories(userId);
+  const sample = sampleDescriptionsForSuggestion(userId, 150);
+  const empty = { suggestions: [], usage: { input: 0, output: 0 }, costUsd: 0 };
+  if (!sample.length) return empty;
+
+  const existingList = existing.length
+    ? existing.map((c) => `- ${c.name} (${c.kind})`).join('\n')
+    : '(none yet)';
+  const txList = sample.map((r) => `${Number(r.amount).toFixed(2)}\t${r.description}`).join('\n');
+
+  const { input, usage } = await callTool({
+    system: SUGGEST_CATEGORIES_SYSTEM,
+    tool: SUGGEST_CATEGORIES_TOOL,
+    toolName: 'suggest_categories',
+    userText:
+      `Existing categories:\n${existingList}\n\n` +
+      `Sample transactions (amount, description):\n${txList}`
+  });
+
+  const existingNames = new Set(existing.map((c) => c.name.trim().toLowerCase()));
+  const seen = new Set();
+  const suggestions = [];
+  for (const c of Array.isArray(input?.categories) ? input.categories : []) {
+    const name = String(c?.name || '').trim();
+    const kind = ['income', 'expense', 'saving'].includes(c?.kind) ? c.kind : 'expense';
+    const key = name.toLowerCase();
+    if (!name || existingNames.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    suggestions.push({ name, kind });
+  }
+
+  return { suggestions, usage, costUsd: estimateCost(usage, getModel()) };
 }
 
 /**

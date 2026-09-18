@@ -2,6 +2,8 @@
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Icon from './Icon.svelte';
+  import Confetti from './Confetti.svelte';
+  import CategorySelect from './CategorySelect.svelte';
   import { parseCsv, parseAmount, parseDate, guessMapping, dupeKey, DATE_FORMATS } from '$lib/csv.js';
 
   /** @type {{ data: any, onClose: () => void }} */
@@ -189,25 +191,30 @@
   const STEPS = ['Upload', 'Review & approve', 'Done'];
   let stepIdx = $derived({ upload: 0, review: 1, done: 2 }[phase]);
 
-  function startOver() {
-    form = undefined;
-    edits = new Map();
-    aiSuggested = new Set();
-    aiPending = new Set();
-    aiState = { running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: false };
-    aiKick = '';
-    autoKey = '';
-    bulkCat = '__none';
-    splitMode = false;
-    hasHeader = true;
-    skipRows = 0;
-    invert = false;
-    fileName = '';
-    if (fileInputEl) fileInputEl.value = '';
+  // ---- done: offer up anything still uncategorised, celebrate once clear ----
+  // a row is hidden the moment its category is chosen (not after the server
+  // round-trip resolves) by tracking handled ids in a Set, rather than
+  // mutating a copy of the list — filtering by membership avoids any race
+  // between overlapping requests that a "splice out of this array" approach
+  // would have if two rows are picked in quick succession
+  let handledIds = $state(new Set());
+  let uncategorisedRows = $derived((form?.uncategorisedRows || []).filter((r) => !handledIds.has(r.id)));
+  let celebrate = $derived(phase === 'done' && uncategorisedRows.length === 0);
+  function markHandled(id) {
+    handledIds = new Set(handledIds).add(id);
+  }
+  async function categoriseAfterImport(id, categoryId) {
+    markHandled(id);
+    const body = new FormData();
+    body.set('id', String(id));
+    body.set('category_id', categoryId || '');
+    await fetch('/transactions?/categorise', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
   }
 
   // ---- AI categorisation — streams top-down, chunk by chunk -----------
-  const AI_CHUNK = 20;
+  // bigger batches mean fewer requests, and the category list + system prompt
+  // (a fixed cost every request) gets paid for fewer times per import
+  const AI_CHUNK = 40;
   const AI_MAX = 400;
   let aiState = $state({ running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: false });
   let aiSuggested = $state(new Set()); // rows the AI set
@@ -329,21 +336,52 @@
 {/if}
 
 {#if phase === 'done'}
-  <div class="card" style="border-color:var(--accent);background:var(--accent-wash)">
-    <p class="font-semibold" style="color:var(--accent-strong)">
-      Imported {form.imported} transaction{form.imported === 1 ? '' : 's'}.
-    </p>
-    <ul class="mt-1.5 space-y-0.5 text-[13px]" style="color:var(--accent-strong)">
-      {#if form.duplicates}<li>· {form.duplicates} duplicate(s) skipped.</li>{/if}
-      {#if form.invalid}<li>· {form.invalid} row(s) skipped as invalid.</li>{/if}
-      {#if form.categorisedByRules}<li>· {form.categorisedByRules} auto-categorised by your rules.</li>{/if}
-      {#if form.uncategorised}<li>· {form.uncategorised} still uncategorised.</li>{/if}
-    </ul>
-    <div class="mt-3 flex gap-2">
-      <button type="button" class="btn btn-primary" onclick={onClose}>Close</button>
-      <button type="button" class="btn btn-ghost" onclick={startOver}>Import another</button>
+  {#if celebrate}
+    <Confetti />
+    <div class="card text-center" style="border-color:var(--accent);background:var(--accent-wash)">
+      <p class="text-lg font-semibold" style="color:var(--accent-strong)">🎉 Import complete!</p>
+      <p class="mt-1.5 text-[13px]" style="color:var(--accent-strong)">
+        Imported {form.imported} transaction{form.imported === 1 ? '' : 's'}
+        {#if form.duplicates}· {form.duplicates} duplicate{form.duplicates === 1 ? '' : 's'} skipped{/if}
+        — everything's categorised.
+      </p>
+      <a href="/insights" class="btn btn-primary mt-4 inline-flex">View my spending insights</a>
     </div>
-  </div>
+  {:else}
+    <div class="card" style="border-color:var(--accent);background:var(--accent-wash)">
+      <p class="font-semibold" style="color:var(--accent-strong)">
+        Imported {form.imported} transaction{form.imported === 1 ? '' : 's'}.
+      </p>
+      <ul class="mt-1.5 space-y-0.5 text-[13px]" style="color:var(--accent-strong)">
+        {#if form.duplicates}<li>· {form.duplicates} duplicate(s) skipped.</li>{/if}
+        {#if form.invalid}<li>· {form.invalid} row(s) skipped as invalid.</li>{/if}
+        {#if form.categorisedByRules}<li>· {form.categorisedByRules} auto-categorised by your rules.</li>{/if}
+      </ul>
+    </div>
+
+    <div class="card mt-3">
+      <h3 class="text-[15px] font-medium">Give these a category</h3>
+      <p class="mt-1 text-[13px] text-[var(--ink-faint)]">
+        {uncategorisedRows.length} transaction{uncategorisedRows.length === 1 ? '' : 's'} still need one.
+      </p>
+      <ul class="mt-3 divide-y divide-[var(--border)]">
+        {#each uncategorisedRows as row (row.id)}
+          <li class="flex flex-wrap items-center justify-between gap-2 py-2 text-[13px]">
+            <span class="flex min-w-0 items-center gap-2">
+              <span class="tnum shrink-0 text-[var(--ink-faint)]">{row.date}</span>
+              <span class="truncate">{row.description}</span>
+            </span>
+            <span class="flex shrink-0 items-center gap-2">
+              <span class="tnum" style={row.amount > 0 ? 'color:var(--positive)' : ''}>{row.amount.toFixed(2)}</span>
+              <CategorySelect categories={data.categories} value=""
+                onChange={(v) => categoriseAfterImport(row.id, v)}
+                onCreated={() => invalidateAll()} />
+            </span>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
 
 {:else if phase === 'upload'}
   <form method="POST" action="/transactions/import?/analyze" enctype="multipart/form-data"

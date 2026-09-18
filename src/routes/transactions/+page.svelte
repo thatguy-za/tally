@@ -1,6 +1,6 @@
 <script>
   import { enhance } from '$app/forms';
-  import { goto } from '$app/navigation';
+  import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import { fly, slide } from 'svelte/transition';
   import Money from '$lib/components/Money.svelte';
@@ -9,6 +9,7 @@
   import MerchantLogo from '$lib/components/MerchantLogo.svelte';
   import LogoPicker from '$lib/components/LogoPicker.svelte';
   import AddImportOverlay from '$lib/components/AddImportOverlay.svelte';
+  import CategorySelect from '$lib/components/CategorySelect.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
@@ -16,6 +17,7 @@
   let showFilters = $state(false);
   let editingId = $state(null);
   let rulingId = $state(null);
+  let ruleCategoryId = $state('');
   let editingLogoFor = $state(null);
   let selected = $state(new Set());
 
@@ -77,21 +79,26 @@
   const currentCat = (t) =>
     catOverride.has(t.id) ? catOverride.get(t.id) : String(t.category_id ?? '');
 
-  function categoriseSubmit(t, newValue, prevValue) {
+  async function categoriseViaPicker(t, newValue) {
+    const prevValue = currentCat(t);
     catOverride.set(t.id, newValue);
     catOverride = new Map(catOverride);
     pendingCat.add(t.id);
     pendingCat = new Set(pendingCat);
-    return async ({ result }) => {
+    const body = new FormData();
+    body.set('id', String(t.id));
+    body.set('category_id', newValue);
+    try {
+      const res = await fetch('?/categorise', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
+      if (!res.ok) throw new Error();
+    } catch {
+      catOverride.set(t.id, prevValue);
+      catOverride = new Map(catOverride);
+      toast('Could not update category', { type: 'info' });
+    } finally {
       pendingCat.delete(t.id);
       pendingCat = new Set(pendingCat);
-      if (result.type === 'failure' || result.type === 'error') {
-        catOverride.set(t.id, prevValue);
-        catOverride = new Map(catOverride);
-        toast('Could not update category', { type: 'info' });
-      }
-      // success: keep the optimistic value, skip invalidateAll
-    };
+    }
   }
 
   function deleteSubmit(id) {
@@ -307,10 +314,11 @@
                   </div>
                   <div class="sm:col-span-2">
                     <label class="label" for="rule-cat-{t.id}">Category</label>
-                    <select class="input" id="rule-cat-{t.id}" name="category_id" value={String(t.category_id ?? '')} required>
-                      <option value="">Choose…</option>
-                      {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
-                    </select>
+                    <input type="hidden" name="category_id" value={ruleCategoryId} />
+                    <CategorySelect categories={data.categories} value={ruleCategoryId}
+                      triggerClass="input" placeholder="Choose…"
+                      onChange={(v) => (ruleCategoryId = v)}
+                      onCreated={() => invalidateAll()} />
                   </div>
                   <div>
                     <label class="label" for="rule-pri-{t.id}">Priority</label>
@@ -348,19 +356,13 @@
                 </div>
               </td>
               <td class="py-2.5 pr-3">
-                <form method="POST" action="?/categorise"
-                  use:enhance={({ formData }) =>
-                    categoriseSubmit(t, String(formData.get('category_id') ?? ''), currentCat(t))}>
-                  <input type="hidden" name="id" value={t.id} />
-                  <div class="flex items-center gap-1.5 transition-opacity {pendingCat.has(t.id) ? 'opacity-50' : ''}">
-                    <span class="dot shrink-0 transition-colors" style="background:{catColor(currentCat(t))}"></span>
-                    <select name="category_id" class="cell max-w-[160px] text-[13px]"
-                      value={currentCat(t)} onchange={(e) => e.currentTarget.form.requestSubmit()}>
-                      <option value="">Uncategorised</option>
-                      {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
-                    </select>
-                  </div>
-                </form>
+                <div class="flex items-center gap-1.5 transition-opacity {pendingCat.has(t.id) ? 'opacity-50' : ''}">
+                  <span class="dot shrink-0 transition-colors" style="background:{catColor(currentCat(t))}"></span>
+                  <CategorySelect categories={data.categories} value={currentCat(t)}
+                    triggerClass="cell max-w-[160px] text-[13px]"
+                    onChange={(v) => categoriseViaPicker(t, v)}
+                    onCreated={() => invalidateAll()} />
+                </div>
                 {#if !currentCat(t)}
                   <form method="POST" action="?/dismissUncategorised" use:enhance class="mt-1">
                     <input type="hidden" name="id" value={t.id} />
@@ -378,7 +380,7 @@
                 <div class="flex justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
                   <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--accent)]"
                     data-tip="Save as rule" aria-label="Save as auto-categorisation rule"
-                    onclick={() => { rulingId = t.id; editingId = null; }}><Icon name="repeat" size={14} /></button>
+                    onclick={() => { rulingId = t.id; editingId = null; ruleCategoryId = String(t.category_id ?? ''); }}><Icon name="repeat" size={14} /></button>
                   <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"
                     data-tip="Edit" aria-label="Edit transaction"
                     onclick={() => { editingId = t.id; rulingId = null; }}><Icon name="edit" size={14} /></button>

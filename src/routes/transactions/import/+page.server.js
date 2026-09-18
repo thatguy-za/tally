@@ -4,6 +4,7 @@ import {
   listCategories,
   listAccounts,
   listRules,
+  listTransactions,
   bulkInsert,
   applyRules,
   uncategorisedCount,
@@ -81,11 +82,10 @@ export const actions = {
       const hit = byName.get(name.toLowerCase());
       if (hit) return hit;
       if (opts.createCategories) {
-        const info = createCategory(locals.user.id, name, 'expense');
-        const id = Number(info.lastInsertRowid);
-        byId.add(id);
-        byName.set(name.toLowerCase(), id);
-        return id;
+        const created = createCategory(locals.user.id, name, 'expense');
+        byId.add(created.id);
+        byName.set(name.toLowerCase(), created.id);
+        return created.id;
       }
       return null;
     };
@@ -119,7 +119,9 @@ export const actions = {
       duplicates,
       invalid,
       categorisedByRules,
-      uncategorised: uncategorisedCount(locals.user.id)
+      uncategorised: uncategorisedCount(locals.user.id),
+      // so the "done" step can offer them up for categorising right away
+      uncategorisedRows: listTransactions(locals.user.id, { categoryId: 'none' }).slice(0, 200)
     };
   }
 };

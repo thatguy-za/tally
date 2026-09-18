@@ -38,7 +38,7 @@ function makeUser() {
 }
 
 function makeCategory(userId, name, kind = 'expense') {
-  return Number(createCategory(userId, name, kind, '#000000').lastInsertRowid);
+  return createCategory(userId, name, kind, '#000000').id;
 }
 
 function addTx(userId, { date, amount, category_id = null, account_id = null, description = '' }) {
