@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms';
   import Icon from '$lib/components/Icon.svelte';
   import ColorPicker from '$lib/components/ColorPicker.svelte';
+  import RulesSection from '$lib/components/RulesSection.svelte';
   import { PALETTE } from '$lib/palette.js';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
@@ -39,6 +40,7 @@
   });
 
   // ---- AI suggestions ---------------------------------------------------
+  let showSuggest = $state(false);
   let suggesting = $state(false);
   let suggestions = $state(null); // [{name, kind, color, picked}]
   let suggestError = $state('');
@@ -86,54 +88,16 @@
 </div>
 
 <div class="space-y-4">
-  {#if data.aiAvailable}
-    <div class="card rise rise-1">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 class="flex items-center gap-2 text-lg">
-            <Icon name="sparkle" size={16} class="text-[var(--accent)]" /> Generate with AI
-          </h2>
-          <p class="mt-1 max-w-lg text-[13px] text-[var(--ink-faint)]">
-            Looks at your own transaction history and suggests categories your current list doesn't cover yet.
-          </p>
-        </div>
-        <form method="POST" action="?/suggest" use:enhance={suggestSubmit}>
-          <button class="btn btn-primary" disabled={suggesting}>{suggesting ? 'Thinking…' : 'Generate categories'}</button>
-        </form>
-      </div>
-
-      {#if suggestError}
-        <p class="mt-3 text-sm" style="color:var(--negative)">{suggestError}</p>
-      {/if}
-
-      {#if suggestions?.length}
-        <div class="mt-4 border-t border-[var(--border)] pt-4">
-          <ul class="mb-3 divide-y divide-[var(--border)]">
-            {#each suggestions as s}
-              <li class="flex items-center gap-3 py-2 text-[13px]">
-                <label class="flex flex-1 items-center gap-2.5">
-                  <input type="checkbox" bind:checked={s.picked} />
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{s.color}"></span>
-                  <span>{s.name}</span>
-                  <span class="text-xs text-[var(--ink-faint)]">{kindLabel[s.kind] || s.kind}</span>
-                </label>
-              </li>
-            {/each}
-          </ul>
-          <form method="POST" action="?/addSuggested" use:enhance={addSuggestedSubmit} class="flex items-center gap-3">
-            <input type="hidden" name="picks" value={picksPayload} />
-            <button class="btn btn-primary" disabled={!pickedCount || addingPicks}>
-              {addingPicks ? 'Adding…' : `Add ${pickedCount} categor${pickedCount === 1 ? 'y' : 'ies'}`}
-            </button>
-            <button type="button" class="btn btn-ghost" onclick={() => (suggestions = null)}>Dismiss</button>
-          </form>
-        </div>
+  <div class="card rise rise-2">
+    <div class="mb-1 flex flex-wrap items-start justify-between gap-3">
+      <h2 class="text-lg">Categories</h2>
+      {#if data.aiAvailable}
+        <button type="button" class="flex items-center gap-1.5 text-[12px] text-[var(--ink-faint)] transition-colors hover:text-[var(--ink)]"
+          onclick={() => (showSuggest = !showSuggest)}>
+          <Icon name="sparkle" size={12} class="text-[var(--accent)]" /> Generate with AI
+        </button>
       {/if}
     </div>
-  {/if}
-
-  <div class="card rise rise-2">
-    <h2 class="text-lg">Categories</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       Money in a <b>Savings</b> category counts as money you kept, not money you spent — it stays
       out of your spending totals and is tracked separately. If you track more than one account,
@@ -142,6 +106,47 @@
       for the starting balance a bank statement often includes when you begin tracking an account —
       it's excluded from income and spending too.
     </p>
+
+    {#if showSuggest}
+      <div class="mb-4 rounded-[10px] border border-[var(--border)] p-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="max-w-lg text-[13px] text-[var(--ink-faint)]">
+            Looks at your own transaction history and suggests categories your current list doesn't cover yet.
+          </p>
+          <form method="POST" action="?/suggest" use:enhance={suggestSubmit}>
+            <button class="btn btn-ghost btn-sm" disabled={suggesting}>{suggesting ? 'Thinking…' : 'Generate categories'}</button>
+          </form>
+        </div>
+
+        {#if suggestError}
+          <p class="mt-3 text-sm" style="color:var(--negative)">{suggestError}</p>
+        {/if}
+
+        {#if suggestions?.length}
+          <div class="mt-4 border-t border-[var(--border)] pt-4">
+            <ul class="mb-3 divide-y divide-[var(--border)]">
+              {#each suggestions as s}
+                <li class="flex items-center gap-3 py-2 text-[13px]">
+                  <label class="flex flex-1 items-center gap-2.5">
+                    <input type="checkbox" bind:checked={s.picked} />
+                    <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{s.color}"></span>
+                    <span>{s.name}</span>
+                    <span class="text-xs text-[var(--ink-faint)]">{kindLabel[s.kind] || s.kind}</span>
+                  </label>
+                </li>
+              {/each}
+            </ul>
+            <form method="POST" action="?/addSuggested" use:enhance={addSuggestedSubmit} class="flex items-center gap-3">
+              <input type="hidden" name="picks" value={picksPayload} />
+              <button class="btn btn-primary" disabled={!pickedCount || addingPicks}>
+                {addingPicks ? 'Adding…' : `Add ${pickedCount} categor${pickedCount === 1 ? 'y' : 'ies'}`}
+              </button>
+              <button type="button" class="btn btn-ghost" onclick={() => (suggestions = null)}>Dismiss</button>
+            </form>
+          </div>
+        {/if}
+      </div>
+    {/if}
     <div class="mb-4 overflow-x-auto rounded-[10px] border border-[var(--border)]">
       <table class="w-full text-[13px]">
         <thead>
@@ -233,5 +238,9 @@
       <button class="btn btn-primary">Add</button>
       {#if err('category')}<span class="text-sm" style="color:var(--negative)">{err('category')}</span>{/if}
     </form>
+  </div>
+
+  <div class="rise rise-3">
+    <RulesSection categories={data.categories} rules={data.rules} />
   </div>
 </div>

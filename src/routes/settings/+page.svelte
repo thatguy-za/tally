@@ -1,15 +1,13 @@
 <script>
   import { enhance } from '$app/forms';
-  import { invalidateAll } from '$app/navigation';
   import { formatMoney } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
   import ColorPicker from '$lib/components/ColorPicker.svelte';
-  import CategorySelect from '$lib/components/CategorySelect.svelte';
+  import RulesSection from '$lib/components/RulesSection.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
   let newAccountColor = $state('#6366f1');
-  let newRuleCategoryId = $state('');
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
 
@@ -128,68 +126,8 @@
   </div>
 
   <!-- Auto-categorisation rules -->
-  <div class="card rise rise-4">
-    <div class="mb-1 flex items-center justify-between">
-      <h2 class="text-lg">Auto-categorisation rules</h2>
-      <form method="POST" action="?/applyRules" use:enhance>
-        <input type="hidden" name="scope" value="uncategorised" />
-        <button class="btn btn-ghost btn-sm">Run on uncategorised</button>
-      </form>
-    </div>
-    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
-      If a description contains the text, the transaction gets that category — applied on import,
-      on manual entry, and whenever you run them. Higher priority wins.
-    </p>
-    {#if ok('rule')}
-      <p class="mb-3 text-sm" style="color:var(--positive)">
-        Saved{form?.applied ? ` · ${form.applied} transaction(s) categorised` : ''}
-      </p>
-    {/if}
-    <ul class="mb-4 divide-y divide-[var(--border)]">
-      {#each data.rules as r}
-        <li class="flex items-center justify-between py-2 text-[13px]">
-          <span>
-            “{r.match_text}” →
-            <span class="font-medium" style="color:{r.category_color}">{r.category_name}</span>
-            {#if r.priority}<span class="ml-1 text-xs text-[var(--ink-faint)]">p{r.priority}</span>{/if}
-          </span>
-          <form method="POST" action="?/deleteRule" use:enhance>
-            <input type="hidden" name="id" value={r.id} />
-            <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]"><Icon name="trash" size={14} /></button>
-          </form>
-        </li>
-      {:else}
-        <li class="py-2 text-sm text-[var(--ink-faint)]">No rules yet.</li>
-      {/each}
-    </ul>
-    <form method="POST" action="?/addRule"
-      use:enhance={() => async ({ result, update }) => {
-        if (result.type === 'success') newRuleCategoryId = '';
-        await update();
-      }}
-      class="flex flex-wrap items-end gap-3">
-      <div class="min-w-[160px] flex-1">
-        <label class="label" for="r-match">Description contains</label>
-        <input class="input" id="r-match" name="match_text" placeholder="e.g. SPAR" required />
-      </div>
-      <div>
-        <label class="label" for="r-cat">Category</label>
-        <input type="hidden" name="category_id" value={newRuleCategoryId} />
-        <CategorySelect categories={data.categories} value={newRuleCategoryId}
-          triggerClass="input" placeholder="Choose…"
-          onChange={(v) => (newRuleCategoryId = v)}
-          onCreated={() => invalidateAll()} />
-      </div>
-      <div class="w-20">
-        <label class="label" for="r-pri">Priority</label>
-        <input class="input tnum" id="r-pri" name="priority" type="number" value="0" />
-      </div>
-      <label class="mb-2.5 flex items-center gap-1.5 text-[13px] text-[var(--ink-faint)]">
-        <input type="checkbox" name="overwrite" /> also recategorise matching transactions that already have one
-      </label>
-      <button class="btn btn-primary">Add rule</button>
-      {#if err('rule')}<span class="text-sm" style="color:var(--negative)">{err('rule')}</span>{/if}
-    </form>
+  <div class="rise rise-4">
+    <RulesSection categories={data.categories} rules={data.rules} />
   </div>
 
   <!-- AI categorisation opt-in (any user, when enabled) -->

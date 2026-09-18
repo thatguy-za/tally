@@ -681,9 +681,9 @@ export function monthlyCategoryTotals(userId, from, to, accountId = null) {
       `SELECT substr(t.date, 1, 7) AS ym, c.id, c.name, c.color, c.kind,
               SUM(ABS(t.amount)) AS total
        FROM transactions t JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = @userId AND c.kind IN ('income', 'expense')
+       WHERE t.user_id = @userId AND c.kind IN ('income', 'expense', 'saving')
          AND substr(t.date, 1, 7) BETWEEN @from AND @to
-         AND ((c.kind = 'income' AND t.amount > 0) OR (c.kind = 'expense' AND t.amount < 0))
+         AND ((c.kind = 'income' AND t.amount > 0) OR (c.kind IN ('expense', 'saving') AND t.amount < 0))
          ${af.sql}
        GROUP BY ym, c.id`
     )

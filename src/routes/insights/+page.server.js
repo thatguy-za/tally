@@ -65,6 +65,10 @@ export function load({ locals, url }) {
   const accountId = rawAccount === 'none' || isRealAccount(rawAccount, accounts) ? rawAccount : null;
 
   const rows = monthlyCategoryTotals(userId, from, to, accountId);
+  // money moved into savings still left the account that month, so it belongs
+  // in the "out" bar next to real spending — it's just not "expense" anywhere
+  // else in the app (the SAVED figure and periodInsights still treat it as kept)
+  for (const r of rows) if (r.kind === 'saving') r.kind = 'expense';
   const income = seriesFor(rows, 'income');
   const expense = seriesFor(rows, 'expense');
   const values = {};

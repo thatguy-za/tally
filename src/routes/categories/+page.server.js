@@ -7,6 +7,7 @@ import {
   deleteCategory,
   setCategoryKind,
   setCategoryColor,
+  listRules,
   getUserAiCategorise
 } from '$lib/server/queries.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
@@ -22,6 +23,7 @@ export function load({ locals }) {
 
   return {
     categories: listCategories(userId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
+    rules: listRules(userId),
     aiAvailable: aiEnabled() && getUserAiCategorise(userId)
   };
 }

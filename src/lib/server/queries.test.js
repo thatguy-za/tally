@@ -402,21 +402,30 @@ describe('periodInsights', () => {
 });
 
 describe('monthlyCategoryTotals', () => {
-  it('includes only income (positive) and expense (negative) transactions, as positive magnitudes', () => {
+  it('includes income (positive), expense (negative) and saving (negative) transactions, as positive magnitudes', () => {
     const u = makeUser();
     const salary = makeCategory(u, 'Salary', 'income');
     const groceries = makeCategory(u, 'Groceries', 'expense');
     const savings = makeCategory(u, 'Savings', 'saving');
     addTx(u, { date: '2026-01-01', amount: 1000, category_id: salary });
     addTx(u, { date: '2026-01-02', amount: -100, category_id: groceries });
-    addTx(u, { date: '2026-01-03', amount: -50, category_id: savings }); // excluded entirely
+    addTx(u, { date: '2026-01-03', amount: -50, category_id: savings });
 
     const rows = monthlyCategoryTotals(u, '2026-01', '2026-01');
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     const salaryRow = rows.find((r) => r.id === salary);
     const groceriesRow = rows.find((r) => r.id === groceries);
+    const savingsRow = rows.find((r) => r.id === savings);
     expect(salaryRow.total).toBe(1000);
     expect(groceriesRow.total).toBe(100);
+    expect(savingsRow.total).toBe(50);
+  });
+
+  it('excludes a saving category\'s withdrawal (a positive amount)', () => {
+    const u = makeUser();
+    const savings = makeCategory(u, 'Savings', 'saving');
+    addTx(u, { date: '2026-01-01', amount: 50, category_id: savings });
+    expect(monthlyCategoryTotals(u, '2026-01', '2026-01')).toHaveLength(0);
   });
 
   it('excludes an income category\'s refund (a negative amount) and an expense category\'s reversal (a positive amount)', () => {

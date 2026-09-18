@@ -412,11 +412,14 @@
                     <label class="label" for="rule-pri-{t.id}">Priority</label>
                     <input class="input tnum" id="rule-pri-{t.id}" name="priority" type="number" value="0" />
                   </div>
-                  <div class="flex items-center gap-2 sm:col-span-6">
+                  <div class="flex flex-wrap items-center gap-3 sm:col-span-6">
                     <button class="btn btn-primary btn-sm">Save rule</button>
                     <button type="button" class="btn btn-ghost btn-sm" onclick={() => (rulingId = null)}>Cancel</button>
-                    <span class="text-[12px] text-[var(--ink-faint)]">Future imports and manual entries with this text get this category.</span>
+                    <label class="flex items-center gap-1.5 text-[12px] text-[var(--ink-faint)]">
+                      <input type="checkbox" name="overwrite" /> also recategorise matching transactions that already have one
+                    </label>
                   </div>
+                  <p class="text-[12px] text-[var(--ink-faint)] sm:col-span-6">Future imports and manual entries with this text get this category.</p>
                 </form>
               </td>
             </tr>

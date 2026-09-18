@@ -190,6 +190,7 @@ export const actions = {
     const matchText = String(f.get('match_text') || '').trim();
     const categoryId = Number(f.get('category_id'));
     const priority = Number(f.get('priority')) || 0;
+    const overwrite = f.get('overwrite') === 'on';
     if (!matchText || !categoryId)
       return fail(400, { error: 'A match phrase and category are required.' });
     if (!listCategories(locals.user.id).some((c) => c.id === categoryId))
@@ -198,7 +199,7 @@ export const actions = {
       (r) => r.match_text.toLowerCase() === matchText.toLowerCase() && r.category_id === categoryId
     );
     if (!dupe) createRule(locals.user.id, matchText, categoryId, priority);
-    const applied = applyRules(locals.user.id, { onlyUncategorised: true });
+    const applied = applyRules(locals.user.id, { onlyUncategorised: !overwrite });
     return { ruleSaved: matchText, applied };
   },
 
