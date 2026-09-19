@@ -11,9 +11,39 @@
     { icon: 'sparkle', text: 'How does this month compare to my usual?' }
   ];
 
+  // shown one at a time, picked fresh for each message, while Tori works
+  const THINKING_LINES = [
+    'Checking the ledger',
+    'Counting the beans',
+    'Shaking the piggy bank',
+    'Consulting the spreadsheet',
+    'Dusting off the abacus',
+    'Polishing the decimal points',
+    'Interrogating the receipts',
+    'Balancing the books',
+    'Negotiating with the numbers',
+    'Summoning the accountants',
+    'Reconciling the vibes',
+    'Auditing the couch cushions',
+    'Batting the numbers around',
+    'Checking under the mattress',
+    'Asking the calculator nicely',
+    'Purring over the spreadsheet',
+    'Arguing with a rounding error',
+    'Waking up the actuary',
+    'Filing this under "miscellaneous"',
+    'Explaining itself to the auditor',
+    'Stacking the coins',
+    'Bribing the exchange rate',
+    'Carrying the one',
+    'Chasing down a stray euro',
+    'Squinting at the fine print'
+  ];
+
   let messages = $state([]); // { role: 'user'|'assistant', content: string, charts?: object[] }
   let input = $state('');
   let sending = $state(false);
+  let thinkingLine = $state('');
   let error = $state('');
   let listEl = $state();
 
@@ -30,6 +60,7 @@
     error = '';
     messages = [...messages, { role: 'user', content: text }];
     sending = true;
+    thinkingLine = THINKING_LINES[Math.floor(Math.random() * THINKING_LINES.length)];
     try {
       const history = messages.map(({ role, content }) => ({ role, content }));
       const res = await fetch('/chat', {
@@ -108,8 +139,9 @@
 
     {#if sending}
       <div class="flex justify-start">
-        <div class="max-w-[85%] rounded-[var(--radius-sm)] px-3.5 py-2.5" style="background:var(--paper-sunk)">
-          <span class="inline-block animate-pulse text-lg leading-none" aria-label="Tori is thinking">🐱</span>
+        <div class="max-w-[85%] animate-pulse rounded-[var(--radius-sm)] px-3.5 py-2.5 text-[13px] italic text-[var(--ink-faint)]"
+          style="background:var(--paper-sunk)">
+          {thinkingLine}…
         </div>
       </div>
     {/if}
