@@ -7,16 +7,20 @@ export function load({ locals }) {
   if (!user) return { user };
 
   const aiAvailable = aiEnabled() && getUserAiCategorise(user.id);
-  if (user.onboarded_at) return { user, aiAvailable };
+  const accounts = locals.accounts;
+  const accountId = locals.accountId;
+  if (user.onboarded_at) return { user, aiAvailable, accounts, accountId };
 
   return {
     user,
     aiAvailable,
+    accounts,
+    accountId,
     onboarding: {
       isAdmin: !!user.is_admin,
       ai: aiStatus(),
       accounts: listAccounts(user.id),
-      categories: listCategories(user.id)
+      categories: listCategories(user.id, accountId)
     }
   };
 }

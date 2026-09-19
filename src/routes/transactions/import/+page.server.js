@@ -2,7 +2,6 @@ import { fail } from '@sveltejs/kit';
 import { parseCsv } from '$lib/csv.js';
 import {
   listCategories,
-  listAccounts,
   listRules,
   listTransactions,
   bulkInsert,
@@ -20,10 +19,9 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
   return {
-    categories: listCategories(locals.user.id),
-    accounts: listAccounts(locals.user.id),
+    categories: listCategories(locals.user.id, locals.accountId),
     // matched client-side during review, before a row is ever sent to AI
-    rules: listRules(locals.user.id),
+    rules: listRules(locals.user.id, locals.accountId),
     aiAvailable: aiEnabled() && getUserAiCategorise(locals.user.id),
     dateFormat: locals.user.date_format
   };
@@ -63,17 +61,13 @@ export const actions = {
     if (!incoming.length) return fail(400, { error: 'No rows selected to import.' });
     if (incoming.length > MAX_ROWS) return fail(400, { error: `Too many rows (limit ${MAX_ROWS}).` });
 
-    const cats = listCategories(locals.user.id);
+    // always the currently active account — you're always "in" one
+    // account's context, so there's nothing to choose
+    const accountId = locals.accountId;
+
+    const cats = listCategories(locals.user.id, accountId);
     const byId = new Set(cats.map((c) => c.id));
     const byName = new Map(cats.map((c) => [c.name.trim().toLowerCase(), c.id]));
-
-    // one destination account for the whole batch; falls back to the user's
-    // first account if the chosen one no longer exists (or none was sent)
-    const accounts = listAccounts(locals.user.id);
-    const chosenAccountId = Number(opts.accountId) || null;
-    const accountId = accounts.some((a) => a.id === chosenAccountId)
-      ? chosenAccountId
-      : (accounts[0]?.id ?? null);
 
     const resolveCategory = (row) => {
       if (row.category_id && byId.has(Number(row.category_id))) return Number(row.category_id);
@@ -82,7 +76,7 @@ export const actions = {
       const hit = byName.get(name.toLowerCase());
       if (hit) return hit;
       if (opts.createCategories) {
-        const created = createCategory(locals.user.id, name, 'expense');
+        const created = createCategory(locals.user.id, accountId, name, 'expense');
         byId.add(created.id);
         byName.set(name.toLowerCase(), created.id);
         return created.id;
@@ -111,7 +105,7 @@ export const actions = {
       skipDuplicates: opts.skipDuplicates !== false
     });
     const categorisedByRules = opts.runRules
-      ? applyRules(locals.user.id, { onlyUncategorised: true })
+      ? applyRules(locals.user.id, { onlyUncategorised: true, accountId })
       : 0;
 
     return {
@@ -119,9 +113,9 @@ export const actions = {
       duplicates,
       invalid,
       categorisedByRules,
-      uncategorised: uncategorisedCount(locals.user.id),
+      uncategorised: uncategorisedCount(locals.user.id, accountId),
       // so the "done" step can offer them up for categorising right away
-      uncategorisedRows: listTransactions(locals.user.id, { categoryId: 'none' }).slice(0, 200)
+      uncategorisedRows: listTransactions(locals.user.id, { categoryId: 'none', accountId }).slice(0, 200)
     };
   }
 };

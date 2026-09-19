@@ -14,10 +14,7 @@ export function GET({ url, locals }) {
   const month = url.searchParams.get('month') || '';
   if (!YM.test(month)) throw error(400, 'Invalid month.');
 
-  const accountParam = url.searchParams.get('account') || '';
-  const accountId = accountParam === 'none' ? 'none' : accountParam || null;
-
-  const rows = monthlyCategoryTotals(locals.user.id, month, month, accountId);
+  const rows = monthlyCategoryTotals(locals.user.id, month, month, locals.accountId);
   const segments = rows
     .filter((r) => r.kind === 'expense' || r.kind === 'saving')
     .map((r) => ({ id: r.id, name: r.name, color: r.color, value: r.total }))

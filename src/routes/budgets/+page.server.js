@@ -11,7 +11,7 @@ import {
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals, url }) {
   const month = url.searchParams.get('month') || currentMonth();
-  const rows = budgetStatus(locals.user.id, month);
+  const rows = budgetStatus(locals.user.id, month, locals.accountId);
   const expenses = rows.filter((r) => r.kind === 'expense');
   const withTarget = expenses.filter((e) => e.target != null);
   return {
@@ -49,7 +49,7 @@ export const actions = {
   },
 
   generateTargets: async ({ locals }) => {
-    const averages = categoryMonthlyAverages(locals.user.id).filter((a) => a.average > 0);
+    const averages = categoryMonthlyAverages(locals.user.id, locals.accountId).filter((a) => a.average > 0);
     for (const a of averages) {
       setBudget(locals.user.id, a.id, a.average);
     }

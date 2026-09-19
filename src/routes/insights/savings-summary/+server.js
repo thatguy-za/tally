@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { createHash } from 'node:crypto';
 import { aiEnabled } from '$lib/server/ai-settings.js';
-import { savingsSummary, listAccounts, getInsight, setInsight, getUserAiCategorise } from '$lib/server/queries.js';
+import { savingsSummary, getInsight, setInsight, getUserAiCategorise } from '$lib/server/queries.js';
 import { summariseSavings, SAVINGS_SUMMARY_VERSION } from '$lib/server/ai.js';
 
 const YM = /^\d{4}-\d{2}$/;
@@ -27,11 +27,7 @@ export async function POST({ request, locals }) {
   if (!YM.test(from) || !YM.test(to)) throw error(400, 'A period (YYYY-MM to YYYY-MM) is required.');
   if (from > to) [from, to] = [to, from];
 
-  const rawAccount = String(body?.accountId || '');
-  const accounts = listAccounts(locals.user.id);
-  const accountId =
-    rawAccount === 'none' || accounts.some((a) => String(a.id) === rawAccount) ? rawAccount : null;
-
+  const accountId = locals.accountId;
   const s = savingsSummary(locals.user.id, { from, to }, accountId);
   if (!s.series.length) return json({ summary: null });
 

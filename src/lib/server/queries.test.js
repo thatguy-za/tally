@@ -3,7 +3,6 @@ import { db } from './db.js';
 import {
   createCategory,
   setCategoryKind,
-  createAccount,
   addTransaction,
   updateTransaction,
   bulkInsert,
@@ -37,8 +36,33 @@ function makeUser() {
   return id;
 }
 
-function makeCategory(userId, name, kind = 'expense') {
-  return createCategory(userId, name, kind, '#000000').id;
+/**
+ * Categories and rules now belong to one account each. Most tests don't care
+ * about multi-account behaviour, so they share one implicit account per user
+ * instead of each having to create one — tests that DO care create their own
+ * accounts explicitly and pass the id through.
+ */
+// a bare insert, not the real createAccount() — tests want a blank account to
+// put their own fixture categories in, not a full seeded default set
+function makeAccount(userId, name = 'Checking', color = '#64748b', kind = 'checking') {
+  const info = db
+    .prepare('INSERT INTO accounts (user_id, name, color, kind) VALUES (?, ?, ?, ?)')
+    .run(userId, name, color, kind);
+  return Number(info.lastInsertRowid);
+}
+
+const defaultAccountByUser = new Map();
+function defaultAccount(userId) {
+  let id = defaultAccountByUser.get(userId);
+  if (!id) {
+    id = makeAccount(userId, 'Default');
+    defaultAccountByUser.set(userId, id);
+  }
+  return id;
+}
+
+function makeCategory(userId, name, kind = 'expense', accountId = defaultAccount(userId)) {
+  return createCategory(userId, accountId, name, kind, '#000000').id;
 }
 
 function addTx(userId, { date, amount, category_id = null, account_id = null, description = '' }) {
@@ -111,8 +135,8 @@ describe('category kinds and monthlyTotals', () => {
 
   it('filters to one account, or to unassigned transactions, without double-counting', () => {
     const u = makeUser();
-    const checking = createAccount(u, 'Checking').lastInsertRowid;
-    const savingsAcct = createAccount(u, 'Savings account').lastInsertRowid;
+    const checking = makeAccount(u, 'Checking');
+    const savingsAcct = makeAccount(u, 'Savings account');
     const groceries = makeCategory(u, 'Groceries', 'expense');
 
     addTx(u, { date: '2026-03-01', amount: -100, category_id: groceries, account_id: checking });
@@ -145,7 +169,7 @@ describe('categoryBreakdown', () => {
 
   it('narrows to a single account when asked', () => {
     const u = makeUser();
-    const acct = createAccount(u, 'Checking').lastInsertRowid;
+    const acct = makeAccount(u, 'Checking');
     const cat = makeCategory(u, 'Shopping', 'expense');
     addTx(u, { date: '2026-04-01', amount: -20, category_id: cat, account_id: acct });
     addTx(u, { date: '2026-04-02', amount: -5, category_id: cat });
@@ -158,35 +182,38 @@ describe('categoryBreakdown', () => {
 describe('categoriseByRules', () => {
   it('matches a substring of the description, case-insensitively', () => {
     const u = makeUser();
+    const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
-    createRule(u, 'SPAR', groceries, 0);
-    expect(categoriseByRules(u, 'SPAR Cape Town')).toBe(groceries);
-    expect(categoriseByRules(u, 'spar cape town')).toBe(groceries);
-    expect(categoriseByRules(u, 'Woolworths')).toBeNull();
+    createRule(u, acct, 'SPAR', groceries, 0);
+    expect(categoriseByRules(u, acct, 'SPAR Cape Town')).toBe(groceries);
+    expect(categoriseByRules(u, acct, 'spar cape town')).toBe(groceries);
+    expect(categoriseByRules(u, acct, 'Woolworths')).toBeNull();
   });
 
   it('prefers the higher-priority rule when more than one matches', () => {
     const u = makeUser();
+    const acct = defaultAccount(u);
     const general = makeCategory(u, 'Shopping', 'expense');
     const specific = makeCategory(u, 'Subscriptions', 'expense');
-    createRule(u, 'Shop', general, 0);
-    createRule(u, 'Shopify', specific, 10);
-    expect(categoriseByRules(u, 'Shopify invoice')).toBe(specific);
+    createRule(u, acct, 'Shop', general, 0);
+    createRule(u, acct, 'Shopify', specific, 10);
+    expect(categoriseByRules(u, acct, 'Shopify invoice')).toBe(specific);
   });
 });
 
 describe('applyRules', () => {
   it('with onlyUncategorised (the default), a higher-priority rule claims a row before a lower one can', () => {
     const u = makeUser();
+    const acct = defaultAccount(u);
     const general = makeCategory(u, 'Shopping', 'expense');
     const specific = makeCategory(u, 'Subscriptions', 'expense');
     // inserted low-priority-first, to make sure the effect is from priority
     // ordering and not insertion order
-    createRule(u, 'Shop', general, 0);
-    createRule(u, 'Shopify', specific, 10);
-    addTx(u, { date: '2026-05-01', amount: -9, description: 'Shopify invoice' });
+    createRule(u, acct, 'Shop', general, 0);
+    createRule(u, acct, 'Shopify', specific, 10);
+    addTx(u, { date: '2026-05-01', amount: -9, description: 'Shopify invoice', account_id: acct });
 
-    const changed = applyRules(u, { onlyUncategorised: true });
+    const changed = applyRules(u, { onlyUncategorised: true, accountId: acct });
     expect(changed).toBe(1);
     const [row] = db.prepare('SELECT category_id FROM transactions WHERE user_id = ?').all(u);
     expect(row.category_id).toBe(specific);
@@ -194,12 +221,13 @@ describe('applyRules', () => {
 
   it('only touches uncategorised rows when onlyUncategorised is true', () => {
     const u = makeUser();
+    const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
     const already = makeCategory(u, 'Other', 'expense');
-    createRule(u, 'SPAR', groceries, 0);
-    const id = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR', category_id: already }).lastInsertRowid);
+    createRule(u, acct, 'SPAR', groceries, 0);
+    const id = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR', category_id: already, account_id: acct }).lastInsertRowid);
 
-    const changed = applyRules(u, { onlyUncategorised: true });
+    const changed = applyRules(u, { onlyUncategorised: true, accountId: acct });
     expect(changed).toBe(0);
     const row = db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(id);
     expect(row.category_id).toBe(already);
@@ -207,15 +235,35 @@ describe('applyRules', () => {
 
   it('with onlyUncategorised false, re-applies to already-categorised rows too', () => {
     const u = makeUser();
+    const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
     const other = makeCategory(u, 'Other', 'expense');
-    createRule(u, 'SPAR', groceries, 0);
-    const id = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR', category_id: other }).lastInsertRowid);
+    createRule(u, acct, 'SPAR', groceries, 0);
+    const id = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR', category_id: other, account_id: acct }).lastInsertRowid);
 
-    const changed = applyRules(u, { onlyUncategorised: false });
+    const changed = applyRules(u, { onlyUncategorised: false, accountId: acct });
     expect(changed).toBe(1);
     const row = db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(id);
     expect(row.category_id).toBe(groceries);
+  });
+
+  it('with accountId, only touches rows in that account — no cross-account calculations', () => {
+    const u = makeUser();
+    const checking = makeAccount(u, 'Checking');
+    const savings = makeAccount(u, 'Savings', '#000', 'savings');
+    const groceries = makeCategory(u, 'Groceries', 'expense', savings);
+    createRule(u, savings, 'SPAR', groceries, 0);
+    const inChecking = Number(
+      addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR', account_id: checking }).lastInsertRowid
+    );
+    const inSavings = Number(
+      addTx(u, { date: '2026-05-02', amount: -9, description: 'SPAR', account_id: savings }).lastInsertRowid
+    );
+
+    const changed = applyRules(u, { onlyUncategorised: true, accountId: savings });
+    expect(changed).toBe(1);
+    expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(inSavings).category_id).toBe(groceries);
+    expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(inChecking).category_id).toBeNull();
   });
 });
 
@@ -252,7 +300,7 @@ describe('bulkInsert', () => {
 describe('uncategorisedCount and bulkCategorise', () => {
   it('counts and clears uncategorised transactions, optionally scoped to an account', () => {
     const u = makeUser();
-    const acct = createAccount(u, 'Checking').lastInsertRowid;
+    const acct = makeAccount(u, 'Checking');
     const cat = makeCategory(u, 'Groceries', 'expense');
     const id1 = Number(addTx(u, { date: '2026-06-01', amount: -10, account_id: acct }).lastInsertRowid);
     addTx(u, { date: '2026-06-02', amount: -5 }); // no account
@@ -268,12 +316,13 @@ describe('uncategorisedCount and bulkCategorise', () => {
 describe('budgetStatus', () => {
   it('computes remaining and pct for an expense target, matched to the given month only', () => {
     const u = makeUser();
+    const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
     setBudget(u, groceries, 200);
-    addTx(u, { date: '2026-07-05', amount: -150, category_id: groceries });
-    addTx(u, { date: '2026-08-05', amount: -999, category_id: groceries }); // different month, ignored
+    addTx(u, { date: '2026-07-05', amount: -150, category_id: groceries, account_id: acct });
+    addTx(u, { date: '2026-08-05', amount: -999, category_id: groceries, account_id: acct }); // different month, ignored
 
-    const row = budgetStatus(u, '2026-07').find((r) => r.id === groceries);
+    const row = budgetStatus(u, '2026-07', acct).find((r) => r.id === groceries);
     expect(row.target).toBe(200);
     expect(row.actual).toBe(150);
     expect(row.remaining).toBe(50);
@@ -282,41 +331,54 @@ describe('budgetStatus', () => {
 
   it('flips the sign for a saving category, so a net withdrawal reads negative rather than "saved"', () => {
     const u = makeUser();
+    const acct = defaultAccount(u);
     const savings = makeCategory(u, 'Savings', 'saving');
     setBudget(u, savings, 100);
-    addTx(u, { date: '2026-07-01', amount: -30, category_id: savings }); // paid in
-    addTx(u, { date: '2026-07-02', amount: 50, category_id: savings }); // withdrawn, net outflow
+    addTx(u, { date: '2026-07-01', amount: -30, category_id: savings, account_id: acct }); // paid in
+    addTx(u, { date: '2026-07-02', amount: 50, category_id: savings, account_id: acct }); // withdrawn, net outflow
 
-    const row = budgetStatus(u, '2026-07').find((r) => r.id === savings);
+    const row = budgetStatus(u, '2026-07', acct).find((r) => r.id === savings);
     // net signed amount is +20 (more taken out than put in) -> actual is -20
     expect(row.actual).toBe(-20);
   });
 
-  it('narrows actuals to one account', () => {
+  it('narrows actuals to one account, never blending another account\'s categories or spend in', () => {
     const u = makeUser();
-    const acct = createAccount(u, 'Checking').lastInsertRowid;
-    const groceries = makeCategory(u, 'Groceries', 'expense');
-    addTx(u, { date: '2026-07-01', amount: -40, category_id: groceries, account_id: acct });
-    addTx(u, { date: '2026-07-02', amount: -10, category_id: groceries });
+    const checking = makeAccount(u, 'Checking');
+    const savings = makeAccount(u, 'Savings', '#000', 'savings');
+    const groceries = makeCategory(u, 'Groceries', 'expense', checking);
+    addTx(u, { date: '2026-07-01', amount: -40, category_id: groceries, account_id: checking });
 
-    const filtered = budgetStatus(u, '2026-07', acct).find((r) => r.id === groceries);
-    const combined = budgetStatus(u, '2026-07').find((r) => r.id === groceries);
-    expect(filtered.actual).toBe(40);
-    expect(combined.actual).toBe(50);
+    const checkingRows = budgetStatus(u, '2026-07', checking);
+    expect(checkingRows.find((r) => r.id === groceries).actual).toBe(40);
+    // the savings account never even sees checking's category
+    expect(budgetStatus(u, '2026-07', savings).find((r) => r.id === groceries)).toBeUndefined();
   });
 });
 
 describe('categoryMonthlyAverages', () => {
   it('averages total spend over the number of distinct months with any data', () => {
     const u = makeUser();
+    const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
-    addTx(u, { date: '2026-01-01', amount: -100, category_id: groceries });
-    addTx(u, { date: '2026-02-01', amount: -50, category_id: groceries });
+    addTx(u, { date: '2026-01-01', amount: -100, category_id: groceries, account_id: acct });
+    addTx(u, { date: '2026-02-01', amount: -50, category_id: groceries, account_id: acct });
     // a third month with unrelated activity still counts as a month with data
-    addTx(u, { date: '2026-03-01', amount: -1, category_id: makeCategory(u, 'Other', 'expense') });
+    addTx(u, { date: '2026-03-01', amount: -1, category_id: makeCategory(u, 'Other', 'expense'), account_id: acct });
 
-    const row = categoryMonthlyAverages(u).find((r) => r.id === groceries);
+    const row = categoryMonthlyAverages(u, acct).find((r) => r.id === groceries);
     expect(row.average).toBe(50); // 150 total / 3 months
+  });
+
+  it('scopes to one account when given, never blending another account\'s spend in', () => {
+    const u = makeUser();
+    const checking = makeAccount(u, 'Checking');
+    const savings = makeAccount(u, 'Savings', '#000', 'savings');
+    const groceries = makeCategory(u, 'Groceries', 'expense', checking);
+    addTx(u, { date: '2026-01-01', amount: -100, category_id: groceries, account_id: checking });
+
+    const row = categoryMonthlyAverages(u, checking).find((r) => r.id === groceries);
+    expect(row.average).toBe(100);
   });
 });
 
@@ -406,7 +468,7 @@ describe('periodInsights', () => {
 
   it('narrows to a single account', () => {
     const u = makeUser();
-    const acct = createAccount(u, 'Checking').lastInsertRowid;
+    const acct = makeAccount(u, 'Checking');
     const groceries = makeCategory(u, 'Groceries', 'expense');
     addTx(u, { date: '2025-05-01', amount: -40, category_id: groceries, account_id: acct });
     addTx(u, { date: '2025-05-02', amount: -10, category_id: groceries });
@@ -487,7 +549,7 @@ describe('savingsSummary', () => {
 
   it('narrows to a single account', () => {
     const u = makeUser();
-    const acct = createAccount(u, 'Checking').lastInsertRowid;
+    const acct = makeAccount(u, 'Checking');
     const savings = makeCategory(u, 'Savings', 'saving');
     addTx(u, { date: '2026-01-15', amount: -100, category_id: savings, account_id: acct });
     addTx(u, { date: '2026-01-16', amount: -20, category_id: savings });
@@ -504,7 +566,7 @@ describe('setCategoryKind', () => {
     addTx(u, { date: '2026-01-01', amount: -75, category_id: cat });
     expect(monthlyTotals(u, 1)[0].outgoing).toBe(75);
 
-    setCategoryKind(u, cat, 'saving');
+    setCategoryKind(u, defaultAccount(u), cat, 'saving');
     expect(monthlyTotals(u, 1)[0].outgoing).toBe(0);
     expect(monthlyTotals(u, 1)[0].saved).toBe(75);
   });

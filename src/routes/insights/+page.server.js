@@ -1,7 +1,6 @@
 import { aiEnabled } from '$lib/server/ai-settings.js';
 import {
   listMonths,
-  listAccounts,
   listCategories,
   monthRange,
   periodInsights,
@@ -9,8 +8,6 @@ import {
   savingsSummary,
   getUserAiCategorise
 } from '$lib/server/queries.js';
-
-const isRealAccount = (id, accounts) => accounts.some((a) => String(a.id) === id);
 
 const YM = /^\d{4}-\d{2}$/;
 const MAX_SERIES = 7; // beyond this, categories fold into "Other"
@@ -46,8 +43,8 @@ function seriesFor(rows, kind) {
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals, url }) {
   const userId = locals.user.id;
-  const months = listMonths(userId); // newest first
-  const accounts = listAccounts(userId);
+  const accountId = locals.accountId;
+  const months = listMonths(userId, accountId); // newest first
   const latest = months[0] || shiftMonth(new Date().toISOString().slice(0, 7), 0);
   const earliest = months[months.length - 1] || latest;
 
@@ -60,9 +57,6 @@ export function load({ locals, url }) {
   if (!YM.test(from)) from = defFrom;
   if (!YM.test(to)) to = defTo;
   if (from > to) [from, to] = [to, from];
-
-  const rawAccount = url.searchParams.get('account') || '';
-  const accountId = rawAccount === 'none' || isRealAccount(rawAccount, accounts) ? rawAccount : null;
 
   const rows = monthlyCategoryTotals(userId, from, to, accountId);
   // money moved into savings still left the account that month, so it belongs
@@ -83,9 +77,7 @@ export function load({ locals, url }) {
     from,
     to,
     months,
-    accounts,
-    categories: listCategories(userId),
-    accountId,
+    categories: listCategories(userId, accountId),
     insights: periodInsights(userId, from, to, accountId),
     chart: {
       months: monthRange(from, to),

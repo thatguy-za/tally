@@ -266,17 +266,6 @@
         {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
       </select>
     </div>
-    {#if data.accounts.length > 1}
-      <div>
-        <label class="label" for="f-acct">Account</label>
-        <select class="input" id="f-acct" value={data.filters.account}
-          onchange={(e) => setParam('account', e.currentTarget.value)}>
-          <option value="">Any</option>
-          <option value="none">No account</option>
-          {#each data.accounts as a}<option value={String(a.id)}>{a.name}</option>{/each}
-        </select>
-      </div>
-    {/if}
     <div>
       <label class="label" for="f-dir">Direction</label>
       <select class="input" id="f-dir" value={data.filters.direction}
@@ -379,12 +368,6 @@
                     <option value="out">Outgoing</option>
                     <option value="in">Incoming</option>
                   </select>
-                  {#if data.accounts.length > 1}
-                    <select class="input" name="account_id" value={String(t.account_id ?? '')}>
-                      <option value="">No account</option>
-                      {#each data.accounts as a}<option value={String(a.id)}>{a.name}</option>{/each}
-                    </select>
-                  {/if}
                   <div class="flex gap-2 sm:col-span-6">
                     <button class="btn btn-primary btn-sm">Save</button>
                     <button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingId = null)}>Cancel</button>
@@ -440,9 +423,6 @@
                   />
                   <div class="min-w-0">
                     <div class="truncate font-medium">{t.description || '—'}</div>
-                    {#if data.accounts.length > 1}
-                      <div class="text-xs text-[var(--ink-faint)]">{t.account_name || 'No account'}</div>
-                    {/if}
                   </div>
                 </div>
               </td>

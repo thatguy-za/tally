@@ -6,6 +6,7 @@
   import Toaster from '$lib/components/Toaster.svelte';
   import LoadingBar from '$lib/components/LoadingBar.svelte';
   import UserMenu from '$lib/components/UserMenu.svelte';
+  import AccountSwitcher from '$lib/components/AccountSwitcher.svelte';
   import OnboardingOverlay from '$lib/components/OnboardingOverlay.svelte';
   import { theme, initTheme, toggleTheme } from '$lib/theme.svelte.js';
   let { data, children } = $props();
@@ -71,6 +72,10 @@
             </a>
           {/each}
         </nav>
+
+        {#if data.accounts}
+          <AccountSwitcher accounts={data.accounts} accountId={data.accountId} />
+        {/if}
 
         <button
           onclick={toggleTheme}

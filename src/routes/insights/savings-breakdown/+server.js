@@ -1,5 +1,5 @@
 import { json, error } from '@sveltejs/kit';
-import { savingsSummary, listAccounts } from '$lib/server/queries.js';
+import { savingsSummary } from '$lib/server/queries.js';
 
 const YM = /^\d{4}-\d{2}$/;
 
@@ -12,10 +12,6 @@ export function GET({ url, locals }) {
   if (!YM.test(from) || !YM.test(to)) throw error(400, 'Invalid period.');
   if (from > to) [from, to] = [to, from];
 
-  const rawAccount = url.searchParams.get('account') || '';
-  const accounts = listAccounts(locals.user.id);
-  const accountId = rawAccount === 'none' || accounts.some((a) => String(a.id) === rawAccount) ? rawAccount : null;
-
-  const s = savingsSummary(locals.user.id, { from, to }, accountId);
+  const s = savingsSummary(locals.user.id, { from, to }, locals.accountId);
   return json({ series: s.series, total: s.total });
 }

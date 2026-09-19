@@ -2,7 +2,6 @@ import { fail } from '@sveltejs/kit';
 import { parseAmount } from '$lib/server/csv.js';
 import {
   listCategories,
-  listAccounts,
   listMonths,
   listTransactions,
   addTransaction,
@@ -40,7 +39,6 @@ export function load({ locals, url }) {
     dateFrom: q.get('from') || '',
     dateTo: q.get('to') || '',
     category: q.get('category') || '',
-    account: q.get('account') || '',
     search: q.get('q') || '',
     amountMin: q.get('min') || '',
     amountMax: q.get('max') || '',
@@ -53,7 +51,7 @@ export function load({ locals, url }) {
     dateTo: filters.dateTo || undefined,
     categoryId:
       filters.category === 'none' ? 'none' : filters.category ? Number(filters.category) : undefined,
-    accountId: filters.account === 'none' ? 'none' : filters.account ? Number(filters.account) : undefined,
+    accountId: locals.accountId,
     search: filters.search || undefined,
     amountMin: filters.amountMin ? Number(filters.amountMin) : undefined,
     amountMax: filters.amountMax ? Number(filters.amountMax) : undefined,
@@ -75,13 +73,12 @@ export function load({ locals, url }) {
   return {
     transactions,
     sum,
-    categories: listCategories(userId),
-    accounts: listAccounts(userId),
-    months: listMonths(userId),
+    categories: listCategories(userId, locals.accountId),
+    months: listMonths(userId, locals.accountId),
     filters,
     currency: locals.user.currency,
     // for the combined add/import overlay's CSV-import tab
-    rules: listRules(userId),
+    rules: listRules(userId, locals.accountId),
     aiAvailable: aiEnabled() && getUserAiCategorise(userId),
     dateFormat: locals.user.date_format
   };
@@ -97,11 +94,10 @@ export const actions = {
     if (!date || amount == null) return fail(400, { error: 'Date and a valid amount are required.' });
     const signed = amount * (direction === 'in' ? 1 : -1);
     let categoryId = f.get('category_id') ? Number(f.get('category_id')) : null;
-    if (!categoryId) categoryId = categoriseByRules(locals.user.id, description);
-    // no account field shown (only one account) — file it under that one
-    let accountId = f.get('account_id') ? Number(f.get('account_id')) : null;
-    if (!accountId) accountId = listAccounts(locals.user.id)[0]?.id ?? null;
-    addTransaction(locals.user.id, { date, description, amount: signed, category_id: categoryId, account_id: accountId });
+    if (!categoryId) categoryId = categoriseByRules(locals.user.id, locals.accountId, description);
+    // always the currently active account — there's no cross-account view to
+    // choose from, you're always "in" one account's context
+    addTransaction(locals.user.id, { date, description, amount: signed, category_id: categoryId, account_id: locals.accountId });
     return { added: true };
   },
 
@@ -116,12 +112,7 @@ export const actions = {
     const incoming = Array.isArray(payload.rows) ? payload.rows : [];
     if (!incoming.length) return fail(400, { error: 'Add at least one transaction.' });
 
-    const accounts = listAccounts(locals.user.id);
-    const chosenAccountId = Number(payload.accountId) || null;
-    const accountId = accounts.some((a) => a.id === chosenAccountId)
-      ? chosenAccountId
-      : (accounts[0]?.id ?? null);
-
+    const accountId = locals.accountId;
     let added = 0;
     for (const r of incoming) {
       const date = String(r.date || '').slice(0, 10);
@@ -129,7 +120,7 @@ export const actions = {
       if (!date || !Number.isFinite(amount)) continue;
       const description = String(r.description || '').trim();
       let categoryId = r.category_id ? Number(r.category_id) : null;
-      if (!categoryId) categoryId = categoriseByRules(locals.user.id, description);
+      if (!categoryId) categoryId = categoriseByRules(locals.user.id, accountId, description);
       addTransaction(locals.user.id, { date, description, amount, category_id: categoryId, account_id: accountId });
       added++;
     }
@@ -154,12 +145,10 @@ export const actions = {
     const magnitude = num(f.get('amount'));
     const direction = String(f.get('direction') || 'out');
     if (!id || !date || magnitude == null) return fail(400, { error: 'Invalid values.' });
-    const accountId = f.get('account_id') !== null ? Number(f.get('account_id')) || null : undefined;
     updateTransaction(locals.user.id, id, {
       date,
       description,
-      amount: magnitude * (direction === 'in' ? 1 : -1),
-      ...(accountId !== undefined ? { account_id: accountId } : {})
+      amount: magnitude * (direction === 'in' ? 1 : -1)
     });
     return { updated: true };
   },
@@ -193,20 +182,20 @@ export const actions = {
     const overwrite = f.get('overwrite') === 'on';
     if (!matchText || !categoryId)
       return fail(400, { error: 'A match phrase and category are required.' });
-    if (!listCategories(locals.user.id).some((c) => c.id === categoryId))
+    if (!listCategories(locals.user.id, locals.accountId).some((c) => c.id === categoryId))
       return fail(400, { error: 'Unknown category.' });
-    const dupe = listRules(locals.user.id).some(
+    const dupe = listRules(locals.user.id, locals.accountId).some(
       (r) => r.match_text.toLowerCase() === matchText.toLowerCase() && r.category_id === categoryId
     );
-    if (!dupe) createRule(locals.user.id, matchText, categoryId, priority);
-    const applied = applyRules(locals.user.id, { onlyUncategorised: !overwrite });
+    if (!dupe) createRule(locals.user.id, locals.accountId, matchText, categoryId, priority);
+    const applied = applyRules(locals.user.id, { onlyUncategorised: !overwrite, accountId: locals.accountId });
     return { ruleSaved: matchText, applied };
   },
 
   applyRules: async ({ request, locals }) => {
     const f = await request.formData();
     const onlyUncategorised = f.get('scope') !== 'all';
-    const n = applyRules(locals.user.id, { onlyUncategorised });
+    const n = applyRules(locals.user.id, { onlyUncategorised, accountId: locals.accountId });
     return { bulk: `Rules categorised ${n} transaction${n === 1 ? '' : 's'}.` };
   },
 
@@ -241,23 +230,24 @@ export const actions = {
   // ever touches transactions that were uncategorised when the run started
   recategorise: async ({ locals }) => {
     const userId = locals.user.id;
-    const beforeIds = new Set(listTransactions(userId, { categoryId: 'none' }).map((t) => t.id));
+    const accountId = locals.accountId;
+    const beforeIds = new Set(listTransactions(userId, { categoryId: 'none', accountId }).map((t) => t.id));
     if (!beforeIds.size) return { section: 'recategorise', ok: true, changed: [], byRules: 0, byAi: 0 };
 
-    const byRules = applyRules(userId, { onlyUncategorised: true });
+    const byRules = applyRules(userId, { onlyUncategorised: true, accountId });
 
     let byAi = 0;
     let aiNote = '';
     if (aiEnabled() && getUserAiCategorise(userId)) {
       try {
-        const r = await categoriseUncategorisedTransactions(userId);
+        const r = await categoriseUncategorisedTransactions(userId, accountId);
         byAi = r.updated;
       } catch (e) {
         aiNote = e?.message || 'AI categorisation failed.';
       }
     }
 
-    const changed = listTransactions(userId, {}).filter((t) => beforeIds.has(t.id) && t.category_id != null);
+    const changed = listTransactions(userId, { accountId }).filter((t) => beforeIds.has(t.id) && t.category_id != null);
     return { section: 'recategorise', ok: true, changed, byRules, byAi, aiNote };
   }
 };

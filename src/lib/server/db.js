@@ -50,25 +50,34 @@ db.exec(`
     expires_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS categories (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name    TEXT NOT NULL,
-    kind    TEXT NOT NULL DEFAULT 'expense',
-    color   TEXT NOT NULL DEFAULT '#64748b',
-    UNIQUE (user_id, name)
-  );
-
   -- a real-world account (checking, savings, ...). Transactions belong to one
   -- so money moving between a user's own accounts can be told apart from
-  -- actual income or spending — see the 'transfer' category kind.
+  -- actual income or spending — see the 'transfer' category kind. The kind
+  -- column distinguishes the one auto-seeded checking account from any
+  -- savings accounts the user adds — the global account switcher uses it to
+  -- know which is which; every figure in the app is always scoped to exactly
+  -- one account at a time, never combined across them.
   CREATE TABLE IF NOT EXISTS accounts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name       TEXT NOT NULL,
     color      TEXT NOT NULL DEFAULT '#64748b',
+    kind       TEXT NOT NULL DEFAULT 'checking',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (user_id, name)
+  );
+
+  -- categories and rules belong to exactly one account — a new account
+  -- starts with none of another account's categories or rules, matching the
+  -- "no cross calculations" rule the rest of the app follows.
+  CREATE TABLE IF NOT EXISTS categories (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    kind       TEXT NOT NULL DEFAULT 'expense',
+    color      TEXT NOT NULL DEFAULT '#64748b',
+    UNIQUE (account_id, name)
   );
 
   CREATE TABLE IF NOT EXISTS transactions (
@@ -91,6 +100,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS rules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     match_text  TEXT NOT NULL,
     category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
     priority    INTEGER NOT NULL DEFAULT 0,
@@ -160,6 +170,13 @@ if (!userCols.includes('date_format')) {
   db.exec("ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT 'dmy'");
 }
 
+// Existing databases predate the `kind` column that tells a savings account
+// apart from the one auto-seeded checking account.
+const acctCols = db.prepare('PRAGMA table_info(accounts)').all().map((c) => c.name);
+if (!acctCols.includes('kind')) {
+  db.exec("ALTER TABLE accounts ADD COLUMN kind TEXT NOT NULL DEFAULT 'checking'");
+}
+
 // Existing databases predate the accounts table's column on transactions.
 const txCols = db.prepare("PRAGMA table_info(transactions)").all().map((c) => c.name);
 if (!txCols.includes("account_id")) {
@@ -186,6 +203,63 @@ db.exec(`
   )
   WHERE account_id IS NULL
 `);
+
+// Categories and rules used to be shared across every account a user had.
+// Rebuild both tables scoped to an account: existing rows go to the user's
+// first account (their original checking account), and a fresh UNIQUE
+// (account_id, name) replaces the old per-user one so a second account can
+// reuse a category name without colliding.
+const catCols = db.prepare('PRAGMA table_info(categories)').all().map((c) => c.name);
+if (!catCols.includes('account_id')) {
+  tx(() => {
+    db.exec(`
+      CREATE TABLE categories_new (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,
+        kind       TEXT NOT NULL DEFAULT 'expense',
+        color      TEXT NOT NULL DEFAULT '#64748b',
+        UNIQUE (account_id, name)
+      )
+    `);
+    db.exec(`
+      INSERT INTO categories_new (id, user_id, account_id, name, kind, color)
+      SELECT c.id, c.user_id,
+        (SELECT MIN(id) FROM accounts WHERE accounts.user_id = c.user_id),
+        c.name, c.kind, c.color
+      FROM categories c
+    `);
+    db.exec('DROP TABLE categories');
+    db.exec('ALTER TABLE categories_new RENAME TO categories');
+  });
+}
+
+const ruleCols = db.prepare('PRAGMA table_info(rules)').all().map((c) => c.name);
+if (!ruleCols.includes('account_id')) {
+  tx(() => {
+    db.exec(`
+      CREATE TABLE rules_new (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        match_text  TEXT NOT NULL,
+        category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+        priority    INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    db.exec(`
+      INSERT INTO rules_new (id, user_id, account_id, match_text, category_id, priority, created_at)
+      SELECT r.id, r.user_id,
+        (SELECT account_id FROM categories WHERE categories.id = r.category_id),
+        r.match_text, r.category_id, r.priority, r.created_at
+      FROM rules r
+    `);
+    db.exec('DROP TABLE rules');
+    db.exec('ALTER TABLE rules_new RENAME TO rules');
+  });
+}
 
 // Savings used to be seeded as an expense, which counted money you kept as
 // money you spent. Reclassify the seeded category once — guarded by a flag so
@@ -216,17 +290,19 @@ const DEFAULT_CATEGORIES = [
   { name: 'Savings & investments', kind: 'saving', color: '#0ea5e9' }
 ];
 
-export function seedCategories(userId) {
+export function seedCategories(userId, accountId) {
   const stmt = db.prepare(
-    'INSERT OR IGNORE INTO categories (user_id, name, kind, color) VALUES (?, ?, ?, ?)'
+    'INSERT OR IGNORE INTO categories (user_id, account_id, name, kind, color) VALUES (?, ?, ?, ?, ?)'
   );
   tx(() => {
-    for (const c of DEFAULT_CATEGORIES) stmt.run(userId, c.name, c.kind, c.color);
+    for (const c of DEFAULT_CATEGORIES) stmt.run(userId, accountId, c.name, c.kind, c.color);
   });
 }
 
+/** Creates the user's first account if they don't have one yet, and returns its id either way. */
 export function seedDefaultAccount(userId) {
-  db.prepare(
-    'INSERT OR IGNORE INTO accounts (user_id, name) VALUES (?, ?)'
-  ).run(userId, 'Main account');
+  const existing = db.prepare('SELECT id FROM accounts WHERE user_id = ? ORDER BY id LIMIT 1').get(userId);
+  if (existing) return existing.id;
+  const info = db.prepare('INSERT INTO accounts (user_id, name) VALUES (?, ?)').run(userId, 'Main account');
+  return Number(info.lastInsertRowid);
 }

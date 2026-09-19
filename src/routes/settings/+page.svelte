@@ -1,11 +1,15 @@
 <script>
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import { formatMoney } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
+  import ColorPicker from '$lib/components/ColorPicker.svelte';
   import RulesSection from '$lib/components/RulesSection.svelte';
+  import AddAccountModal from '$lib/components/AddAccountModal.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
+  let showAddAccount = $state(false);
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
 
@@ -65,6 +69,55 @@
       {#if ok('dateFormat')}<span class="text-sm" style="color:var(--positive)">Saved</span>{/if}
       {#if err('dateFormat')}<span class="text-sm" style="color:var(--negative)">{err('dateFormat')}</span>{/if}
     </form>
+  </div>
+
+  <!-- Accounts -->
+  <div class="card">
+    <div class="mb-1 flex flex-wrap items-start justify-between gap-3">
+      <h2 class="text-lg">Accounts</h2>
+      <button type="button" class="btn btn-ghost btn-sm flex items-center gap-1.5" onclick={() => (showAddAccount = true)}>
+        <Icon name="plus" size={13} /> Add account
+      </button>
+    </div>
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
+      Add another account — transactional or savings — to track it completely separately. Switch
+      between them from the picker in the top bar; figures are never combined across accounts.
+    </p>
+    <ul class="divide-y divide-[var(--border)]">
+      {#each data.accounts as a}
+        <li class="flex items-center justify-between gap-3 py-2 text-[13px]">
+          <form method="POST" action="?/renameAccount" use:enhance class="flex min-w-0 flex-1 items-center gap-2">
+            <input type="hidden" name="id" value={a.id} />
+            <input type="hidden" name="color" id="acct-color-{a.id}" value={a.color} />
+            <ColorPicker
+              value={a.color}
+              size="h-6 w-6"
+              label="Colour for {a.name}"
+              onchange={(c) => {
+                const input = document.getElementById(`acct-color-${a.id}`);
+                input.value = c;
+                input.form?.requestSubmit();
+              }}
+            />
+            <input name="name" value={a.name} class="cell min-w-0 flex-1 text-[13px]"
+              aria-label="Name for {a.name}"
+              onchange={(e) => e.currentTarget.form.requestSubmit()} />
+          </form>
+          <span class="flex items-center gap-3">
+            <span class="text-xs text-[var(--ink-faint)]">
+              {a.kind === 'checking' ? 'Transactional' : 'Savings'} · {a.count} tx
+            </span>
+            {#if data.accounts.length > 1}
+              <form method="POST" action="?/deleteAccount" use:enhance
+                onsubmit={(e) => { if (a.count && !confirm(`${a.count} transactions will become unassigned. Continue?`)) e.preventDefault(); }}>
+                <input type="hidden" name="id" value={a.id} />
+                <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete"><Icon name="trash" size={14} /></button>
+              </form>
+            {/if}
+          </span>
+        </li>
+      {/each}
+    </ul>
   </div>
 
   <!-- Auto-categorisation rules -->
@@ -144,3 +197,19 @@
     </a>
   {/if}
 </div>
+
+{#if showAddAccount}
+  <AddAccountModal
+    onClose={() => (showAddAccount = false)}
+    onCreated={async (created) => {
+      showAddAccount = false;
+      await fetch('/account-switch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accountId: created.id })
+      });
+      await invalidateAll();
+      toast('Account added');
+    }}
+  />
+{/if}

@@ -6,7 +6,6 @@
   import { invalidateAll } from '$app/navigation';
   import StackedMonths from '$lib/components/StackedMonths.svelte';
   import SpendingDoughnut from '$lib/components/SpendingDoughnut.svelte';
-  import AccountPicker from '$lib/components/AccountPicker.svelte';
   import PeriodPicker from '$lib/components/PeriodPicker.svelte';
   import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
   import SavingsChart from '$lib/components/SavingsChart.svelte';
@@ -40,7 +39,6 @@
   async function openMonthModal(ym) {
     monthModal = { month: ym, segments: null, loading: true };
     const params = new URLSearchParams({ month: ym });
-    if (data.accountId) params.set('account', data.accountId);
     try {
       const res = await fetch(`/insights/month-breakdown?${params}`);
       const j = await res.json();
@@ -51,10 +49,9 @@
   }
   let savingsModal = $state(null);
   async function openSavingsModal() {
-    const from = data.from, to = data.to, accountId = data.accountId;
+    const from = data.from, to = data.to;
     savingsModal = { series: null, total: 0, summary: null, summaryLoading: false, summaryError: null };
     const params = new URLSearchParams({ from, to });
-    if (accountId) params.set('account', accountId);
     try {
       const res = await fetch(`/insights/savings-breakdown?${params}`);
       const j = await res.json();
@@ -70,7 +67,7 @@
         const res = await fetch('/insights/savings-summary', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ from, to, accountId: accountId || undefined })
+          body: JSON.stringify({ from, to })
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.message || 'the request failed');
@@ -180,15 +177,13 @@
 
   $effect(() => {
     const ins = data.insights;
-    const key = data.aiSummary && ins && ins.reason !== 'empty'
-      ? `${data.from}:${data.to}:${data.accountId ?? ''}`
-      : null;
+    const key = data.aiSummary && ins && ins.reason !== 'empty' ? `${data.from}:${data.to}` : null;
     if (!key) {
       summary = null;
       summaryError = null;
       return;
     }
-    const [from, to, accountId] = key.split(':');
+    const [from, to] = key.split(':');
     let cancelled = false;
     summary = null;
     summaryError = null;
@@ -196,7 +191,7 @@
     fetch('/insights/summary', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ from, to, accountId: accountId || undefined })
+      body: JSON.stringify({ from, to })
     })
       .then(async (r) => {
         const body = await r.json().catch(() => ({}));
@@ -218,9 +213,6 @@
     <h1 class="text-3xl" style="font-family:var(--font-display)">Where your money went</h1>
   </div>
   <div class="flex flex-wrap items-center gap-2">
-    {#if data.accounts.length > 1}
-      <AccountPicker accounts={data.accounts} selected={data.accountId ?? ''} />
-    {/if}
     <div class="flex shrink-0 items-center gap-1">
       {#if singleMonth}
         <button type="button" class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"

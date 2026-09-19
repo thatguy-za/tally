@@ -1,12 +1,12 @@
-import { db, tx } from './db.js';
+import { db, tx, seedCategories } from './db.js';
 import { guessDomain, logoKey } from '$lib/logo.js';
 
 /* ------------------------------------------------------------------ categories */
 
-export function listCategories(userId) {
+export function listCategories(userId, accountId) {
   return db
-    .prepare('SELECT * FROM categories WHERE user_id = ? ORDER BY kind DESC, name')
-    .all(userId);
+    .prepare('SELECT * FROM categories WHERE user_id = ? AND account_id = ? ORDER BY kind DESC, name')
+    .all(userId, accountId);
 }
 
 /**
@@ -25,42 +25,48 @@ export const normaliseKind = (k) => (CATEGORY_KINDS.includes(k) ? k : 'expense')
 /** Kinds left out of income/spending totals wherever they're computed. */
 export const NON_SPENDING_KINDS = ['saving', 'transfer', 'opening_balance'];
 
-export function createCategory(userId, name, kind, color) {
+export function createCategory(userId, accountId, name, kind, color) {
   const k = normaliseKind(kind);
   const c = color || '#64748b';
   const trimmed = name.trim();
   const info = db
-    .prepare('INSERT INTO categories (user_id, name, kind, color) VALUES (?, ?, ?, ?)')
-    .run(userId, trimmed, k, c);
+    .prepare('INSERT INTO categories (user_id, account_id, name, kind, color) VALUES (?, ?, ?, ?, ?)')
+    .run(userId, accountId, trimmed, k, c);
   return { id: Number(info.lastInsertRowid), name: trimmed, kind: k, color: c };
 }
 
 /** Change what a category *is* — the only way to mark one as savings after the fact. */
-export function setCategoryKind(userId, id, kind) {
-  db.prepare('UPDATE categories SET kind = ? WHERE id = ? AND user_id = ?').run(
+export function setCategoryKind(userId, accountId, id, kind) {
+  db.prepare('UPDATE categories SET kind = ? WHERE id = ? AND user_id = ? AND account_id = ?').run(
     normaliseKind(kind),
     id,
-    userId
+    userId,
+    accountId
   );
 }
 
-export function setCategoryColor(userId, id, color) {
-  db.prepare('UPDATE categories SET color = ? WHERE id = ? AND user_id = ?').run(color, id, userId);
+export function setCategoryColor(userId, accountId, id, color) {
+  db.prepare('UPDATE categories SET color = ? WHERE id = ? AND user_id = ? AND account_id = ?').run(
+    color,
+    id,
+    userId,
+    accountId
+  );
 }
 
 /** Full edit — name, kind and colour together, for the Categories page's edit row. */
-export function updateCategory(userId, id, { name, kind, color }) {
-  db.prepare('UPDATE categories SET name = ?, kind = ?, color = ? WHERE id = ? AND user_id = ?').run(
-    name.trim(),
-    normaliseKind(kind),
-    color || '#64748b',
-    id,
-    userId
-  );
+export function updateCategory(userId, accountId, id, { name, kind, color }) {
+  db.prepare(
+    'UPDATE categories SET name = ?, kind = ?, color = ? WHERE id = ? AND user_id = ? AND account_id = ?'
+  ).run(name.trim(), normaliseKind(kind), color || '#64748b', id, userId, accountId);
 }
 
-export function deleteCategory(userId, id) {
-  db.prepare('DELETE FROM categories WHERE id = ? AND user_id = ?').run(id, userId);
+export function deleteCategory(userId, accountId, id) {
+  db.prepare('DELETE FROM categories WHERE id = ? AND user_id = ? AND account_id = ?').run(
+    id,
+    userId,
+    accountId
+  );
 }
 
 /* --------------------------------------------------------------------- accounts */
@@ -69,10 +75,17 @@ export function listAccounts(userId) {
   return db.prepare('SELECT * FROM accounts WHERE user_id = ? ORDER BY id').all(userId);
 }
 
-export function createAccount(userId, name, color) {
-  return db
-    .prepare('INSERT INTO accounts (user_id, name, color) VALUES (?, ?, ?)')
-    .run(userId, name.trim(), color || '#64748b');
+/** New accounts get their own copy of the default categories — never another account's. */
+export function createAccount(userId, name, color, kind = 'checking') {
+  const trimmed = name.trim();
+  const c = color || '#64748b';
+  const k = kind === 'savings' ? 'savings' : 'checking';
+  const info = db
+    .prepare('INSERT INTO accounts (user_id, name, color, kind) VALUES (?, ?, ?, ?)')
+    .run(userId, trimmed, c, k);
+  const id = Number(info.lastInsertRowid);
+  seedCategories(userId, id);
+  return { id, name: trimmed, color: c, kind: k };
 }
 
 export function renameAccount(userId, id, name, color) {
@@ -91,13 +104,14 @@ export function deleteAccount(userId, id) {
 
 /* ---------------------------------------------------------------- transactions */
 
-export function listMonths(userId) {
+export function listMonths(userId, accountId = null) {
+  const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   return db
     .prepare(
       `SELECT DISTINCT substr(date, 1, 7) AS ym FROM transactions
-       WHERE user_id = ? ORDER BY ym DESC`
+       WHERE user_id = @userId ${af} ORDER BY ym DESC`
     )
-    .all(userId)
+    .all({ userId, ...accountFilter(accountId).params })
     .map((r) => r.ym);
 }
 
@@ -244,14 +258,14 @@ export function getUserAiCategorise(userId) {
  * for category suggestions tailored to how this person actually spends,
  * rather than a generic list.
  */
-export function sampleDescriptionsForSuggestion(userId, limit = 150) {
+export function sampleDescriptionsForSuggestion(userId, accountId, limit = 150) {
   const rows = db
     .prepare(
       `SELECT description, amount FROM transactions
-       WHERE user_id = ? AND description != ''
+       WHERE user_id = ? AND account_id = ? AND description != ''
        ORDER BY id DESC LIMIT 2000`
     )
-    .all(userId);
+    .all(userId, accountId);
   const seen = new Set();
   const out = [];
   for (const r of rows) {
@@ -384,22 +398,22 @@ export function categorySparkData(userId, months = 6, accountId = null) {
 
 /* ----------------------------------------------------------------------- rules */
 
-export function listRules(userId) {
+export function listRules(userId, accountId) {
   return db
     .prepare(
       `SELECT r.*, c.name AS category_name, c.color AS category_color
        FROM rules r JOIN categories c ON c.id = r.category_id
-       WHERE r.user_id = ? ORDER BY r.priority DESC, r.id`
+       WHERE r.user_id = ? AND r.account_id = ? ORDER BY r.priority DESC, r.id`
     )
-    .all(userId);
+    .all(userId, accountId);
 }
 
-export function createRule(userId, matchText, categoryId, priority = 0) {
+export function createRule(userId, accountId, matchText, categoryId, priority = 0) {
   return db
     .prepare(
-      'INSERT INTO rules (user_id, match_text, category_id, priority) VALUES (?, ?, ?, ?)'
+      'INSERT INTO rules (user_id, account_id, match_text, category_id, priority) VALUES (?, ?, ?, ?, ?)'
     )
-    .run(userId, matchText.trim(), categoryId, priority);
+    .run(userId, accountId, matchText.trim(), categoryId, priority);
 }
 
 export function deleteRule(userId, id) {
@@ -407,25 +421,27 @@ export function deleteRule(userId, id) {
 }
 
 /**
- * Apply all of a user's rules.
+ * Apply a single account's rules to that same account's transactions.
  * @param {number} userId
- * @param {{ onlyUncategorised?: boolean, ids?: number[] }} opts
+ * @param {{ onlyUncategorised?: boolean, ids?: number[], accountId: number }} opts
  * @returns {number} number of transactions updated
  */
-export function applyRules(userId, { onlyUncategorised = true, ids = null } = {}) {
+export function applyRules(userId, { onlyUncategorised = true, ids = null, accountId = null } = {}) {
+  const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   const rules = db
-    .prepare('SELECT * FROM rules WHERE user_id = ? ORDER BY priority DESC, id')
-    .all(userId);
+    .prepare('SELECT * FROM rules WHERE user_id = ? AND account_id = ? ORDER BY priority DESC, id')
+    .all(userId, accountId);
   let changed = 0;
   tx(() => {
     for (const rule of rules) {
       const params = {
         userId,
         categoryId: rule.category_id,
-        match: `%${rule.match_text.toLowerCase()}%`
+        match: `%${rule.match_text.toLowerCase()}%`,
+        ...accountFilter(accountId).params
       };
       let sql = `UPDATE transactions SET category_id = @categoryId
-                 WHERE user_id = @userId AND lower(description) LIKE @match`;
+                 WHERE user_id = @userId AND lower(description) LIKE @match ${af}`;
       if (onlyUncategorised) sql += ' AND category_id IS NULL';
       if (ids && ids.length) {
         sql += ` AND id IN (${ids.map(() => '?').join(',')})`;
@@ -438,13 +454,15 @@ export function applyRules(userId, { onlyUncategorised = true, ids = null } = {}
   return changed;
 }
 
-/** Preview which category a description would get from the rules (used on manual/CSV entry). */
-export function categoriseByRules(userId, description) {
+/** Preview which category a description would get from the current account's rules. */
+export function categoriseByRules(userId, accountId, description) {
   if (!description) return null;
   const d = description.toLowerCase();
   const rules = db
-    .prepare('SELECT match_text, category_id FROM rules WHERE user_id = ? ORDER BY priority DESC, id')
-    .all(userId);
+    .prepare(
+      'SELECT match_text, category_id FROM rules WHERE user_id = ? AND account_id = ? ORDER BY priority DESC, id'
+    )
+    .all(userId, accountId);
   for (const r of rules) if (d.includes(r.match_text.toLowerCase())) return r.category_id;
   return null;
 }
@@ -466,8 +484,8 @@ export function deleteBudget(userId, categoryId) {
   db.prepare('DELETE FROM budgets WHERE user_id = ? AND category_id = ?').run(userId, categoryId);
 }
 
-/** target vs actual vs remaining for each expense category in `month` (YYYY-MM). */
-export function budgetStatus(userId, month, accountId = null) {
+/** target vs actual vs remaining for each expense category in `month` (YYYY-MM), scoped to one account. */
+export function budgetStatus(userId, month, accountId) {
   const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   const rows = db
     .prepare(
@@ -480,10 +498,10 @@ export function budgetStatus(userId, month, accountId = null) {
               ), 0) AS actual_signed
        FROM categories c
        LEFT JOIN budgets b ON b.category_id = c.id AND b.user_id = c.user_id
-       WHERE c.user_id = @userId
+       WHERE c.user_id = @userId AND c.account_id = @accountId
        ORDER BY c.kind DESC, c.name`
     )
-    .all({ userId, month, ...accountFilter(accountId).params });
+    .all({ userId, accountId, month, ...accountFilter(accountId).params });
 
   return rows.map((r) => {
     // savings are a net contribution, so a month with more withdrawn than paid
@@ -510,12 +528,14 @@ export function budgetStatus(userId, month, accountId = null) {
  * total spent in the category / number of distinct months the user has any data.
  * @returns {{ id:number, name:string, average:number }[]}
  */
-export function categoryMonthlyAverages(userId) {
+export function categoryMonthlyAverages(userId, accountId) {
+  const af = accountFilter(accountId);
   const span = db
     .prepare(
-      `SELECT COUNT(DISTINCT substr(date, 1, 7)) AS months FROM transactions WHERE user_id = ?`
+      `SELECT COUNT(DISTINCT substr(date, 1, 7)) AS months FROM transactions t
+       WHERE t.user_id = @userId ${af.sql}`
     )
-    .get(userId);
+    .get({ userId, ...af.params });
   const months = Math.max(1, span?.months ?? 1);
   const rows = db
     .prepare(
@@ -523,10 +543,10 @@ export function categoryMonthlyAverages(userId) {
               COALESCE(SUM(ABS(t.amount)), 0) AS total
        FROM categories c
        JOIN transactions t ON t.category_id = c.id AND t.user_id = c.user_id
-       WHERE c.user_id = @userId AND c.kind = 'expense'
+       WHERE c.user_id = @userId AND c.account_id = @accountId AND c.kind = 'expense' ${af.sql}
        GROUP BY c.id`
     )
-    .all({ userId });
+    .all({ userId, accountId, ...af.params });
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -757,9 +777,11 @@ export function savingsSummary(userId, window = 12, accountId = null) {
     total = upTo.length ? upTo[upTo.length - 1].total : 0;
   }
 
-  const configured = db
-    .prepare(`SELECT 1 AS ok FROM categories WHERE user_id = ? AND kind = 'saving' LIMIT 1`)
-    .get(userId);
+  const configured = accountId
+    ? db
+        .prepare(`SELECT 1 AS ok FROM categories WHERE user_id = ? AND account_id = ? AND kind = 'saving' LIMIT 1`)
+        .get(userId, accountId)
+    : db.prepare(`SELECT 1 AS ok FROM categories WHERE user_id = ? AND kind = 'saving' LIMIT 1`).get(userId);
 
   return {
     total,

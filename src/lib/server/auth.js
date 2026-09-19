@@ -24,8 +24,8 @@ export function createUser(username, password) {
     .prepare('INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)')
     .run(username.toLowerCase().trim(), hashPassword(password), count === 0 ? 1 : 0);
   const id = Number(info.lastInsertRowid);
-  seedCategories(id);
-  seedDefaultAccount(id);
+  const accountId = seedDefaultAccount(id);
+  seedCategories(id, accountId);
   return getUserById(id);
 }
 

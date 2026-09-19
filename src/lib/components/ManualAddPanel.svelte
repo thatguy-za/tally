@@ -1,5 +1,4 @@
 <script>
-  import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Icon from './Icon.svelte';
@@ -16,7 +15,6 @@
   }
 
   let rows = $state([blankRow()]);
-  let accountId = $state(untrack(() => data.accounts[0]?.id ?? null));
 
   function addRow() {
     rows = [...rows, blankRow()];
@@ -35,7 +33,6 @@
 
   let payload = $derived(
     JSON.stringify({
-      accountId,
       rows: rows
         .map((r) => ({ ...r, ...computed(r) }))
         .filter((r) => r.valid)
@@ -54,15 +51,6 @@
 
   {#if form?.error}
     <p class="mb-3 rounded-[var(--radius-sm)] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form.error}</p>
-  {/if}
-
-  {#if data.accounts.length > 1}
-    <div class="mb-3 flex items-center gap-2 text-[13px]">
-      <span class="text-[var(--ink-faint)]">Into</span>
-      <select class="input !py-1 text-xs" bind:value={accountId}>
-        {#each data.accounts as a}<option value={a.id}>{a.name}</option>{/each}
-      </select>
-    </div>
   {/if}
 
   <div class="card card-flush">

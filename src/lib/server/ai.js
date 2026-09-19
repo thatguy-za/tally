@@ -298,9 +298,9 @@ const SUGGEST_CATEGORIES_SYSTEM =
  * @param {number} userId
  * @returns {Promise<{ suggestions: {name:string,kind:string}[], usage:object, costUsd:number }>}
  */
-export async function suggestNewCategories(userId) {
-  const existing = listCategories(userId);
-  const sample = sampleDescriptionsForSuggestion(userId, 150);
+export async function suggestNewCategories(userId, accountId) {
+  const existing = listCategories(userId, accountId);
+  const sample = sampleDescriptionsForSuggestion(userId, accountId, 150);
   const empty = { suggestions: [], usage: { input: 0, output: 0 }, costUsd: 0 };
   if (!sample.length) return empty;
 
@@ -339,7 +339,7 @@ export async function suggestNewCategories(userId) {
  * @param {{ref:string,date:string,amount:number,description:string}[]} rows
  * @returns {Promise<{ suggestions: Record<string,string>, considered:number, usage:object, costUsd:number }>}
  */
-export async function suggestCategoriesForRows(userId, rows) {
+export async function suggestCategoriesForRows(userId, accountId, rows) {
   const items = rows
     .filter((r) => r && r.ref != null)
     .slice(0, MAX_PER_RUN)
@@ -352,7 +352,7 @@ export async function suggestCategoriesForRows(userId, rows) {
   const empty = { suggestions: {}, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
   if (!items.length) return empty;
 
-  const categories = listCategories(userId);
+  const categories = listCategories(userId, accountId);
   if (!categories.length) throw new Error('Add some categories first.');
 
   const { byRef, usage } = await runCategorisation(categories, items);
@@ -372,12 +372,12 @@ export async function suggestCategoriesForRows(userId, rows) {
  * @param {number} userId
  * @returns {Promise<{ updated: number, considered: number, usage: object, costUsd: number }>}
  */
-export async function categoriseUncategorisedTransactions(userId) {
+export async function categoriseUncategorisedTransactions(userId, accountId = null) {
   const empty = { updated: 0, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
-  const categories = listCategories(userId);
+  const categories = listCategories(userId, accountId);
   if (!categories.length) return empty;
 
-  const rows = listTransactions(userId, { categoryId: 'none' }).slice(0, MAX_PER_RUN);
+  const rows = listTransactions(userId, { categoryId: 'none', accountId }).slice(0, MAX_PER_RUN);
   if (!rows.length) return empty;
 
   const items = rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, description: r.description }));
@@ -566,15 +566,14 @@ const CHAT_TOOLS = [
   },
   {
     name: 'category_totals',
-    description: 'Total income/expense/savings per category over a month range — for "how much did I spend on X" questions.',
+    description: 'Total income/expense/savings per category over a month range, for the currently active account — for "how much did I spend on X" questions.',
     input_schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['from', 'to', 'account_id'],
+      required: ['from', 'to'],
       properties: {
         from: { type: 'string', description: 'Start month, YYYY-MM, inclusive' },
-        to: { type: 'string', description: 'End month, YYYY-MM, inclusive' },
-        account_id: { type: ['integer', 'null'], description: 'Restrict to one account id, or null for every account' }
+        to: { type: 'string', description: 'End month, YYYY-MM, inclusive' }
       }
     }
   },
@@ -654,8 +653,8 @@ const CHAT_TOOLS = [
 ];
 
 /** Turns a validated `show_chart` call into render-ready bars with real, on-platform colours. */
-function normaliseChart(userId, input) {
-  const colorById = new Map(listCategories(userId).map((c) => [c.id, c.color]));
+function normaliseChart(userId, accountId, input) {
+  const colorById = new Map(listCategories(userId, accountId).map((c) => [c.id, c.color]));
   const bars = (Array.isArray(input?.bars) ? input.bars : []).slice(0, 12).map((b, i) => {
     const value = Number(b?.value);
     const catId = Number.isInteger(b?.category_id) ? b.category_id : null;
@@ -673,16 +672,16 @@ function normaliseChart(userId, input) {
  * JSON-able result. `charts` collects any `show_chart` calls made this turn,
  * so the caller can hand them back to the client alongside the reply.
  */
-function executeChatTool(userId, name, input, charts) {
+function executeChatTool(userId, accountId, name, input, charts) {
   switch (name) {
     case 'show_chart':
-      charts.push(normaliseChart(userId, input));
+      charts.push(normaliseChart(userId, accountId, input));
       return { ok: true };
     case 'list_categories':
-      return listCategories(userId).map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
+      return listCategories(userId, accountId).map((c) => ({ id: c.id, name: c.name, kind: c.kind }));
 
     case 'category_totals': {
-      const rows = monthlyCategoryTotals(userId, input.from, input.to, input.account_id ?? null);
+      const rows = monthlyCategoryTotals(userId, input.from, input.to, accountId);
       const byCat = new Map();
       for (const r of rows) {
         const e = byCat.get(r.id) || { id: r.id, name: r.name, kind: r.kind, total: 0 };
@@ -698,6 +697,7 @@ function executeChatTool(userId, name, input, charts) {
         dateFrom: input.from || undefined,
         dateTo: input.to || undefined,
         categoryId: input.category_id ?? undefined,
+        accountId,
         search: input.search || undefined,
         direction: input.direction === 'in' || input.direction === 'out' ? input.direction : undefined
       }).slice(0, limit);
@@ -710,7 +710,7 @@ function executeChatTool(userId, name, input, charts) {
     }
 
     case 'period_summary': {
-      const ins = periodInsights(userId, input.from, input.to);
+      const ins = periodInsights(userId, input.from, input.to, accountId);
       return {
         earned: ins.earned,
         spent: ins.spent,
@@ -724,7 +724,7 @@ function executeChatTool(userId, name, input, charts) {
     }
 
     case 'budget_status':
-      return budgetStatus(userId, input.month).map((r) => ({
+      return budgetStatus(userId, input.month, accountId).map((r) => ({
         name: r.name,
         kind: r.kind,
         target: r.target,
@@ -739,7 +739,7 @@ function executeChatTool(userId, name, input, charts) {
 
 const chatToolSpecs = CHAT_TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
 
-async function chatTurnAnthropic({ system, messages, userId, model, apiKeyOverride }) {
+async function chatTurnAnthropic({ system, messages, userId, accountId, model, apiKeyOverride }) {
   const anthropic = client('anthropic', apiKeyOverride);
   const usage = { input: 0, output: 0 };
   const charts = [];
@@ -772,7 +772,7 @@ async function chatTurnAnthropic({ system, messages, userId, model, apiKeyOverri
       content: toolUses.map((tu) => {
         let content;
         try {
-          content = JSON.stringify(executeChatTool(userId, tu.name, tu.input || {}, charts)).slice(0, 8000);
+          content = JSON.stringify(executeChatTool(userId, accountId, tu.name, tu.input || {}, charts)).slice(0, 8000);
         } catch (e) {
           content = JSON.stringify({ error: e?.message || 'That lookup failed.' });
         }
@@ -783,7 +783,7 @@ async function chatTurnAnthropic({ system, messages, userId, model, apiKeyOverri
   return { text: CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
 }
 
-async function chatTurnOpenAI({ system, messages, userId, model, apiKeyOverride }) {
+async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiKeyOverride }) {
   const openai = client('openai', apiKeyOverride);
   const usage = { input: 0, output: 0 };
   const charts = [];
@@ -822,7 +822,7 @@ async function chatTurnOpenAI({ system, messages, userId, model, apiKeyOverride 
       }
       let content;
       try {
-        content = JSON.stringify(executeChatTool(userId, c.function.name, args, charts)).slice(0, 8000);
+        content = JSON.stringify(executeChatTool(userId, accountId, c.function.name, args, charts)).slice(0, 8000);
       } catch (e) {
         content = JSON.stringify({ error: e?.message || 'That lookup failed.' });
       }
@@ -862,16 +862,17 @@ const CHAT_SYSTEM = (currency, today) =>
  * whatever it needs itself via the tools above, scoped to `userId` — the
  * request never carries data the model didn't ask a tool for.
  * @param {number} userId
+ * @param {number} accountId
  * @param {{role:string,content:string}[]} history
  * @param {string} currency
  */
-export async function chatWithData(userId, history, currency) {
+export async function chatWithData(userId, accountId, history, currency) {
   const provider = getProvider();
   const model = getModel(provider);
   const system = CHAT_SYSTEM(currency, new Date().toISOString().slice(0, 10));
 
   const turn = provider === 'openai' ? chatTurnOpenAI : chatTurnAnthropic;
-  const { text, usage, charts } = await turn({ system, messages: history, userId, model });
+  const { text, usage, charts } = await turn({ system, messages: history, userId, accountId, model });
   return { text, usage, charts, costUsd: estimateCost(usage, model) };
 }
 

@@ -35,7 +35,7 @@ export async function POST({ request, locals }) {
     throw error(400, 'A user message is required.');
 
   try {
-    const r = await chatWithData(locals.user.id, clean, locals.user.currency);
+    const r = await chatWithData(locals.user.id, locals.accountId, clean, locals.user.currency);
     return json({ text: r.text, charts: r.charts, costUsd: r.costUsd });
   } catch (e) {
     throw error(400, e?.message || 'the request failed');

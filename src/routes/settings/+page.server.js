@@ -22,6 +22,7 @@ import { aiEnabled } from '$lib/server/ai-settings.js';
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
   const userId = locals.user.id;
+  const accountId = locals.accountId;
   const acctCounts = db
     .prepare('SELECT account_id, COUNT(*) AS n FROM transactions WHERE user_id = ? GROUP BY account_id')
     .all(userId);
@@ -34,9 +35,9 @@ export function load({ locals }) {
     dateFormat: locals.user.date_format,
     username: locals.user.username,
     isAdmin: !!locals.user.is_admin,
-    categories: listCategories(userId),
+    categories: listCategories(userId, accountId),
     accounts: listAccounts(userId).map((a) => ({ ...a, count: acctCountMap[a.id] || 0 })),
-    rules: listRules(userId),
+    rules: listRules(userId, accountId),
     aiAvailable: aiEnabled(),
     aiCategorise: getUserAiCategorise(userId)
   };
@@ -63,13 +64,15 @@ export const actions = {
     const f = await request.formData();
     const name = String(f.get('name') || '').trim();
     const color = String(f.get('color') || '#64748b');
+    const kind = f.get('kind') === 'savings' ? 'savings' : 'checking';
     if (!name) return fail(400, { section: 'account', error: 'Name is required.' });
+    let created;
     try {
-      createAccount(locals.user.id, name, color);
+      created = createAccount(locals.user.id, name, color, kind);
     } catch {
       return fail(400, { section: 'account', error: 'An account with that name already exists.' });
     }
-    return { section: 'account', ok: true };
+    return { section: 'account', ok: true, msg: 'Account added', created };
   },
 
   renameAccount: async ({ request, locals }) => {
@@ -89,8 +92,12 @@ export const actions = {
   deleteAccount: async ({ request, locals }) => {
     const f = await request.formData();
     const id = Number(f.get('id'));
-    if (id) deleteAccount(locals.user.id, id);
-    return { section: 'account', ok: true };
+    const all = listAccounts(locals.user.id);
+    if (!all.some((a) => a.id === id)) return fail(400, { section: 'account', error: 'Unknown account.' });
+    if (all.length <= 1)
+      return fail(400, { section: 'account', error: "You can't delete your only account." });
+    deleteAccount(locals.user.id, id);
+    return { section: 'account', ok: true, msg: 'Account deleted' };
   },
 
   addRule: async ({ request, locals }) => {
@@ -101,8 +108,8 @@ export const actions = {
     const overwrite = f.get('overwrite') === 'on';
     if (!matchText || !categoryId)
       return fail(400, { section: 'rule', error: 'Enter text to match and a category.' });
-    createRule(locals.user.id, matchText, categoryId, priority);
-    const applied = applyRules(locals.user.id, { onlyUncategorised: !overwrite });
+    createRule(locals.user.id, locals.accountId, matchText, categoryId, priority);
+    const applied = applyRules(locals.user.id, { onlyUncategorised: !overwrite, accountId: locals.accountId });
     return { section: 'rule', ok: true, applied };
   },
 
@@ -115,7 +122,7 @@ export const actions = {
   applyRules: async ({ request, locals }) => {
     const f = await request.formData();
     const onlyUncategorised = f.get('scope') !== 'all';
-    const applied = applyRules(locals.user.id, { onlyUncategorised });
+    const applied = applyRules(locals.user.id, { onlyUncategorised, accountId: locals.accountId });
     return { section: 'rule', ok: true, applied };
   },
 

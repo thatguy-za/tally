@@ -23,7 +23,8 @@ export function GET({ url, locals }) {
       month,
       categoryId: 'other',
       categoryKinds,
-      excludeCategoryIds
+      excludeCategoryIds,
+      accountId: locals.accountId
     });
     return json({ transactions });
   }
@@ -32,6 +33,6 @@ export function GET({ url, locals }) {
   if (categoryParam !== 'none' && (!Number.isInteger(categoryId) || categoryId <= 0))
     throw error(400, 'Invalid category.');
 
-  const transactions = listTransactions(locals.user.id, { month, categoryId });
+  const transactions = listTransactions(locals.user.id, { month, categoryId, accountId: locals.accountId });
   return json({ transactions });
 }

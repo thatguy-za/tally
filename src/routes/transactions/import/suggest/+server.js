@@ -19,7 +19,7 @@ export async function POST({ request, locals }) {
   if (!rows.length) return json({ suggestions: {}, considered: 0, costUsd: 0 });
 
   try {
-    const r = await suggestCategoriesForRows(locals.user.id, rows);
+    const r = await suggestCategoriesForRows(locals.user.id, locals.accountId, rows);
     return json({ suggestions: r.suggestions, considered: r.considered, costUsd: r.costUsd });
   } catch (e) {
     throw error(400, `AI suggestions failed: ${e?.message || 'unknown error'}`);

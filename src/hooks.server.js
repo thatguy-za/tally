@@ -1,5 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { getSessionUser, SESSION_COOKIE } from '$lib/server/auth.js';
+import { listAccounts } from '$lib/server/queries.js';
+import { ACCOUNT_COOKIE } from '$lib/server/account-cookie.js';
 
 const PUBLIC_ROUTES = new Set(['/login', '/register']);
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -48,6 +50,19 @@ export async function handle({ event, resolve }) {
 
   const sessionId = event.cookies.get(SESSION_COOKIE);
   event.locals.user = getSessionUser(sessionId);
+
+  // The single account every page's data is scoped to — never a combined
+  // "all accounts" view, so switching accounts can never mix figures from
+  // two of a user's own accounts together. Falls back to the first account
+  // (the auto-seeded checking one) if nothing — or an account that no
+  // longer exists — is selected.
+  if (event.locals.user) {
+    const accounts = listAccounts(event.locals.user.id);
+    const requested = event.cookies.get(ACCOUNT_COOKIE);
+    const active = accounts.find((a) => String(a.id) === requested) || accounts[0] || null;
+    event.locals.accounts = accounts;
+    event.locals.accountId = active?.id ?? null;
+  }
 
   const path = event.url.pathname;
   const isPublic = PUBLIC_ROUTES.has(path);
