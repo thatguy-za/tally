@@ -14,11 +14,7 @@
   // data (e.g. right after the key is saved) would shrink the array under a
   // `step` index that's mid-flight and silently skip whatever step came next.
   const STEPS = untrack(() =>
-    (onboarding.isAdmin && !onboarding.ai.configured ? ['api-key'] : []).concat([
-      'accounts',
-      'categories',
-      'import'
-    ])
+    (onboarding.isAdmin && !onboarding.ai.configured ? ['api-key'] : []).concat(['categories', 'import'])
   );
 
   let step = $state(0);
@@ -37,8 +33,6 @@
   let testing = $state(false);
   let testResult = $state('');
   let testError = $state('');
-  let newAccountName = $state('');
-  let newAccountColor = $state('#6366f1');
   let newCategoryName = $state('');
   let newCategoryKind = $state('expense');
   let newCategoryColor = $state('#7b8a5a');
@@ -179,68 +173,6 @@
           <button type="button" class="btn btn-ghost" onclick={next}>Skip for now</button>
         </div>
       </form>
-    {:else if STEPS[step] === 'accounts'}
-      <span class="mb-3 grid h-10 w-10 place-items-center rounded-[var(--radius-sm)]" style="background:var(--accent-wash)">
-        <Icon name="wallet" size={19} class="text-[var(--accent)]" />
-      </span>
-      <h2 class="text-xl" style="font-family:var(--font-display)">Your accounts</h2>
-      <p class="mt-1.5 text-[13px] text-[var(--ink-faint)]">
-        We've started you off with one. Rename it, or add more if you want to track a current
-        account and a savings account separately.
-      </p>
-      <ul class="mt-4 space-y-2">
-        {#each onboarding.accounts as a (a.id)}
-          <li>
-            <form
-              method="POST"
-              action="/settings?/renameAccount"
-              class="flex items-center gap-2"
-              use:enhance={() => async ({ result }) => {
-                if (result.type === 'success') await invalidateAll();
-              }}
-            >
-              <input type="hidden" name="id" value={a.id} />
-              <input type="hidden" name="color" id="ob-acct-color-{a.id}" value={a.color} />
-              <ColorPicker
-                value={a.color}
-                size="h-8 w-8"
-                label="Colour for {a.name}"
-                onchange={(c) => {
-                  const input = document.getElementById(`ob-acct-color-${a.id}`);
-                  input.value = c;
-                  input.form?.requestSubmit();
-                }}
-              />
-              <input
-                name="name"
-                value={a.name}
-                class="input flex-1"
-                aria-label="Account name"
-                onchange={(e) => e.currentTarget.form?.requestSubmit()}
-              />
-            </form>
-          </li>
-        {/each}
-      </ul>
-      <form
-        method="POST"
-        action="/settings?/addAccount"
-        class="mt-3 flex items-center gap-2"
-        use:enhance={() => async ({ result }) => {
-          if (result.type === 'success') {
-            newAccountName = '';
-            await invalidateAll();
-          }
-        }}
-      >
-        <input type="hidden" name="color" value={newAccountColor} />
-        <ColorPicker bind:value={newAccountColor} size="h-8 w-8" label="Colour for new account" />
-        <input class="input flex-1" name="name" placeholder="Add another account…" bind:value={newAccountName} />
-        <button class="btn btn-ghost" disabled={!newAccountName.trim()}>Add</button>
-      </form>
-      <div class="mt-5 flex justify-end">
-        <button class="btn btn-primary" onclick={next}>Continue</button>
-      </div>
     {:else if STEPS[step] === 'categories'}
       <span class="mb-3 grid h-10 w-10 place-items-center rounded-[var(--radius-sm)]" style="background:var(--accent-wash)">
         <Icon name="reports" size={19} class="text-[var(--accent)]" />

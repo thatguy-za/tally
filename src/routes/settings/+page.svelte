@@ -2,19 +2,16 @@
   import { enhance } from '$app/forms';
   import { formatMoney } from '$lib/currency.js';
   import Icon from '$lib/components/Icon.svelte';
-  import ColorPicker from '$lib/components/ColorPicker.svelte';
   import RulesSection from '$lib/components/RulesSection.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
-  let newAccountColor = $state('#6366f1');
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
 
   const messages = {
     currency: 'Currency saved',
     dateFormat: 'Date format saved',
-    account: 'Account saved',
     rule: 'Rules updated',
     username: 'Username updated',
     password: 'Password updated',
@@ -67,61 +64,6 @@
       <button class="btn btn-primary">Save</button>
       {#if ok('dateFormat')}<span class="text-sm" style="color:var(--positive)">Saved</span>{/if}
       {#if err('dateFormat')}<span class="text-sm" style="color:var(--negative)">{err('dateFormat')}</span>{/if}
-    </form>
-  </div>
-
-  <!-- Accounts -->
-  <div class="card">
-    <h2 class="text-lg">Accounts</h2>
-    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
-      Track more than one bank account — a current account and a savings account, say. Choose
-      which one a transaction belongs to when you add or import it.
-    </p>
-    <ul class="mb-4 divide-y divide-[var(--border)]">
-      {#each data.accounts as a}
-        <li class="flex items-center justify-between gap-3 py-2 text-[13px]">
-          <form method="POST" action="?/renameAccount" use:enhance class="flex min-w-0 flex-1 items-center gap-2">
-            <input type="hidden" name="id" value={a.id} />
-            <input type="hidden" name="color" id="acct-color-{a.id}" value={a.color} />
-            <ColorPicker
-              value={a.color}
-              size="h-6 w-6"
-              label="Colour for {a.name}"
-              onchange={(c) => {
-                const input = document.getElementById(`acct-color-${a.id}`);
-                input.value = c;
-                input.form?.requestSubmit();
-              }}
-            />
-            <input name="name" value={a.name} class="cell min-w-0 flex-1 text-[13px]"
-              aria-label="Name for this account"
-              onchange={(e) => e.currentTarget.form.requestSubmit()} />
-          </form>
-          <span class="flex items-center gap-3">
-            <span class="text-xs text-[var(--ink-faint)]">{a.count} tx</span>
-            <form method="POST" action="?/deleteAccount" use:enhance
-              onsubmit={(e) => { if (a.count && !confirm(`${a.count} transactions will become unassigned. Continue?`)) e.preventDefault(); }}>
-              <input type="hidden" name="id" value={a.id} />
-              <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete"><Icon name="trash" size={14} /></button>
-            </form>
-          </span>
-        </li>
-      {:else}
-        <li class="py-2 text-sm text-[var(--ink-faint)]">No accounts yet.</li>
-      {/each}
-    </ul>
-    <form method="POST" action="?/addAccount" use:enhance class="flex flex-wrap items-end gap-3">
-      <div>
-        <label class="label" for="acc-name">New account</label>
-        <input class="input" id="acc-name" name="name" placeholder="e.g. Savings" required />
-      </div>
-      <div>
-        <span class="label">Colour</span>
-        <input type="hidden" name="color" value={newAccountColor} />
-        <ColorPicker bind:value={newAccountColor} size="h-[38px] w-14 rounded-[var(--radius-sm)]" label="Colour for new account" />
-      </div>
-      <button class="btn btn-primary">Add</button>
-      {#if err('account')}<span class="text-sm" style="color:var(--negative)">{err('account')}</span>{/if}
     </form>
   </div>
 

@@ -496,6 +496,55 @@ export async function summarisePeriod(insights, currency) {
   return { text, usage, costUsd: estimateCost(usage, model) };
 }
 
+/**
+ * Bumped whenever the savings-summary prompt changes, same purpose as
+ * SUMMARY_VERSION above.
+ */
+export const SAVINGS_SUMMARY_VERSION = 1;
+
+const SAVINGS_SUMMARY_SYSTEM =
+  'You write a very short note on how someone has been putting money aside, covering the ' +
+  'period described. Use only the figures you are given: never calculate, estimate or invent a ' +
+  "number. Write no more than 45 words, as one or two sentences, and call out whatever a plain " +
+  'reader would actually notice — a lump sum much bigger than the rest, a month with nothing set ' +
+  'aside, money taken back out, or a clear run of months trending up or down. If the monthly ' +
+  'amounts are fairly steady with nothing to point at, say that plainly rather than manufacturing ' +
+  'a pattern. Plain, warm, second-person English ("you put aside…"). No headings, bullet points, ' +
+  'markdown, preamble, sign-off or disclaimers.';
+
+/**
+ * The exact text sent to the AI for a savings summary — every month's
+ * contribution already formatted, so the model narrates rather than
+ * calculates.
+ * @param {{ ym: string, saved: number }[]} series
+ * @param {string} currency
+ */
+export function buildSavingsFacts(series, currency) {
+  const money = (n) => formatMoney(n, currency);
+  if (!series.length) return 'No savings-category transactions in this period.';
+  const lines = ['Money put aside per month (negative means more was taken out than paid in):'];
+  for (const p of series) lines.push(`- ${p.ym}: ${money(p.saved)}`);
+  const total = series.reduce((s, p) => s + p.saved, 0);
+  lines.push(`Total across the period: ${money(total)}.`);
+  return lines.join('\n');
+}
+
+/**
+ * Turn a `savingsSummary` series into a plain-English read of the pattern.
+ * @param {{ ym: string, saved: number }[]} series
+ * @param {string} currency
+ */
+export async function summariseSavings(series, currency) {
+  const model = getModel();
+  const { text, usage } = await callText({
+    system: SAVINGS_SUMMARY_SYSTEM,
+    userText: buildSavingsFacts(series, currency),
+    maxTokens: 150,
+    model
+  });
+  return { text, usage, costUsd: estimateCost(usage, model) };
+}
+
 /* ------------------------------------------------------------ chat with your data */
 
 const CHAT_MAX_ROUNDS = 4; // tool round-trips per user message, before giving up
@@ -784,9 +833,13 @@ async function chatTurnOpenAI({ system, messages, userId, model, apiKeyOverride 
 }
 
 const CHAT_SYSTEM = (currency, today) =>
-  "You are Tally's budgeting assistant, answering this person's questions about their own " +
-  'transactions, spending and budgets. Today is ' +
-  `${today} (current month ${today.slice(0, 7)}). Amounts are in ${currency}. ` +
+  "You are Tori, this person's personal financial advisor, built into the Tally app. Your " +
+  'personality: fun and quick-witted, but fundamentally analytical — you would always rather ' +
+  'make one sharp observation backed by a real number than ten vague platitudes. You are ' +
+  'invested in this person doing well with their money, but you never lecture, moralise, or ' +
+  'pad an answer with disclaimers. Talk like a smart friend who happens to be great with ' +
+  'numbers, not like a corporate assistant. ' +
+  `Today is ${today} (current month ${today.slice(0, 7)}). Amounts are in ${currency}. ` +
   'Always call a tool before stating any figure — never guess, calculate from memory, or ' +
   'reuse a number from earlier in the conversation without re-checking it. Use list_categories ' +
   'to resolve a category name to its id, category_totals for spending/income by category, ' +
@@ -796,9 +849,11 @@ const CHAT_SYSTEM = (currency, today) =>
   'comparison across categories or months would be clearer as a chart, call show_chart with ' +
   'the numbers you already looked up (it does not fetch anything itself) — still give your ' +
   'normal text answer too, don\'t reply with only a chart. Keep answers short and concrete — a ' +
-  'sentence or two, or a brief list for multiple items. Plain English, no markdown headings. ' +
-  'Never invent a transaction, category or number that did not come from a tool result; if the ' +
-  'data does not answer the question, say so.';
+  'sentence or two, or a brief list for multiple items — with real personality in the phrasing, ' +
+  'but never at the expense of accuracy. Plain English, no markdown headings, no "as your ' +
+  'financial advisor" preamble and no signing off as Tori — just talk like her. Never invent a ' +
+  'transaction, category or number that did not come from a tool result; if the data does not ' +
+  'answer the question, say so.';
 
 /**
  * One turn of "chat with your data": `history` is the visible conversation so

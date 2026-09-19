@@ -15,7 +15,7 @@
     { href: '/transactions', label: 'Transactions', icon: 'transactions' },
     { href: '/budgets', label: 'Budgets', icon: 'budgets' },
     { href: '/categories', label: 'Categories', icon: 'tag' },
-    ...(data.aiAvailable ? [{ href: '/chat', label: 'Ask', icon: 'sparkle' }] : [])
+    ...(data.aiAvailable ? [{ href: '/chat', label: 'Ask Tori', icon: 'sparkle' }] : [])
   ]);
 
   let current = $derived($page.url.pathname);

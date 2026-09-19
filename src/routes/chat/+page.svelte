@@ -58,11 +58,11 @@
   }
 </script>
 
-<svelte:head><title>Ask · Tally</title></svelte:head>
+<svelte:head><title>Ask Tori · Tally</title></svelte:head>
 
 <div class="mb-7">
-  <p class="kicker mb-2">Ask</p>
-  <h1 class="text-3xl" style="font-family:var(--font-display)">Chat with your data</h1>
+  <p class="kicker mb-2">Your financial advisor</p>
+  <h1 class="text-3xl" style="font-family:var(--font-display)">Ask Tori</h1>
 </div>
 
 <div class="card flex h-[65vh] min-h-[420px] flex-col">
@@ -77,7 +77,7 @@
           {/if}
         </p>
         <p class="mb-5 mt-1 text-[13px] text-[var(--ink-faint)]">
-          Ask a follow-up, or pick a starting point:
+          Ask Tori a follow-up, or pick a starting point:
         </p>
         <div class="grid gap-1.5 sm:grid-cols-2">
           {#each STARTERS as s}
@@ -127,7 +127,7 @@
     <textarea
       class="input max-h-32 min-h-[42px] flex-1 resize-none !py-2.5"
       rows="1"
-      placeholder="Ask about your spending, budgets or trends…"
+      placeholder="Ask Tori about your spending, budgets or trends…"
       bind:value={input}
       onkeydown={onKeydown}
       disabled={sending}
