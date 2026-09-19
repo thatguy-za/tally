@@ -109,11 +109,7 @@
     {#if sending}
       <div class="flex justify-start">
         <div class="max-w-[85%] rounded-[var(--radius-sm)] px-3.5 py-2.5" style="background:var(--paper-sunk)">
-          <div class="flex gap-1">
-            <span class="ai-shimmer h-2 w-2 rounded-full"></span>
-            <span class="ai-shimmer h-2 w-2 rounded-full"></span>
-            <span class="ai-shimmer h-2 w-2 rounded-full"></span>
-          </div>
+          <span class="inline-block animate-pulse text-lg leading-none" aria-label="Tori is thinking">🐱</span>
         </div>
       </div>
     {/if}

@@ -1,13 +1,14 @@
 <script>
   import { formatMoney } from '$lib/currency.js';
+  import Icon from './Icon.svelte';
 
   /**
    * One bar per month of net savings contributions — money put aside is a
    * positive bar, a withdrawal (more taken out than paid in that month) dips
    * below the zero line instead of being hidden.
-   * @type {{ series: { ym: string, saved: number }[], currency: string }}
+   * @type {{ series: { ym: string, saved: number }[], currency: string, onBarClick?: (bar: {ym:string, saved:number}) => void }}
    */
-  let { series, currency } = $props();
+  let { series, currency, onBarClick } = $props();
 
   let cw = $state(0);
   let W = $derived(Math.max(320, cw || 760));
@@ -32,8 +33,20 @@
     return (n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
   }
 
-  let domainMax = $derived(tidyCeil(Math.max(0, ...series.map((p) => p.saved))) || 1);
-  let domainMin = $derived(-tidyCeil(Math.max(0, ...series.map((p) => -p.saved))));
+  // ---- vertical zoom: a multiplier on top of the auto-fit ceiling, same
+  // approach as StackedMonths — computed from the unzoomed data so it scales
+  // smoothly instead of jumping only when the shrunk value crosses a bracket
+  const ZOOM_MIN = 0.25;
+  const ZOOM_MAX = 8;
+  let zoom = $state(1);
+  function zoomIn() { zoom = Math.min(ZOOM_MAX, zoom * 1.5); }
+  function zoomOut() { zoom = Math.max(ZOOM_MIN, zoom / 1.5); }
+  function zoomReset() { zoom = 1; }
+
+  let autoMax = $derived(tidyCeil(Math.max(0, ...series.map((p) => p.saved))) || 1);
+  let autoMin = $derived(-tidyCeil(Math.max(0, ...series.map((p) => -p.saved))));
+  let domainMax = $derived(autoMax / zoom);
+  let domainMin = $derived(autoMin / zoom);
   let span = $derived(domainMax - domainMin || 1);
   const y = (v) => PAD.t + plotH - ((v - domainMin) / span) * plotH;
   let zeroY = $derived(y(0));
@@ -57,6 +70,21 @@
   );
 </script>
 
+<div class="mb-2 flex justify-end">
+  <div class="flex items-center gap-0.5 rounded-[var(--radius-xs)] border border-[var(--border)] p-0.5">
+    <button type="button" class="grid h-6 w-6 place-items-center rounded-[6px] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)] disabled:opacity-40"
+      aria-label="Zoom out" onclick={zoomOut} disabled={zoom <= ZOOM_MIN}>
+      <Icon name="minus" size={12} />
+    </button>
+    <button type="button" class="min-w-[36px] px-0.5 text-center text-[11px] tnum text-[var(--ink-faint)] hover:text-[var(--ink)]"
+      onclick={zoomReset} title="Reset zoom">{Math.round(zoom * 100)}%</button>
+    <button type="button" class="grid h-6 w-6 place-items-center rounded-[6px] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)] disabled:opacity-40"
+      aria-label="Zoom in" onclick={zoomIn} disabled={zoom >= ZOOM_MAX}>
+      <Icon name="plus" size={12} />
+    </button>
+  </div>
+</div>
+
 <div class="relative" bind:clientWidth={cw}>
   <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"
     aria-label="Savings put aside each month">
@@ -67,7 +95,10 @@
 
     {#each bars as b (b.ym)}
       <rect x={b.x} y={b.top} width={barW} height={b.height} rx="3"
-        fill={b.saved < 0 ? 'var(--negative)' : 'var(--positive)'}>
+        style="cursor:{onBarClick ? 'pointer' : 'default'}"
+        fill={b.saved < 0 ? 'var(--negative)' : 'var(--positive)'}
+        role="presentation"
+        onclick={() => onBarClick?.(b)}>
         <title>{b.label}: {money(b.saved)}</title>
       </rect>
       {#if showLabels}

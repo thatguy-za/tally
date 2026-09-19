@@ -24,6 +24,18 @@
     categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym };
   }
 
+  /** Every saving-category transaction for one month, from a savings-chart bar. */
+  function openSavingsCategoryModal(bar) {
+    categoryModal = {
+      categoryId: 'other',
+      categoryName: 'Savings',
+      color: 'var(--positive)',
+      month: bar.ym,
+      kind: 'saving',
+      excludeIds: []
+    };
+  }
+
   let monthModal = $state(null);
   async function openMonthModal(ym) {
     monthModal = { month: ym, segments: null, loading: true };
@@ -445,7 +457,7 @@
       {#if savingsModal.series === null}
         <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Loading…</p>
       {:else if savingsModal.series.length}
-        <SavingsChart series={savingsModal.series} currency={data.currency} />
+        <SavingsChart series={savingsModal.series} currency={data.currency} onBarClick={openSavingsCategoryModal} />
       {:else}
         <p class="py-8 text-center text-sm text-[var(--ink-faint)]">No savings-category transactions in this period.</p>
       {/if}
