@@ -77,12 +77,16 @@
   >
     <span class="dot shrink-0" style="background:{current?.color}"></span>
     <span class="hidden max-w-[140px] truncate sm:inline">{current?.name}</span>
-    <Icon name="arrowRight" size={11} class="shrink-0 rotate-90 text-[var(--ink-faint)]" />
+    {#if switching}
+      <Icon name="repeat" size={11} class="shrink-0 animate-spin text-[var(--ink-faint)]" />
+    {:else}
+      <Icon name="arrowRight" size={11} class="shrink-0 rotate-90 text-[var(--ink-faint)]" />
+    {/if}
   </button>
 
   {#if open}
     <div
-      class="absolute right-0 z-40 mt-1.5 w-60 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-[var(--shadow-lg)]"
+      class="menu-pop absolute right-0 z-40 mt-1.5 w-60 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-[var(--shadow-lg)]"
       role="menu"
     >
       {#each accounts as a}

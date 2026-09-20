@@ -57,15 +57,17 @@
   </p>
   <ul class="mb-4 divide-y divide-[var(--border)]">
     {#each rules as r}
-      <li class="flex items-center justify-between py-2 text-[13px]">
+      <li class="group flex items-center justify-between rounded-[var(--radius-xs)] px-2 py-2 text-[13px] transition-colors hover:bg-[var(--paper-sunk)]/60">
         <span>
           “{r.match_text}” →
           <span class="font-medium" style="color:{r.category_color}">{r.category_name}</span>
           {#if r.priority}<span class="ml-1 text-xs text-[var(--ink-faint)]">p{r.priority}</span>{/if}
         </span>
-        <form method="POST" action="/settings?/deleteRule" use:enhance={submitDelete}>
+        <form method="POST" action="/settings?/deleteRule" use:enhance={submitDelete} class="opacity-0 transition group-hover:opacity-100">
           <input type="hidden" name="id" value={r.id} />
-          <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]"><Icon name="trash" size={14} /></button>
+          <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]" data-tip="Delete rule" aria-label="Delete rule">
+            <Icon name="trash" size={14} />
+          </button>
         </form>
       </li>
     {:else}

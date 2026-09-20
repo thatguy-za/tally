@@ -9,6 +9,8 @@
   import PeriodPicker from '$lib/components/PeriodPicker.svelte';
   import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
   import SavingsChart from '$lib/components/SavingsChart.svelte';
+  import EmptyState from '$lib/components/EmptyState.svelte';
+  import Money from '$lib/components/Money.svelte';
   let { data } = $props();
 
   let categoryModal = $state(null);
@@ -243,22 +245,26 @@
   <div class="mb-4 grid gap-4 {data.savings.configured ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}">
     <div class="card">
       <p class="kicker">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
-      <span class="mt-2 block stat-value tnum text-[24px]" style="color:var(--positive)">{money(ins.earned)}</span>
+      <span class="mt-2 block stat-value text-[24px]" style="color:var(--positive)">
+        <Money value={ins.earned} currency={data.currency} colour="none" />
+      </span>
       <p class="mt-1 text-xs text-[var(--ink-faint)]">{sub(ins, 'earned')}</p>
     </div>
     <div class="card">
       <p class="kicker">Went out{ins.single && ins.partial ? ' so far' : ''}</p>
-      <span class="mt-2 block stat-value tnum text-[24px]">{money(ins.spent)}</span>
       <!-- deliberately not red: spending more than usual isn't automatically
            bad, so the number stays neutral and the breakdown explains what moved -->
+      <span class="mt-2 block stat-value text-[24px]"><Money value={ins.spent} currency={data.currency} /></span>
       <p class="mt-1 text-xs text-[var(--ink-faint)]">{sub(ins, 'spent')}</p>
     </div>
     {#if data.savings.configured}
       <button type="button" class="card w-full text-left transition-colors hover:border-[var(--border-strong)]"
         onclick={openSavingsModal}>
         <p class="kicker">Saved{ins.single && ins.partial ? ' so far' : ''}</p>
-        <span class="mt-2 block stat-value tnum text-[24px]"
-          style="color:{ins.saved < 0 ? 'var(--ink)' : 'var(--positive)'}">{money(ins.saved)}</span>
+        <span class="mt-2 block stat-value text-[24px]"
+          style="color:{ins.saved < 0 ? 'var(--ink)' : 'var(--positive)'}">
+          <Money value={ins.saved} currency={data.currency} colour="none" />
+        </span>
         <p class="mt-1 text-xs text-[var(--ink-faint)]">
           {#if ins.saved < 0}
             taken out of savings
@@ -280,7 +286,8 @@
         onSegmentClick={(seg) => openCategoryModal(seg, data.from)} />
     {:else}
       <h2 class="mb-4 text-lg">Your spending for this month</h2>
-      <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
+      <EmptyState icon="reports" title="Nothing in this period yet"
+        hint="Add a transaction or import a statement to see it here." cta={{ href: '/transactions', label: 'Go to transactions' }} />
     {/if}
   {:else if data.chart.income.length || data.chart.expense.length}
     <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
@@ -288,7 +295,8 @@
       onSegmentClick={openCategoryModal} onMonthClick={openMonthModal} />
   {:else}
     <h2 class="mb-4 text-lg">Your spending by month</h2>
-    <p class="py-12 text-center text-sm text-[var(--ink-faint)]">Nothing in this period yet.</p>
+    <EmptyState icon="reports" title="Nothing in this period yet"
+      hint="Add a transaction or import a statement to see it here." cta={{ href: '/transactions', label: 'Go to transactions' }} />
   {/if}
 {/snippet}
 
@@ -397,12 +405,21 @@
         </button>
       </div>
       {#if monthModal.loading}
-        <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Loading…</p>
+        <div class="flex flex-col gap-5 sm:flex-row sm:items-start">
+          <div class="flex justify-center sm:flex-1">
+            <div class="ai-shimmer h-[220px] w-[220px] rounded-full sm:h-[260px] sm:w-[260px]"></div>
+          </div>
+          <div class="flex w-full flex-col gap-2 sm:w-[170px] sm:shrink-0">
+            {#each ['100%', '85%', '70%', '55%'] as w}
+              <div class="ai-shimmer h-3 rounded-full" style="width:{w}"></div>
+            {/each}
+          </div>
+        </div>
       {:else if monthModal.segments.length}
         <SpendingDoughnut segments={monthModal.segments} currency={data.currency}
           onSegmentClick={(seg) => openCategoryModal(seg, monthModal.month, 'expense')} />
       {:else}
-        <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Nothing spent in {shortMonth(monthModal.month)}.</p>
+        <EmptyState icon="reports" title="Nothing spent in {shortMonth(monthModal.month)}" />
       {/if}
     </div>
   </div>
@@ -447,7 +464,11 @@
       {/if}
 
       {#if savingsModal.series === null}
-        <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Loading…</p>
+        <div class="flex h-[220px] items-end gap-2 px-2">
+          {#each [45, 70, 55, 85, 40, 65, 30, 75, 50, 60, 35, 80] as h}
+            <div class="ai-shimmer flex-1 rounded-t-md" style="height:{h}%"></div>
+          {/each}
+        </div>
       {:else if savingsModal.series.length}
         <SavingsChart series={savingsModal.series} currency={data.currency} onBarClick={openSavingsCategoryModal} />
       {:else}

@@ -75,12 +75,11 @@
       <svg viewBox="0 0 200 200" class="block h-auto w-[220px] max-w-full sm:w-[260px]" role="img"
         aria-label="Spending by category this month">
         {#each arcs as seg (seg.id)}
-          <path d={seg.path} fill={fill(seg.color)} style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
+          <path d={seg.path} fill={fill(seg.color)} class="transition-[filter] duration-150 hover:brightness-110"
+            style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
             role="presentation"
             onmousemove={(e) => show(e, seg)} onmouseleave={() => (tip = null)}
-            onclick={() => onSegmentClick?.(seg)}>
-            <title>{seg.name}: {money(seg.value)} ({Math.round(seg.pct * 100)}%)</title>
-          </path>
+            onclick={() => onSegmentClick?.(seg)}></path>
         {/each}
         <text x={CX} y={CY - 6} text-anchor="middle" font-size="11" fill="var(--ink-faint)">Spent</text>
         <text x={CX} y={CY + 14} text-anchor="middle" font-size="16" font-weight="600" fill="var(--ink)">

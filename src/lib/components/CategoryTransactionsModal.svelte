@@ -116,7 +116,11 @@
     </div>
 
     {#if loading}
-      <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Loading…</p>
+      <div class="space-y-2">
+        {#each [0, 1, 2, 3, 4] as i}
+          <div class="ai-shimmer h-9 rounded-[var(--radius-xs)]" style="width:{95 - i * 6}%"></div>
+        {/each}
+      </div>
     {:else if loadError}
       <p class="py-8 text-center text-sm" style="color:var(--negative)">{loadError}</p>
     {:else if !rows.length}

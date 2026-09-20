@@ -184,13 +184,12 @@
       {#each bars as b (b.ym)}
         {#each [[b.income, b.xIn, 'income'], [b.expense, b.xOut, 'expense']] as [st, x, source]}
           {#each st.segs as seg (seg.id)}
-            <path d={seg.path} fill={fill(seg.color)} style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
+            <path d={seg.path} fill={fill(seg.color)} class="transition-[filter] duration-150 hover:brightness-110"
+              style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
               role="presentation"
               onmousemove={(e) => show(e, seg, b.ym)}
               onmouseleave={() => (tip = null)}
-              onclick={() => onSegmentClick?.(seg, b.ym, source)}>
-              <title>{seg.name}: {money(seg.v)} ({b.label})</title>
-            </path>
+              onclick={() => onSegmentClick?.(seg, b.ym, source)}></path>
           {/each}
           {#if showTotals && st.total > 0}
             <text x={x + barW / 2} y={y(st.total) - 7} text-anchor="middle" font-size="10.5"

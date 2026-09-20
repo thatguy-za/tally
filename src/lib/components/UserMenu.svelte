@@ -39,7 +39,7 @@
 
   {#if open}
     <div
-      class="absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-[var(--shadow-lg)]"
+      class="menu-pop absolute right-0 z-40 mt-1.5 w-56 overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-[var(--shadow-lg)]"
       role="menu"
     >
       <p class="truncate px-3 py-1.5 text-[11px] text-[var(--ink-faint)]">{user.username}</p>

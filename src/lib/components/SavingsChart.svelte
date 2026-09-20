@@ -68,6 +68,21 @@
       return { ...p, cx, x: cx - barW / 2, top, height, label: label(p.ym) };
     })
   );
+
+  // hover tooltip, positioned against the wrapper — same pattern as
+  // StackedMonths/SpendingDoughnut, so every chart in the app behaves alike
+  let tip = $state(null);
+  let wrap;
+  function show(e, b) {
+    const r = wrap.getBoundingClientRect();
+    tip = {
+      x: e.clientX - r.left + 12,
+      y: e.clientY - r.top - 10,
+      label: b.label,
+      amount: money(b.saved),
+      negative: b.saved < 0
+    };
+  }
 </script>
 
 <div class="mb-2 flex justify-end">
@@ -85,7 +100,7 @@
   </div>
 </div>
 
-<div class="relative" bind:clientWidth={cw}>
+<div class="relative" bind:this={wrap} bind:clientWidth={cw}>
   <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"
     aria-label="Savings put aside each month">
     {#each ticks as t}
@@ -95,12 +110,12 @@
 
     {#each bars as b (b.ym)}
       <rect x={b.x} y={b.top} width={barW} height={b.height} rx="3"
-        style="cursor:{onBarClick ? 'pointer' : 'default'}"
+        class="hover:brightness-110"
+        style="cursor:{onBarClick ? 'pointer' : 'default'};transition:y 0.3s ease,height 0.3s ease,filter 0.15s ease"
         fill={b.saved < 0 ? 'var(--negative)' : 'var(--positive)'}
         role="presentation"
-        onclick={() => onBarClick?.(b)}>
-        <title>{b.label}: {money(b.saved)}</title>
-      </rect>
+        onmousemove={(e) => show(e, b)} onmouseleave={() => (tip = null)}
+        onclick={() => onBarClick?.(b)}></rect>
       {#if showLabels}
         <text x={b.cx} y={b.saved < 0 ? b.top + b.height + 13 : b.top - 6} text-anchor="middle"
           font-size="10.5" font-weight="600" fill="var(--ink-soft)">{money(b.saved)}</text>
@@ -110,4 +125,12 @@
 
     <line x1={PAD.l} x2={W - PAD.r} y1={zeroY} y2={zeroY} stroke="var(--border-strong)" stroke-width="1" />
   </svg>
+
+  {#if tip}
+    <div class="pointer-events-none absolute z-10 whitespace-nowrap rounded-[var(--radius-xs)] border border-[var(--border-strong)] px-2.5 py-1.5 text-[12px] shadow-[var(--shadow-lg)]"
+      style="left:{tip.x}px;top:{tip.y}px;background:var(--surface-raised);color:var(--ink)">
+      <span class="mr-1.5 inline-block h-2 w-2 rounded-[2px] align-middle" style="background:{tip.negative ? 'var(--negative)' : 'var(--positive)'}"></span>
+      {tip.label} · <b class="tnum">{tip.amount}</b>
+    </div>
+  {/if}
 </div>

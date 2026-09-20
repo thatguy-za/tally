@@ -6,6 +6,7 @@
   import MonthCalendarPicker from '$lib/components/MonthCalendarPicker.svelte';
   import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import Money from '$lib/components/Money.svelte';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
@@ -80,17 +81,17 @@
   <div class="mb-4 grid gap-4 sm:grid-cols-3">
     <div class="card">
       <p class="kicker">Budgeted</p>
-      <span class="mt-2 block stat-value tnum text-[24px]">{formatMoney(data.totals.target, data.currency)}</span>
+      <span class="mt-2 block stat-value text-[24px]"><Money value={data.totals.target} currency={data.currency} /></span>
     </div>
     <div class="card">
       <p class="kicker">Spent</p>
-      <span class="mt-2 block stat-value tnum text-[24px]">{formatMoney(data.totals.actual, data.currency)}</span>
+      <span class="mt-2 block stat-value text-[24px]"><Money value={data.totals.actual} currency={data.currency} /></span>
     </div>
     <div class="card">
       <p class="kicker">Remaining</p>
-      <span class="mt-2 block stat-value tnum text-[24px]"
+      <span class="mt-2 block stat-value text-[24px]"
         style={remaining < 0 ? 'color:var(--ink)' : 'color:var(--positive)'}>
-        {formatMoney(remaining, data.currency)}
+        <Money value={remaining} currency={data.currency} colour="none" />
       </span>
     </div>
   </div>
