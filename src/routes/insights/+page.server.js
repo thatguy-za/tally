@@ -58,11 +58,10 @@ export function load({ locals, url }) {
   if (!YM.test(to)) to = defTo;
   if (from > to) [from, to] = [to, from];
 
+  // rows are already bucketed into 'income'/'expense' by sign — see
+  // monthlyCategoryTotals, which also folds a saving-kind deposit into
+  // 'expense' (it left the account that month) and drops a withdrawal
   const rows = monthlyCategoryTotals(userId, from, to, accountId);
-  // money moved into savings still left the account that month, so it belongs
-  // in the "out" bar next to real spending — it's just not "expense" anywhere
-  // else in the app (the SAVED figure and periodInsights still treat it as kept)
-  for (const r of rows) if (r.kind === 'saving') r.kind = 'expense';
   const income = seriesFor(rows, 'income');
   const expense = seriesFor(rows, 'expense');
   const values = {};

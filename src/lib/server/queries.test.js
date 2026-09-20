@@ -505,11 +505,32 @@ describe('monthlyCategoryTotals', () => {
     expect(monthlyCategoryTotals(u, '2026-01', '2026-01')).toHaveLength(0);
   });
 
-  it('excludes an income category\'s refund (a negative amount) and an expense category\'s reversal (a positive amount)', () => {
+  it('buckets by the transaction\'s own sign, not its category\'s kind, so a refund or correction still shows', () => {
     const u = makeUser();
     const salary = makeCategory(u, 'Salary', 'income');
-    addTx(u, { date: '2026-01-01', amount: -5, category_id: salary }); // an income category charged backwards
-    expect(monthlyCategoryTotals(u, '2026-01', '2026-01')).toHaveLength(0);
+    const shopping = makeCategory(u, 'Shopping', 'expense');
+    addTx(u, { date: '2026-01-01', amount: -5, category_id: salary }); // a correction charged back against income
+    addTx(u, { date: '2026-01-02', amount: 20, category_id: shopping }); // a refund into an expense category
+
+    const rows = monthlyCategoryTotals(u, '2026-01', '2026-01');
+    expect(rows).toHaveLength(2);
+    const salaryRow = rows.find((r) => r.id === salary);
+    const shoppingRow = rows.find((r) => r.id === shopping);
+    expect(salaryRow).toMatchObject({ kind: 'expense', total: 5 });
+    expect(shoppingRow).toMatchObject({ kind: 'income', total: 20 });
+  });
+
+  it('folds uncategorised transactions into an "Uncategorised" bucket by sign, instead of dropping them', () => {
+    const u = makeUser();
+    addTx(u, { date: '2026-01-01', amount: 200 }); // uncategorised income
+    addTx(u, { date: '2026-01-02', amount: -30 }); // uncategorised expense
+
+    const rows = monthlyCategoryTotals(u, '2026-01', '2026-01');
+    expect(rows).toHaveLength(2);
+    const incomeRow = rows.find((r) => r.kind === 'income');
+    const expenseRow = rows.find((r) => r.kind === 'expense');
+    expect(incomeRow).toMatchObject({ id: -1, name: 'Uncategorised', total: 200 });
+    expect(expenseRow).toMatchObject({ id: -1, name: 'Uncategorised', total: 30 });
   });
 });
 

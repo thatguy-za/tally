@@ -720,19 +720,38 @@ export function periodInsights(userId, from, to, accountId = null) {
 /**
  * Per-month, per-category totals for the stacked chart, income and spending
  * only (savings have their own card). Amounts are positive magnitudes.
+ *
+ * Bucketed by the transaction's own sign, not by the category's kind — a
+ * category only decides its *name*, never whether a transaction lands in the
+ * "in" or "out" bar. That matches periodInsights' "Came in"/"Went out" cards
+ * above this chart, which do the same; keying off kind instead meant a
+ * transaction whose sign disagreed with its category's kind (a refund into an
+ * expense-kind category like "Shopping", a correction on an income-kind one)
+ * was silently dropped from both bars here while still counting up there.
+ * An uncategorised transaction is folded into its own "Uncategorised" bucket
+ * (id -1) the same way. The one kind that still matters is 'saving': money
+ * moved into savings left the account that month, so it belongs in the "out"
+ * bar next to real spending, but a withdrawal (a positive amount) is money
+ * moving back from a self-tracked bucket, not new incoming money, so it's
+ * excluded rather than counted as "in".
  */
 export function monthlyCategoryTotals(userId, from, to, accountId = null) {
   const af = accountFilter(accountId);
   return db
     .prepare(
-      `SELECT substr(t.date, 1, 7) AS ym, c.id, c.name, c.color, c.kind,
+      `SELECT substr(t.date, 1, 7) AS ym,
+              COALESCE(c.id, -1) AS id,
+              COALESCE(c.name, 'Uncategorised') AS name,
+              c.color AS color,
+              CASE WHEN t.amount > 0 THEN 'income' ELSE 'expense' END AS kind,
               SUM(ABS(t.amount)) AS total
-       FROM transactions t JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = @userId AND c.kind IN ('income', 'expense', 'saving')
+       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       WHERE t.user_id = @userId
          AND substr(t.date, 1, 7) BETWEEN @from AND @to
-         AND ((c.kind = 'income' AND t.amount > 0) OR (c.kind IN ('expense', 'saving') AND t.amount < 0))
+         AND (c.id IS NULL OR c.kind IN ('income', 'expense', 'saving'))
+         AND (c.kind IS NULL OR c.kind != 'saving' OR t.amount <= 0)
          ${af.sql}
-       GROUP BY ym, c.id`
+       GROUP BY ym, COALESCE(c.id, -1), CASE WHEN t.amount > 0 THEN 'income' ELSE 'expense' END`
     )
     .all({ userId, from, to, ...af.params });
 }
