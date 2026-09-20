@@ -96,8 +96,16 @@
     }
   }
 
+  // composedPath (not e.target): clicking "Add category" synchronously swaps
+  // the list for the inline form, detaching the clicked button from the DOM
+  // before this handler runs — e.target.contains() checks then see a
+  // detached node and wrongly conclude the click was outside, closing the
+  // popover before the form ever shows. composedPath() is a stable snapshot
+  // of the propagation path taken at dispatch time, so it still includes the
+  // button. Same fix as AccountSwitcher's onWindow.
   function onWindowClick(e) {
-    if (open && !anchor.contains(e.target) && !popoverEl?.contains(e.target)) open = false;
+    const path = e.composedPath();
+    if (open && anchor && !path.includes(anchor) && !(popoverEl && path.includes(popoverEl))) open = false;
   }
 
   // type-ahead: pressing a letter while the list is open jumps focus to (and
@@ -148,23 +156,30 @@
 
 {#if open}
   <div bind:this={popoverEl} use:portal role="listbox" aria-label="Choose a category"
-    class="card"
-    style="position:absolute;top:{pos.top}px;left:{pos.left}px;z-index:65;width:220px;padding:6px;max-height:320px;overflow-y:auto">
+    class="card flex flex-col"
+    style="position:absolute;top:{pos.top}px;left:{pos.left}px;z-index:65;width:220px;padding:6px;max-height:320px">
     {#if !adding}
-      <button type="button" class="flex w-full items-center rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)]"
-        onclick={() => pick('')}>
-        {placeholder}
-      </button>
-      {#each categories as c}
-        <button type="button" class="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)] focus:bg-[var(--paper-sunk)] focus:outline-none"
-          data-cat-name={c.name}
-          onclick={() => pick(c.id)}>
-          <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{c.color}"></span>
-          <span class="truncate">{c.name}</span>
+      <!-- "Add category" sits outside this scrollable area so it's always visible
+           and clickable — with the default ~13 categories the list alone already
+           fills the popover's max-height, and having it scroll off with the rest
+           made it easy to miss-click just past the list's edge, which reads as a
+           click outside the popover and silently closes it instead -->
+      <div class="min-h-0 flex-1 overflow-y-auto">
+        <button type="button" class="flex w-full items-center rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)]"
+          onclick={() => pick('')}>
+          {placeholder}
         </button>
-      {/each}
-      <div class="my-1 border-t border-[var(--border)]"></div>
-      <button type="button" class="flex w-full items-center gap-1.5 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] text-[var(--accent-strong)] hover:bg-[var(--paper-sunk)]"
+        {#each categories as c}
+          <button type="button" class="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)] focus:bg-[var(--paper-sunk)] focus:outline-none"
+            data-cat-name={c.name}
+            onclick={() => pick(c.id)}>
+            <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{c.color}"></span>
+            <span class="truncate">{c.name}</span>
+          </button>
+        {/each}
+      </div>
+      <div class="my-1 shrink-0 border-t border-[var(--border)]"></div>
+      <button type="button" class="flex w-full shrink-0 items-center gap-1.5 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] text-[var(--accent-strong)] hover:bg-[var(--paper-sunk)]"
         onclick={startAdding}>
         <Icon name="plus" size={13} /> Add category
       </button>

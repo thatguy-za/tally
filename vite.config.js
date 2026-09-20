@@ -7,7 +7,11 @@ const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 export default defineConfig({
   plugins: [sveltekit()],
-  server: { port: 5173 },
+  // bind both IPv4 and IPv6 loopback — left to Node's default, some setups
+  // only end up listening on ::1 (IPv6), so a browser that resolves
+  // "localhost" to 127.0.0.1 first can't connect even though the server is
+  // actually running fine
+  server: { port: 5173, host: true },
   define: {
     __APP_VERSION__: JSON.stringify(version)
   },
