@@ -10,7 +10,8 @@
     "start": "node build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json",
     "test": "DATABASE_PATH=.vitest-tmp/test.sqlite vitest run",
-    "test:watch": "DATABASE_PATH=.vitest-tmp/test.sqlite vitest"
+    "test:watch": "DATABASE_PATH=.vitest-tmp/test.sqlite vitest",
+    "test:migration": "DATABASE_PATH=.vitest-tmp/migration-test.sqlite vitest run --config vitest.migration.config.js"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

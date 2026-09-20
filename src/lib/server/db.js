@@ -209,8 +209,21 @@ db.exec(`
 // first account (their original checking account), and a fresh UNIQUE
 // (account_id, name) replaces the old per-user one so a second account can
 // reuse a category name without colliding.
+//
+// With foreign_keys enforcement on, SQLite's DROP TABLE below performs an
+// implicit "delete every row" first and fires whatever ON DELETE actions
+// depend on it — transactions.category_id (ON DELETE SET NULL) and the old
+// rules.category_id (ON DELETE CASCADE) — before categories_new is even
+// renamed into place. Left enabled, that silently wipes every transaction's
+// category and deletes every rule outright. Disabled for just this rebuild,
+// per SQLite's own recommended procedure for this kind of schema change.
 const catCols = db.prepare('PRAGMA table_info(categories)').all().map((c) => c.name);
-if (!catCols.includes('account_id')) {
+const ruleColsBefore = db.prepare('PRAGMA table_info(rules)').all().map((c) => c.name);
+const rebuildingCategories = !catCols.includes('account_id');
+const rebuildingRules = !ruleColsBefore.includes('account_id');
+if (rebuildingCategories || rebuildingRules) db.exec('PRAGMA foreign_keys = OFF');
+
+if (rebuildingCategories) {
   tx(() => {
     db.exec(`
       CREATE TABLE categories_new (
@@ -235,8 +248,7 @@ if (!catCols.includes('account_id')) {
   });
 }
 
-const ruleCols = db.prepare('PRAGMA table_info(rules)').all().map((c) => c.name);
-if (!ruleCols.includes('account_id')) {
+if (rebuildingRules) {
   tx(() => {
     db.exec(`
       CREATE TABLE rules_new (
@@ -259,6 +271,14 @@ if (!ruleCols.includes('account_id')) {
     db.exec('DROP TABLE rules');
     db.exec('ALTER TABLE rules_new RENAME TO rules');
   });
+}
+
+if (rebuildingCategories || rebuildingRules) {
+  const violations = db.prepare('PRAGMA foreign_key_check').all();
+  if (violations.length) {
+    throw new Error(`Foreign key check failed after category/rule migration: ${JSON.stringify(violations)}`);
+  }
+  db.exec('PRAGMA foreign_keys = ON');
 }
 
 // Savings used to be seeded as an expense, which counted money you kept as
