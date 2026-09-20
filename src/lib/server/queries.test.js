@@ -13,6 +13,8 @@ import {
   createRule,
   applyRules,
   categoriseByRules,
+  previewRuleRerun,
+  applyCategoryChanges,
   budgetStatus,
   setBudget,
   categoryMonthlyAverages,
@@ -264,6 +266,80 @@ describe('applyRules', () => {
     expect(changed).toBe(1);
     expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(inSavings).category_id).toBe(groceries);
     expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(inChecking).category_id).toBeNull();
+  });
+});
+
+describe('previewRuleRerun', () => {
+  it('reports a row already categorised differently from what the rules would now pick', () => {
+    const u = makeUser();
+    const acct = defaultAccount(u);
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    const other = makeCategory(u, 'Other', 'expense');
+    createRule(u, acct, 'SPAR', groceries, 0);
+    const id = Number(
+      addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', category_id: other, account_id: acct }).lastInsertRowid
+    );
+
+    const changes = previewRuleRerun(u, acct);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({
+      id,
+      from_category_id: other,
+      from_category_name: 'Other',
+      to_category_id: groceries,
+      to_category_name: 'Groceries'
+    });
+  });
+
+  it('skips a row whose category already matches what the rules would pick', () => {
+    const u = makeUser();
+    const acct = defaultAccount(u);
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    createRule(u, acct, 'SPAR', groceries, 0);
+    addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', category_id: groceries, account_id: acct });
+    expect(previewRuleRerun(u, acct)).toHaveLength(0);
+  });
+
+  it('includes an uncategorised row a rule would now match', () => {
+    const u = makeUser();
+    const acct = defaultAccount(u);
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    createRule(u, acct, 'SPAR', groceries, 0);
+    const id = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', account_id: acct }).lastInsertRowid);
+
+    const changes = previewRuleRerun(u, acct);
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ id, from_category_id: null, from_category_name: null, to_category_id: groceries });
+  });
+
+  it('nothing changes without any rules', () => {
+    const u = makeUser();
+    const acct = defaultAccount(u);
+    addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', account_id: acct });
+    expect(previewRuleRerun(u, acct)).toHaveLength(0);
+  });
+});
+
+describe('applyCategoryChanges', () => {
+  it('applies exactly the given id -> category_id pairs and nothing else', () => {
+    const u = makeUser();
+    const acct = defaultAccount(u);
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    const untouched = makeCategory(u, 'Other', 'expense');
+    const id1 = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'a', account_id: acct }).lastInsertRowid);
+    const id2 = Number(
+      addTx(u, { date: '2026-05-02', amount: -5, description: 'b', category_id: untouched, account_id: acct }).lastInsertRowid
+    );
+
+    const n = applyCategoryChanges(u, [{ id: id1, category_id: groceries }]);
+    expect(n).toBe(1);
+    expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(id1).category_id).toBe(groceries);
+    expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(id2).category_id).toBe(untouched);
+  });
+
+  it('does nothing for an empty list', () => {
+    const u = makeUser();
+    expect(applyCategoryChanges(u, [])).toBe(0);
   });
 });
 

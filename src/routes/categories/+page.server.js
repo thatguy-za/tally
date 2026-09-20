@@ -25,7 +25,8 @@ export function load({ locals }) {
   return {
     categories: listCategories(userId, accountId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
     rules: listRules(userId, accountId),
-    aiAvailable: aiEnabled() && getUserAiCategorise(userId)
+    aiAvailable: aiEnabled() && getUserAiCategorise(userId),
+    currency: locals.user.currency
   };
 }
 

@@ -219,7 +219,7 @@
     </div>
   </div>
 
-  <RulesSection categories={data.categories} rules={data.rules} />
+  <RulesSection categories={data.categories} rules={data.rules} currency={data.currency} />
 </div>
 
 {#if suggestions}

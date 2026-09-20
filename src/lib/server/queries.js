@@ -454,6 +454,76 @@ export function applyRules(userId, { onlyUncategorised = true, ids = null, accou
   return changed;
 }
 
+/**
+ * Dry-run every one of the account's rules against every one of its
+ * transactions — categorised or not — and report only the ones whose
+ * category would actually change. Nothing is written; this powers "Re-run
+ * categorisation"'s preview, so the user approves the diff before anything
+ * is saved. Same "first (highest-priority) match wins" semantics as
+ * categoriseByRules, so the preview matches what a single description would
+ * actually get.
+ * @param {number} userId @param {number} accountId
+ */
+export function previewRuleRerun(userId, accountId) {
+  const rules = db
+    .prepare('SELECT * FROM rules WHERE user_id = ? AND account_id = ? ORDER BY priority DESC, id')
+    .all(userId, accountId);
+  if (!rules.length) return [];
+
+  const transactions = db
+    .prepare(
+      `SELECT t.id, t.date, t.description, t.amount, t.category_id,
+              c.name AS category_name, c.color AS category_color
+       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       WHERE t.user_id = ? AND t.account_id = ?
+       ORDER BY t.date DESC, t.id DESC`
+    )
+    .all(userId, accountId);
+
+  const categoriesById = new Map(
+    db.prepare('SELECT id, name, color FROM categories WHERE user_id = ? AND account_id = ?').all(userId, accountId)
+      .map((c) => [c.id, c])
+  );
+
+  const changes = [];
+  for (const t of transactions) {
+    const d = t.description.toLowerCase();
+    const rule = rules.find((r) => d.includes(r.match_text.toLowerCase()));
+    if (!rule || rule.category_id === t.category_id) continue;
+    const next = categoriesById.get(rule.category_id);
+    changes.push({
+      id: t.id,
+      date: t.date,
+      description: t.description,
+      amount: t.amount,
+      from_category_id: t.category_id,
+      from_category_name: t.category_name,
+      from_category_color: t.category_color,
+      to_category_id: rule.category_id,
+      to_category_name: next?.name ?? '',
+      to_category_color: next?.color ?? null
+    });
+  }
+  return changes;
+}
+
+/**
+ * Applies a specific set of {id, category_id} changes — the ones the user
+ * approved from previewRuleRerun's diff — rather than re-deriving them, so
+ * what gets saved is exactly what was shown.
+ * @param {number} userId @param {{id:number, category_id:number}[]} changes
+ * @returns {number}
+ */
+export function applyCategoryChanges(userId, changes) {
+  if (!changes?.length) return 0;
+  const stmt = db.prepare('UPDATE transactions SET category_id = ? WHERE id = ? AND user_id = ?');
+  let count = 0;
+  tx(() => {
+    for (const c of changes) count += stmt.run(c.category_id, c.id, userId).changes;
+  });
+  return count;
+}
+
 /** Preview which category a description would get from the current account's rules. */
 export function categoriseByRules(userId, accountId, description) {
   if (!description) return null;

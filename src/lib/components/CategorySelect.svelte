@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte';
   import { deserialize } from '$app/forms';
   import { portal } from '$lib/actions/portal.js';
   import Icon from './Icon.svelte';
@@ -35,20 +36,34 @@
   let error = $state('');
   let anchor = $state();
   let popoverEl = $state();
+  let searchEl = $state();
   let pos = $state({ top: 0, left: 0 });
+  let search = $state('');
 
   let newName = $state('');
   let newKind = $state('expense');
   let newColor = $state('#7b8a5a');
 
   let current = $derived(categories.find((c) => String(c.id) === String(value)));
+  let filtered = $derived.by(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter((c) => c.name.toLowerCase().includes(q));
+  });
+  let showPlaceholder = $derived(!search.trim() || placeholder.toLowerCase().includes(search.trim().toLowerCase()));
 
-  function openPopover() {
+  async function openPopover() {
     const r = anchor.getBoundingClientRect();
     pos = { top: r.bottom + window.scrollY + 6, left: r.left + window.scrollX };
     open = true;
     adding = false;
     error = '';
+    search = '';
+    // wait for the DOM update — including use:portal moving the popover
+    // into <body> — to actually land before focusing; focusing a node that's
+    // been created but not yet attached to the document is a silent no-op
+    await tick();
+    searchEl?.focus();
   }
   function toggle() {
     if (open) open = false;
@@ -60,7 +75,7 @@
   }
   function startAdding() {
     adding = true;
-    newName = '';
+    newName = search.trim();
     newKind = 'expense';
     newColor = '#7b8a5a';
     error = '';
@@ -108,40 +123,17 @@
     if (open && anchor && !path.includes(anchor) && !(popoverEl && path.includes(popoverEl))) open = false;
   }
 
-  // type-ahead: pressing a letter while the list is open jumps focus to (and
-  // cycles through, on repeat presses) categories starting with that letter
-  let typeahead = { query: '', ts: 0 };
   function onWindowKey(e) {
-    if (e.key === 'Escape') {
-      open = false;
-      return;
-    }
-    if (!open || adding || e.ctrlKey || e.metaKey || e.altKey) return;
-    if (e.key.length !== 1 || !/[a-z0-9]/i.test(e.key)) return;
-    e.preventDefault();
+    if (e.key === 'Escape') open = false;
+  }
 
-    const now = Date.now();
-    const repeat = now - typeahead.ts < 800 && typeahead.query.length && e.key.toLowerCase() === typeahead.query[0];
-    typeahead.query = repeat ? typeahead.query : '';
-    typeahead.query += e.key.toLowerCase();
-    typeahead.ts = now;
-
-    const buttons = [...popoverEl.querySelectorAll('button[data-cat-name]')];
-    if (!buttons.length) return;
-    let matches = buttons.filter((b) => b.dataset.catName.toLowerCase().startsWith(typeahead.query));
-    if (!matches.length && typeahead.query.length > 1) {
-      typeahead.query = e.key.toLowerCase();
-      matches = buttons.filter((b) => b.dataset.catName.toLowerCase().startsWith(typeahead.query));
+  function onSearchKeydown(e) {
+    // Enter picks the top match — the common "type a few letters, hit
+    // enter" flow — without requiring a mouse click on the result
+    if (e.key === 'Enter' && filtered.length) {
+      e.preventDefault();
+      pick(filtered[0].id);
     }
-    if (!matches.length) return;
-
-    let next = matches[0];
-    if (repeat && matches.length > 1) {
-      const currentIndex = buttons.indexOf(document.activeElement);
-      next = matches.find((b) => buttons.indexOf(b) > currentIndex) ?? matches[0];
-    }
-    next.focus();
-    next.scrollIntoView({ block: 'nearest' });
   }
 </script>
 
@@ -159,23 +151,34 @@
     class="card flex flex-col"
     style="position:absolute;top:{pos.top}px;left:{pos.left}px;z-index:65;width:220px;padding:6px;max-height:320px">
     {#if !adding}
+      <div class="relative shrink-0">
+        <Icon name="search" size={13} class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--ink-faint)]" />
+        <input type="text" placeholder="Search categories…" bind:value={search} bind:this={searchEl}
+          onkeydown={onSearchKeydown}
+          class="input mb-1.5 w-full !py-1.5 pl-7 text-[13px]" />
+      </div>
       <!-- "Add category" sits outside this scrollable area so it's always visible
            and clickable — with the default ~13 categories the list alone already
            fills the popover's max-height, and having it scroll off with the rest
            made it easy to miss-click just past the list's edge, which reads as a
            click outside the popover and silently closes it instead -->
       <div class="min-h-0 flex-1 overflow-y-auto">
-        <button type="button" class="flex w-full items-center rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)]"
-          onclick={() => pick('')}>
-          {placeholder}
-        </button>
-        {#each categories as c}
+        {#if showPlaceholder}
+          <button type="button" class="flex w-full items-center rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)]"
+            onclick={() => pick('')}>
+            {placeholder}
+          </button>
+        {/if}
+        {#each filtered as c}
           <button type="button" class="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)] focus:bg-[var(--paper-sunk)] focus:outline-none"
-            data-cat-name={c.name}
             onclick={() => pick(c.id)}>
             <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{c.color}"></span>
             <span class="truncate">{c.name}</span>
           </button>
+        {:else}
+          {#if !showPlaceholder}
+            <p class="px-2 py-3 text-center text-[12px] text-[var(--ink-faint)]">No matching categories.</p>
+          {/if}
         {/each}
       </div>
       <div class="my-1 shrink-0 border-t border-[var(--border)]"></div>
