@@ -121,7 +121,7 @@
   </div>
 
   <!-- Auto-categorisation rules -->
-  <RulesSection categories={data.categories} rules={data.rules} />
+  <RulesSection categories={data.categories} rules={data.rules} currency={data.currency} />
 
   <!-- AI categorisation opt-in (any user, when enabled) -->
   {#if data.aiAvailable}
@@ -172,6 +172,29 @@
         {#if err('password')}<span class="text-sm" style="color:var(--negative)">{err('password')}</span>{/if}
       </div>
     </form>
+  </div>
+
+  <!-- Backup & restore -->
+  <div class="card">
+    <h2 class="text-lg">Backup &amp; restore</h2>
+    <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
+      A backup is a zip of four CSVs — transactions, categories, rules and budgets — covering every
+      account you have, not just the one you're currently viewing.
+    </p>
+    <div class="flex flex-wrap items-center gap-3">
+      <a href="/settings/backup" class="btn btn-ghost">
+        <Icon name="download" size={14} /> Download backup
+      </a>
+      <form method="POST" action="?/restoreBackup" enctype="multipart/form-data" use:enhance
+        class="flex flex-wrap items-center gap-2"
+        onsubmit={(e) => {
+          if (!confirm('Restore from this backup? This replaces EVERY account\'s categories, rules, budgets and transactions with what\'s in the file. This cannot be undone.'))
+            e.preventDefault();
+        }}>
+        <input class="input max-w-[220px] !py-1.5 text-[13px]" type="file" name="file" accept=".zip" required />
+        <button class="btn" style="background:var(--negative-wash);color:var(--negative)">Restore from backup</button>
+      </form>
+    </div>
   </div>
 
   <!-- Danger zone -->

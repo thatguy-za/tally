@@ -12,12 +12,17 @@ import {
   createRule,
   deleteRule,
   applyRules,
+  previewRuleRerun,
+  applyCategoryChanges,
   setUserAiCategorise,
   getUserAiCategorise,
   deleteAllTransactions
 } from '$lib/server/queries.js';
 import { verifyPassword, hashPassword, getUserByUsername } from '$lib/server/auth.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
+import { restoreBackup } from '$lib/server/backup.js';
+
+const MAX_BACKUP_SIZE = 20 * 1024 * 1024;
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
@@ -119,11 +124,21 @@ export const actions = {
     return { section: 'rule', ok: true };
   },
 
-  applyRules: async ({ request, locals }) => {
+  previewRerun: async ({ locals }) => {
+    const changes = previewRuleRerun(locals.user.id, locals.accountId);
+    return { section: 'rerun', ok: true, changes };
+  },
+
+  applyRerun: async ({ request, locals }) => {
     const f = await request.formData();
-    const onlyUncategorised = f.get('scope') !== 'all';
-    const applied = applyRules(locals.user.id, { onlyUncategorised, accountId: locals.accountId });
-    return { section: 'rule', ok: true, applied };
+    let changes;
+    try {
+      changes = JSON.parse(String(f.get('changes') || '[]'));
+    } catch {
+      return fail(400, { section: 'rerun', error: 'Could not read the preview — please try again.' });
+    }
+    const applied = applyCategoryChanges(locals.user.id, changes);
+    return { section: 'rerun', ok: true, applied };
   },
 
   aiCategorise: async ({ request, locals }) => {
@@ -164,5 +179,27 @@ export const actions = {
   deleteAllTransactions: async ({ locals }) => {
     const n = deleteAllTransactions(locals.user.id);
     return { section: 'danger', ok: true, msg: `Deleted ${n} transaction${n === 1 ? '' : 's'}.` };
+  },
+
+  restoreBackup: async ({ request, locals }) => {
+    const f = await request.formData();
+    const file = f.get('file');
+    if (!file || typeof file === 'string' || file.size === 0)
+      return fail(400, { section: 'danger', error: 'Choose a backup zip file.' });
+    if (file.size > MAX_BACKUP_SIZE)
+      return fail(400, { section: 'danger', error: 'That file is larger than 20 MB.' });
+
+    let summary;
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      summary = restoreBackup(locals.user.id, buffer);
+    } catch (e) {
+      return fail(400, { section: 'danger', error: e?.message || 'Could not restore that backup.' });
+    }
+    return {
+      section: 'danger',
+      ok: true,
+      msg: `Restored ${summary.accounts} account${summary.accounts === 1 ? '' : 's'}, ${summary.categories} categories, ${summary.rules} rules, ${summary.budgets} budgets and ${summary.transactions} transactions${summary.skipped ? ` (${summary.skipped} row${summary.skipped === 1 ? '' : 's'} skipped)` : ''}.`
+    };
   }
 };

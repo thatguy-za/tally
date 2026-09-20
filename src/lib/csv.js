@@ -180,3 +180,22 @@ export function guessMapping(headers) {
 export function dupeKey(date, amount, description) {
   return `${date}|${Number(amount).toFixed(2)}|${String(description || '').trim().toLowerCase()}`;
 }
+
+/** Quote a field only when it needs it (comma, quote, or newline present). */
+function csvField(v) {
+  const s = v == null ? '' : String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * The inverse of parseCsv: turns rows of plain objects into CSV text, one
+ * column per entry in `columns`, in that order. Used for exporting backups.
+ * @param {Record<string, unknown>[]} rows
+ * @param {string[]} columns
+ * @returns {string}
+ */
+export function toCsv(rows, columns) {
+  const lines = [columns.join(',')];
+  for (const r of rows) lines.push(columns.map((c) => csvField(r[c])).join(','));
+  return lines.join('\r\n') + '\r\n';
+}
