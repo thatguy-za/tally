@@ -138,6 +138,13 @@
   let newCatNames = $derived([
     ...new Set(rows.filter((r) => String(r.catValue).startsWith('new:')).map((r) => String(r.catValue).slice(4)))
   ]);
+  // CategorySelect just needs {id,name} pairs — add the file's own "new"
+  // category names (picked up from a mapped category column) as synthetic
+  // entries alongside the real ones, so the picker still offers them
+  let categoryOptions = $derived([
+    ...data.categories,
+    ...newCatNames.map((n) => ({ id: `new:${n}`, name: `${n} (new)` }))
+  ]);
 
   let stats = $derived({
     total: rows.length,
@@ -605,16 +612,11 @@
                       {:else if r.byRule}
                         <span title="Matched by one of your rules"><Icon name="repeat" size={12} class="shrink-0 text-[var(--ink-faint)]" /></span>
                       {/if}
-                      <select class="cell min-w-[140px]" value={r.catValue}
-                        onchange={(e) => { aiSuggested = new Set([...aiSuggested].filter((x) => x !== r.i)); edit(r.i, { category: e.currentTarget.value }); }}>
-                        <option value="">Uncategorised</option>
-                        {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
-                        {#if newCatNames.length}
-                          <optgroup label="New from file">
-                            {#each newCatNames as n}<option value={`new:${n}`}>{n}</option>{/each}
-                          </optgroup>
-                        {/if}
-                      </select>
+                      <CategorySelect categories={categoryOptions} value={r.catValue}
+                        onChange={(v) => { aiSuggested = new Set([...aiSuggested].filter((x) => x !== r.i)); edit(r.i, { category: v }); }}
+                        onCreated={() => invalidateAll()}
+                        placeholder="Uncategorised"
+                        triggerClass="cell min-w-[140px]" />
                     </div>
                   {/if}
                 </td>
