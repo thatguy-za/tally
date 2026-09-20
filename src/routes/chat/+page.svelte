@@ -1,7 +1,7 @@
 <script>
   import Icon from '$lib/components/Icon.svelte';
   import ChatBarChart from '$lib/components/ChatBarChart.svelte';
-  import { formatMoney } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
   let { data } = $props();
 
   const STARTERS = [

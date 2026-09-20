@@ -1,5 +1,5 @@
 <script>
-  import { formatMoney } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
   import Icon from './Icon.svelte';
 
   /**

@@ -8,7 +8,8 @@
   import UserMenu from '$lib/components/UserMenu.svelte';
   import AccountSwitcher from '$lib/components/AccountSwitcher.svelte';
   import OnboardingOverlay from '$lib/components/OnboardingOverlay.svelte';
-  import { theme, initTheme, toggleTheme } from '$lib/theme.svelte.js';
+  import { initTheme } from '$lib/theme.svelte.js';
+  import { initPrivacy } from '$lib/privacy.svelte.js';
   let { data, children } = $props();
 
   let nav = $derived([
@@ -21,14 +22,10 @@
 
   let current = $derived($page.url.pathname);
 
-  $effect(() => initTheme());
-
-  let effectiveDark = $derived(
-    theme.value === 'dark' ||
-      (theme.value === 'system' &&
-        typeof window !== 'undefined' &&
-        window.matchMedia?.('(prefers-color-scheme: dark)').matches)
-  );
+  $effect(() => {
+    initTheme();
+    initPrivacy();
+  });
 
   onNavigate((navigation) => {
     if (!document.startViewTransition) return;
@@ -76,15 +73,6 @@
         {#if data.accounts}
           <AccountSwitcher accounts={data.accounts} accountId={data.accountId} />
         {/if}
-
-        <button
-          onclick={toggleTheme}
-          class="grid h-8 w-8 place-items-center rounded-[var(--radius-sm)] text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
-          title="Toggle theme"
-          aria-label="Toggle theme"
-        >
-          <Icon name={effectiveDark ? 'sun' : 'moon'} size={16} />
-        </button>
 
         <UserMenu user={data.user} />
       </div>

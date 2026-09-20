@@ -1,7 +1,8 @@
 <script>
   import Icon from './Icon.svelte';
   import CategorySelect from './CategorySelect.svelte';
-  import { formatMoney, formatMonth } from '$lib/currency.js';
+  import { formatMonth } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
   import { parseAmount } from '$lib/csv.js';
 
   /**

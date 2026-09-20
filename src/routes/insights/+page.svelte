@@ -1,7 +1,8 @@
 <script>
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { formatMoney, formatMonth, currentMonth } from '$lib/currency.js';
+  import { formatMonth, currentMonth } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
   import Icon from '$lib/components/Icon.svelte';
   import { invalidateAll } from '$app/navigation';
   import StackedMonths from '$lib/components/StackedMonths.svelte';

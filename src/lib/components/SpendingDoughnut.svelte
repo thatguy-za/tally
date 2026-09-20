@@ -1,5 +1,5 @@
 <script>
-  import { formatMoney } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
 
   /**
    * A single month's spending by category, as a doughnut with a legend and a

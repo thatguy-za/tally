@@ -1,6 +1,8 @@
 <script>
   import { page } from '$app/stores';
   import Icon from './Icon.svelte';
+  import { theme, toggleTheme } from '$lib/theme.svelte.js';
+  import { privacy, toggleHideNumbers } from '$lib/privacy.svelte.js';
   /** @type {{ user: { username: string, is_admin: number } }} */
   let { user } = $props();
 
@@ -15,6 +17,12 @@
   }
 
   let current = $derived($page.url.pathname);
+  let effectiveDark = $derived(
+    theme.value === 'dark' ||
+      (theme.value === 'system' &&
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-color-scheme: dark)').matches)
+  );
 </script>
 
 <svelte:window onclick={onWindow} onkeydown={onKey} />
@@ -30,7 +38,6 @@
       style="background:var(--accent-wash);color:var(--accent-strong)">
       {user.username[0]?.toUpperCase() ?? '?'}
     </span>
-    <span class="hidden max-w-[160px] truncate sm:inline">{user.username}</span>
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
       stroke-linecap="round" class="text-[var(--ink-faint)] transition-transform {open ? 'rotate-180' : ''}">
       <path d="M4 6l4 4 4-4" />
@@ -63,6 +70,25 @@
           <Icon name="sparkle" size={15} class="text-[var(--ink-faint)]" /> Server settings
         </a>
       {/if}
+      <div class="my-1 border-t border-[var(--border)]"></div>
+      <button
+        type="button"
+        role="menuitem"
+        onclick={toggleHideNumbers}
+        class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[var(--ink-soft)] transition-colors hover:bg-[var(--paper-sunk)]"
+      >
+        <Icon name={privacy.hideNumbers ? 'eye' : 'eyeOff'} size={15} class="text-[var(--ink-faint)]" />
+        {privacy.hideNumbers ? 'Show numbers' : 'Hide numbers'}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onclick={toggleTheme}
+        class="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-[var(--ink-soft)] transition-colors hover:bg-[var(--paper-sunk)]"
+      >
+        <Icon name={effectiveDark ? 'sun' : 'moon'} size={15} class="text-[var(--ink-faint)]" />
+        {effectiveDark ? 'Light mode' : 'Dark mode'}
+      </button>
       <div class="my-1 border-t border-[var(--border)]"></div>
       <form method="POST" action="/logout">
         <button

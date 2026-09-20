@@ -1,5 +1,5 @@
 <script>
-  import { formatMoney } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
 
   /**
    * A small horizontal bar chart the chat assistant can attach to a reply.

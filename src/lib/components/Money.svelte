@@ -1,7 +1,7 @@
 <script>
   import { untrack } from 'svelte';
   import { cubicOut } from 'svelte/easing';
-  import { formatMoney } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
 
   /**
    * @type {{

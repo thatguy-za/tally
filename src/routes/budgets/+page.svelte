@@ -2,7 +2,8 @@
   import { enhance } from '$app/forms';
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
-  import { formatMoney, formatMonth } from '$lib/currency.js';
+  import { formatMonth } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
   import MonthCalendarPicker from '$lib/components/MonthCalendarPicker.svelte';
   import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
   import Icon from '$lib/components/Icon.svelte';
