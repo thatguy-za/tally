@@ -14,6 +14,8 @@ import {
 import { aiEnabled } from '$lib/server/ai-settings.js';
 
 const MAX_ROWS = 5000;
+const MAX_FILES = 20;
+const MAX_FILE_SIZE = 8 * 1024 * 1024;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** @type {import('./$types').PageServerLoad} */
@@ -30,19 +32,23 @@ export function load({ locals }) {
 export const actions = {
   analyze: async ({ request, locals }) => {
     const f = await request.formData();
-    const file = f.get('file');
-    if (!file || typeof file === 'string' || file.size === 0)
-      return fail(400, { error: 'Choose a CSV file.' });
-    if (file.size > 8 * 1024 * 1024) return fail(400, { error: 'File is larger than 8 MB.' });
+    const files = f.getAll('file').filter((x) => x && typeof x !== 'string' && x.size > 0);
+    if (!files.length) return fail(400, { error: 'Choose a CSV file.' });
+    if (files.length > MAX_FILES) return fail(400, { error: `Too many files (limit ${MAX_FILES}).` });
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) return fail(400, { error: `${file.name} is larger than 8 MB.` });
+    }
 
-    const text = await file.text();
-    const rows = parseCsv(text);
-    if (rows.length < 1) return fail(400, { error: "That file doesn't look like a CSV." });
+    const parsedFiles = [];
+    for (const file of files) {
+      const text = await file.text();
+      if (parseCsv(text).length < 1) return fail(400, { error: `${file.name} doesn't look like a CSV.` });
+      parsedFiles.push({ filename: file.name, csv: text });
+    }
 
     return {
       analyzed: true,
-      csv: text,
-      filename: file.name,
+      files: parsedFiles,
       // let the client pre-flag duplicates; capped so the payload stays small
       existingKeys: [...existingDupeKeys(locals.user.id)].slice(0, 8000)
     };

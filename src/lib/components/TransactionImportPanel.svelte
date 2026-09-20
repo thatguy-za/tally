@@ -14,26 +14,31 @@
   let form = $state(undefined);
 
   // ---- upload dropzone ----------------------------------------------------
-  let fileName = $state('');
+  let selectedFiles = $state([]); // File[] — one CSV or several from the same bank
   let dragOver = $state(false);
   let fileInputEl = $state();
 
   function onFileChange(e) {
-    fileName = e.currentTarget.files?.[0]?.name || '';
+    selectedFiles = Array.from(e.currentTarget.files || []);
   }
   function onDrop(e) {
     e.preventDefault();
     dragOver = false;
-    const f = e.dataTransfer?.files?.[0];
-    if (!f || !fileInputEl) return;
+    const dropped = Array.from(e.dataTransfer?.files || []);
+    if (!dropped.length || !fileInputEl) return;
     const dt = new DataTransfer();
-    dt.items.add(f);
+    for (const f of dropped) dt.items.add(f);
     fileInputEl.files = dt.files;
-    fileName = f.name;
+    selectedFiles = dropped;
   }
 
   // ---- raw parse ----------------------------------------------------------
-  let allRows = $derived(form?.csv ? parseCsv(form.csv) : []);
+  // several files are assumed to share one layout (the same bank export,
+  // several months) — header/column detection only looks at the first file;
+  // every file's own leading skip+header rows are stripped before their body
+  // rows are concatenated below
+  let filesParsed = $derived((form?.files ?? []).map((f) => parseCsv(f.csv)));
+  let allRows = $derived(filesParsed[0] ?? []);
   let existing = $derived(new Set(form?.existingKeys ?? []));
 
   let hasHeader = $state(true);
@@ -48,7 +53,7 @@
   let mapping = $state({ date: '', description: '', amount: '', debit: '', credit: '', category: '' });
 
   let headerRow = $derived(hasHeader ? (allRows[skipRows] ?? []) : []);
-  let bodyRows = $derived(allRows.slice(skipRows + (hasHeader ? 1 : 0)));
+  let bodyRows = $derived(filesParsed.flatMap((rows) => rows.slice(skipRows + (hasHeader ? 1 : 0))));
   let colCount = $derived(Math.max(0, ...allRows.map((r) => r.length)));
   let headers = $derived(
     Array.from({ length: colCount }, (_, i) => (hasHeader ? headerRow[i] : '') || `Column ${i + 1}`)
@@ -56,7 +61,7 @@
 
   let autoKey = '';
   $effect(() => {
-    const key = (form?.csv || '').slice(0, 400) + '|' + hasHeader + '|' + skipRows;
+    const key = (form?.files?.[0]?.csv || '').slice(0, 400) + '|' + hasHeader + '|' + skipRows;
     if (key === autoKey || !allRows.length) return;
     autoKey = key;
     if (hasHeader) mapping = { ...mapping, ...guessMapping(headers) };
@@ -211,7 +216,6 @@
   // bigger batches mean fewer requests, and the category list + system prompt
   // (a fixed cost every request) gets paid for fewer times per import
   const AI_CHUNK = 40;
-  const AI_MAX = 400;
   let aiState = $state({ running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: false });
   let aiSuggested = $state(new Set()); // rows the AI set
   let aiPending = $state(new Set()); // rows currently being categorised
@@ -219,7 +223,7 @@
 
   $effect(() => {
     if (phase !== 'review' || !data.aiAvailable) return;
-    const key = form?.csv?.slice(0, 120) ?? '';
+    const key = (form?.files ?? []).map((f) => f.filename).join(',');
     if (!key || key === aiKick) return;
     // wait until the auto-detect $effect has settled a usable mapping
     if (!rows.length || rows.every((r) => r.error)) return;
@@ -230,7 +234,7 @@
   async function runAiSuggest() {
     // rules already ran during review (see `rows`) — only send what is still
     // uncategorised, so a rule match never costs an AI call
-    const targets = rows.filter((r) => !r.error && !r.catValue).slice(0, AI_MAX);
+    const targets = rows.filter((r) => !r.error && !r.catValue);
     if (!targets.length) {
       aiState = { running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: true };
       return;
@@ -393,13 +397,16 @@
       <span class="grid h-12 w-12 place-items-center rounded-full" style="background:var(--paper);color:var(--ink-faint)">
         <Icon name="upload" size={20} />
       </span>
-      {#if fileName}
-        <p class="font-medium">{fileName}</p>
-        <p class="text-xs text-[var(--ink-faint)]">Click or drop to choose a different file</p>
+      {#if selectedFiles.length}
+        <p class="font-medium">
+          {selectedFiles.length === 1 ? selectedFiles[0].name : `${selectedFiles.length} files selected`}
+        </p>
+        <p class="text-xs text-[var(--ink-faint)]">Click or drop to choose different files</p>
       {:else}
         <p class="font-medium">Drop your CSV here, or click to browse</p>
         <p class="max-w-xs text-xs text-[var(--ink-faint)]">
-          Any bank export — comma, semicolon or tab separated, columns in any order. Max 8 MB.
+          Any bank export — comma, semicolon or tab separated, columns in any order. Max 8 MB each.
+          Select several files from the same bank to import them all at once.
         </p>
       {/if}
     </label>
@@ -410,9 +417,17 @@
       name="file"
       type="file"
       accept=".csv,.tsv,.txt,text/csv"
+      multiple
       required
       onchange={onFileChange}
     />
+    {#if selectedFiles.length > 1}
+      <ul class="mt-2 space-y-0.5 text-xs text-[var(--ink-faint)]">
+        {#each selectedFiles as f}
+          <li class="truncate">{f.name}</li>
+        {/each}
+      </ul>
+    {/if}
 
     {#if data.aiAvailable}
       <p class="mt-3 flex items-center gap-1.5 text-xs text-[var(--ink-faint)]">
@@ -422,7 +437,7 @@
     {/if}
 
     <div class="mt-4 flex gap-2">
-      <button class="btn btn-primary" disabled={!fileName}>Continue</button>
+      <button class="btn btn-primary" disabled={!selectedFiles.length}>Continue</button>
       <button type="button" class="btn btn-ghost" onclick={onClose}>Cancel</button>
     </div>
   </form>
