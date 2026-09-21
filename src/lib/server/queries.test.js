@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { db } from './db.js';
 import {
+  listCategories,
+  listCategoryGroups,
   createCategory,
+  updateCategory,
   setCategoryKind,
   addTransaction,
   updateTransaction,
@@ -534,6 +537,19 @@ describe('periodInsights', () => {
     expect(ins.baseline.spent).toBe(100); // the one month before the range
   });
 
+  it('uses the median, not the mean, for a multi-month range so one outlier month cannot skew it', () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    addTx(u, { date: '2025-01-01', amount: -100, category_id: groceries }); // baseline
+    addTx(u, { date: '2025-02-01', amount: -100, category_id: groceries }); // in range
+    addTx(u, { date: '2025-03-01', amount: -120, category_id: groceries }); // in range
+    addTx(u, { date: '2025-04-01', amount: -5000, category_id: groceries }); // in range — a one-off
+
+    const ins = periodInsights(u, '2025-02', '2025-04');
+    expect(ins.spent).toBe(5220); // total still reflects every transaction
+    expect(ins.avg.spent).toBe(120); // the median month, unmoved by the outlier
+  });
+
   it('excludes a transfer-kind transaction from earned, spent and saved', () => {
     const u = makeUser();
     const transfer = makeCategory(u, 'Transfer', 'transfer');
@@ -666,6 +682,33 @@ describe('setCategoryKind', () => {
     setCategoryKind(u, defaultAccount(u), cat, 'saving');
     expect(monthlyTotals(u, 1)[0].outgoing).toBe(0);
     expect(monthlyTotals(u, 1)[0].saved).toBe(75);
+  });
+});
+
+describe('category groups', () => {
+  it('rolls categories up under a shared group label without changing anything else about them', () => {
+    const u = makeUser();
+    const acct = defaultAccount(u);
+    createCategory(u, acct, 'Mortgage', 'expense', '#000000', 'Home');
+    createCategory(u, acct, 'Utilities', 'expense', '#000000', 'Home');
+    createCategory(u, acct, 'Groceries', 'expense', '#000000');
+
+    const cats = listCategories(u, acct);
+    expect(cats.find((c) => c.name === 'Mortgage').group_name).toBe('Home');
+    expect(cats.find((c) => c.name === 'Groceries').group_name).toBeNull();
+    // grouped categories sort together, ahead of ungrouped ones within a kind
+    const names = cats.filter((c) => c.kind === 'expense').map((c) => c.name);
+    expect(names.indexOf('Groceries')).toBeGreaterThan(names.indexOf('Utilities'));
+
+    expect(listCategoryGroups(u, acct)).toEqual(['Home']);
+  });
+
+  it('clears a group through the same full edit used for name/kind/colour', () => {
+    const u = makeUser();
+    const acct = defaultAccount(u);
+    const cat = createCategory(u, acct, 'Mortgage', 'expense', '#000000', 'Home');
+    updateCategory(u, acct, cat.id, { name: 'Mortgage', kind: 'expense', color: '#000000', groupName: '' });
+    expect(listCategories(u, acct)[0].group_name).toBeNull();
   });
 });
 

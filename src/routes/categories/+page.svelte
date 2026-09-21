@@ -113,13 +113,19 @@
       use <b>Transfer</b> for the receiving side of a move between them (e.g. money arriving in a
       savings account you also import) so it isn't counted as new income. Use <b>Opening balance</b>
       for the starting balance a bank statement often includes when you begin tracking an account —
-      it's excluded from income and spending too.
+      it's excluded from income and spending too. Give categories the same <b>Group</b> (e.g. "Home"
+      for both Mortgage and Utilities) to roll them up together in Budgets and when picking a
+      category — each one keeps its own type, colour and budget.
     </p>
+    <datalist id="group-options">
+      {#each data.groups as g}<option value={g}></option>{/each}
+    </datalist>
     <div class="mb-4 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border)]">
       <table class="w-full text-[13px]">
         <thead>
           <tr class="border-b border-[var(--border)] text-left">
             <th class="th px-3 py-2">Name</th>
+            <th class="th px-3 py-2">Group</th>
             <th class="th px-3 py-2">Type</th>
             <th class="th px-3 py-2 text-right">Transactions</th>
             <th class="w-16"></th>
@@ -129,21 +135,23 @@
           {#each data.categories as c (c.id)}
             {#if editingId === c.id}
               <tr class="border-b border-[var(--border)] last:border-0">
-                <td colspan="4" class="p-3" style="background:var(--paper-sunk)">
-                  <form method="POST" action="?/updateCategory" use:enhance class="grid gap-2 sm:grid-cols-6">
+                <td colspan="5" class="p-3" style="background:var(--paper-sunk)">
+                  <form method="POST" action="?/updateCategory" use:enhance class="grid gap-2 sm:grid-cols-12">
                     <input type="hidden" name="id" value={c.id} />
-                    <div class="flex items-center gap-2 sm:col-span-2">
+                    <div class="flex items-center gap-2 sm:col-span-5">
                       <input type="hidden" name="color" value={editColor} />
                       <ColorPicker bind:value={editColor} size="h-[38px] w-10 shrink-0 rounded-[var(--radius-sm)]" label="Colour for {c.name}" />
                       <input class="input min-w-0 flex-1" name="name" value={c.name} required />
                     </div>
-                    <select class="input sm:col-span-2" name="kind" value={c.kind}>
+                    <select class="input sm:col-span-3" name="kind" value={c.kind}>
                       <option value="expense">Spending</option>
                       <option value="income">Income</option>
                       <option value="saving">Savings</option>
                       <option value="transfer">Transfer</option>
                       <option value="opening_balance">Opening balance</option>
                     </select>
+                    <input class="input sm:col-span-2" name="group_name" list="group-options"
+                      placeholder="Group (optional)" value={c.group_name ?? ''} />
                     <div class="flex items-center gap-2 sm:col-span-2">
                       <button class="btn btn-primary btn-sm">Save</button>
                       <button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingId = null)}>Cancel</button>
@@ -159,6 +167,7 @@
                     <span class="truncate font-medium">{c.name}</span>
                   </span>
                 </td>
+                <td class="px-3 py-2.5 text-[var(--ink-faint)]">{c.group_name || '—'}</td>
                 <td class="px-3 py-2.5 text-[var(--ink-faint)]">{kindLabel[c.kind] || c.kind}</td>
                 <td class="px-3 py-2.5 text-right tnum text-[var(--ink-faint)]">{c.count}</td>
                 <td class="px-3 py-2.5">
@@ -182,20 +191,21 @@
           {/each}
           {#if addingNew}
             <tr class="border-b border-[var(--border)] last:border-0">
-              <td colspan="4" class="p-3" style="background:var(--paper-sunk)">
-                <form method="POST" action="?/addCategory" use:enhance class="grid gap-2 sm:grid-cols-6">
-                  <div class="flex items-center gap-2 sm:col-span-2">
+              <td colspan="5" class="p-3" style="background:var(--paper-sunk)">
+                <form method="POST" action="?/addCategory" use:enhance class="grid gap-2 sm:grid-cols-12">
+                  <div class="flex items-center gap-2 sm:col-span-5">
                     <input type="hidden" name="color" value={newColor} />
                     <ColorPicker bind:value={newColor} size="h-[38px] w-10 shrink-0 rounded-[var(--radius-sm)]" label="Colour for new category" />
-                    <input class="input min-w-0 flex-1" name="name" placeholder="e.g. Childcare" required />
+                    <input class="input min-w-0 flex-1" name="name" placeholder="e.g. Mortgage" required />
                   </div>
-                  <select class="input sm:col-span-2" name="kind">
+                  <select class="input sm:col-span-3" name="kind">
                     <option value="expense">Spending</option>
                     <option value="income">Income</option>
                     <option value="saving">Savings</option>
                     <option value="transfer">Transfer</option>
                     <option value="opening_balance">Opening balance</option>
                   </select>
+                  <input class="input sm:col-span-2" name="group_name" list="group-options" placeholder="Group (optional)" />
                   <div class="flex items-center gap-2 sm:col-span-2">
                     <button class="btn btn-primary btn-sm">Add</button>
                     <button type="button" class="btn btn-ghost btn-sm" onclick={() => (addingNew = false)}>Cancel</button>
@@ -206,7 +216,7 @@
             </tr>
           {:else}
             <tr class="border-b border-[var(--border)] last:border-0">
-              <td colspan="4" class="p-0">
+              <td colspan="5" class="p-0">
                 <button type="button" class="flex w-full items-center gap-1.5 px-3 py-2.5 text-left text-[13px] text-[var(--accent-strong)] hover:bg-[var(--paper-sunk)]"
                   onclick={() => (addingNew = true)}>
                   <Icon name="plus" size={13} /> Add category

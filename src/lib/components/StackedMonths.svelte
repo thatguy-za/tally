@@ -1,5 +1,5 @@
 <script>
-  import { formatMoney } from '$lib/privacy.svelte.js';
+  import { formatMoney, privacy } from '$lib/privacy.svelte.js';
   import Icon from './Icon.svelte';
 
   /**
@@ -33,7 +33,10 @@
   const GAP = 2; // surface gap between stacked segments
 
   const money = (v) => formatMoney(v, currency);
-  const short = (v) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v)));
+  // the axis gridlines' own shorthand, not routed through formatMoney — mask
+  // it the same way under "hide numbers" instead of leaking the real scale
+  const short = (v) =>
+    privacy.hideNumbers ? '••' : v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v));
   const fill = (c) => c || 'var(--border-strong)';
 
   const sumSeries = (bucket, series) => series.reduce((s, c) => s + (bucket[c.id] || 0), 0);

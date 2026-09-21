@@ -25,7 +25,7 @@ export function buildBackupZip(userId) {
 
   const categories = db
     .prepare(
-      `SELECT a.name AS account_name, c.name, c.kind, c.color
+      `SELECT a.name AS account_name, c.name, c.kind, c.color, c.group_name
        FROM categories c JOIN accounts a ON a.id = c.account_id
        WHERE c.user_id = ? ORDER BY a.name, c.kind, c.name`
     )
@@ -53,7 +53,7 @@ export function buildBackupZip(userId) {
 
   return createZip([
     { name: 'transactions.csv', data: toCsv(transactions, ['account_name', 'date', 'description', 'amount', 'category_name', 'dismissed_uncategorised']) },
-    { name: 'categories.csv', data: toCsv(categories, ['account_name', 'name', 'kind', 'color']) },
+    { name: 'categories.csv', data: toCsv(categories, ['account_name', 'name', 'kind', 'color', 'group_name']) },
     { name: 'rules.csv', data: toCsv(rules, ['account_name', 'match_text', 'category_name', 'priority']) },
     { name: 'budgets.csv', data: toCsv(budgets, ['account_name', 'category_name', 'amount']) }
   ]);
@@ -117,14 +117,14 @@ export function restoreBackup(userId, zipBuffer) {
 
     const categoryId = new Map(); // "accountId:name" -> id
     const insertCategory = db.prepare(
-      'INSERT INTO categories (user_id, account_id, name, kind, color) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO categories (user_id, account_id, name, kind, color, group_name) VALUES (?, ?, ?, ?, ?, ?)'
     );
     for (const r of categories) {
       const acctId = accountId.get(r.account_name?.trim());
       const name = r.name?.trim();
       if (!acctId || !name) { skipped++; continue; }
       const kind = CATEGORY_KINDS.includes(r.kind) ? r.kind : 'expense';
-      const info = insertCategory.run(userId, acctId, name, kind, r.color || '#64748b');
+      const info = insertCategory.run(userId, acctId, name, kind, r.color || '#64748b', r.group_name?.trim() || null);
       categoryId.set(`${acctId}:${name}`, Number(info.lastInsertRowid));
     }
 

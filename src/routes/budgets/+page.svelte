@@ -3,7 +3,7 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import { formatMonth } from '$lib/currency.js';
-  import { formatMoney } from '$lib/privacy.svelte.js';
+  import { formatMoney, privacy } from '$lib/privacy.svelte.js';
   import MonthCalendarPicker from '$lib/components/MonthCalendarPicker.svelte';
   import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
   import Icon from '$lib/components/Icon.svelte';
@@ -55,6 +55,23 @@
 
   const barColour = (pct) =>
     pct == null ? '' : pct > 100 ? 'var(--negative)' : pct > 85 ? 'var(--gold)' : 'var(--accent)';
+
+  // categories sharing a group (e.g. "Home" for Mortgage + Utilities) are
+  // clustered together with a subtotal — data.expenses already arrives
+  // sorted so a group's rows are contiguous, never scattered
+  let groupedExpenses = $derived.by(() => {
+    const out = [];
+    for (const c of data.expenses) {
+      const last = out[out.length - 1];
+      if (c.groupName && last?.key === c.groupName) last.items.push(c);
+      else out.push({ key: c.groupName || null, items: [c] });
+    }
+    return out.map((g) => ({
+      ...g,
+      target: g.items.some((c) => c.target != null) ? g.items.reduce((s, c) => s + (c.target || 0), 0) : null,
+      actual: g.items.reduce((s, c) => s + c.actual, 0)
+    }));
+  });
 </script>
 
 <svelte:head><title>Budgets · Tally</title></svelte:head>
@@ -109,39 +126,65 @@
     </form>
   </div>
   <form method="POST" action="?/save" use:enhance={submitSave}>
-    <ul class="space-y-4">
-      {#each data.expenses as c (c.id)}
-        <li>
-          <div class="mb-2 flex flex-wrap items-center justify-between gap-3 text-[13px]">
-            <button type="button" class="flex items-center gap-2 font-medium hover:underline" onclick={() => openTxModal(c)}>
-              <span class="dot" style="background:{c.color}"></span>{c.name}
-            </button>
-            <span class="flex items-center gap-2">
-              <span class="tnum text-[var(--ink-faint)]">{formatMoney(c.actual, data.currency)} /</span>
-              <!-- keyed on the target so a server-generated value (e.g. from
-                   "Generate targets") always shows, even if the user already
-                   focused this field once this page load -->
+    {#snippet expenseRow(c)}
+      <li>
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-3 text-[13px]">
+          <button type="button" class="flex items-center gap-2 font-medium hover:underline" onclick={() => openTxModal(c)}>
+            <span class="dot" style="background:{c.color}"></span>{c.name}
+          </button>
+          <span class="flex items-center gap-2">
+            <span class="tnum text-[var(--ink-faint)]">{formatMoney(c.actual, data.currency)} /</span>
+            <!-- keyed on the target so a server-generated value (e.g. from
+                 "Generate targets") always shows, even if the user already
+                 focused this field once this page load -->
+            {#if privacy.hideNumbers}
+              <span class="input tnum w-28 !py-1 text-right inline-block" style="color:var(--ink-faint)">••••</span>
+            {:else}
               {#key c.target}
                 <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
                   placeholder="No target" value={c.target ?? ''} />
               {/key}
-            </span>
-          </div>
-          <div class="h-2 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
-            {#if c.target != null}
-              <div class="h-full rounded-full transition-[width] duration-700"
-                style="width:{Math.min(100, c.pct)}%;background:{barColour(c.pct)}"></div>
             {/if}
-          </div>
+          </span>
+        </div>
+        <div class="h-2 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
           {#if c.target != null}
-            <p class="mt-1 text-xs {c.remaining < 0 ? '' : 'text-[var(--ink-faint)]'}"
-              style={c.remaining < 0 ? 'color:var(--negative)' : ''}>
-              {c.remaining < 0
-                ? `${formatMoney(-c.remaining, data.currency)} over budget`
-                : `${formatMoney(c.remaining, data.currency)} left · ${c.pct}%`}
-            </p>
+            <div class="h-full rounded-full transition-[width] duration-700"
+              style="width:{Math.min(100, c.pct)}%;background:{barColour(c.pct)}"></div>
           {/if}
-        </li>
+        </div>
+        {#if c.target != null}
+          <p class="mt-1 text-xs {c.remaining < 0 ? '' : 'text-[var(--ink-faint)]'}"
+            style={c.remaining < 0 ? 'color:var(--negative)' : ''}>
+            {c.remaining < 0
+              ? `${formatMoney(-c.remaining, data.currency)} over budget`
+              : `${formatMoney(c.remaining, data.currency)} left · ${c.pct}%`}
+          </p>
+        {/if}
+      </li>
+    {/snippet}
+
+    <ul class="space-y-5">
+      {#each groupedExpenses as g (g.key ?? g.items[0].id)}
+        {#if g.key}
+          <li>
+            <div class="mb-2 flex items-center justify-between text-[13px] font-medium">
+              <span>{g.key}</span>
+              <span class="tnum text-[var(--ink-faint)]">
+                {formatMoney(g.actual, data.currency)}{#if g.target != null} / {formatMoney(g.target, data.currency)}{/if}
+              </span>
+            </div>
+            <ul class="space-y-4 border-l border-[var(--border)] pl-3">
+              {#each g.items as c (c.id)}
+                {@render expenseRow(c)}
+              {/each}
+            </ul>
+          </li>
+        {:else}
+          {#each g.items as c (c.id)}
+            {@render expenseRow(c)}
+          {/each}
+        {/if}
       {/each}
     </ul>
 
@@ -162,10 +205,14 @@
                   <span class="tnum text-[var(--ink-faint)]">
                     {formatMoney(c.actual, data.currency)}{#if c.target != null} / {formatMoney(c.target, data.currency)}{/if}
                   </span>
-                  {#key c.target}
-                    <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
-                      placeholder="No target" value={c.target ?? ''} />
-                  {/key}
+                  {#if privacy.hideNumbers}
+                    <span class="input tnum w-28 !py-1 text-right inline-block" style="color:var(--ink-faint)">••••</span>
+                  {:else}
+                    {#key c.target}
+                      <input class="input tnum w-28 !py-1 text-right" name={`amount_${c.id}`} inputmode="decimal"
+                        placeholder="No target" value={c.target ?? ''} />
+                    {/key}
+                  {/if}
                 </span>
               </div>
               <div class="h-2 overflow-hidden rounded-full" style="background:var(--paper-sunk)">

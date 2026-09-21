@@ -5,8 +5,23 @@ import { guessDomain, logoKey } from '$lib/logo.js';
 
 export function listCategories(userId, accountId) {
   return db
-    .prepare('SELECT * FROM categories WHERE user_id = ? AND account_id = ? ORDER BY kind DESC, name')
+    .prepare(
+      `SELECT * FROM categories WHERE user_id = ? AND account_id = ?
+       ORDER BY kind DESC, (group_name IS NULL OR group_name = ''), group_name, name`
+    )
     .all(userId, accountId);
+}
+
+/** Every distinct, non-empty group label already in use, for autocomplete. */
+export function listCategoryGroups(userId, accountId) {
+  return db
+    .prepare(
+      `SELECT DISTINCT group_name FROM categories
+       WHERE user_id = ? AND account_id = ? AND group_name IS NOT NULL AND group_name != ''
+       ORDER BY group_name`
+    )
+    .all(userId, accountId)
+    .map((r) => r.group_name);
 }
 
 /**
@@ -25,14 +40,15 @@ export const normaliseKind = (k) => (CATEGORY_KINDS.includes(k) ? k : 'expense')
 /** Kinds left out of income/spending totals wherever they're computed. */
 export const NON_SPENDING_KINDS = ['saving', 'transfer', 'opening_balance'];
 
-export function createCategory(userId, accountId, name, kind, color) {
+export function createCategory(userId, accountId, name, kind, color, groupName = null) {
   const k = normaliseKind(kind);
   const c = color || '#64748b';
   const trimmed = name.trim();
+  const g = groupName?.trim() || null;
   const info = db
-    .prepare('INSERT INTO categories (user_id, account_id, name, kind, color) VALUES (?, ?, ?, ?, ?)')
-    .run(userId, accountId, trimmed, k, c);
-  return { id: Number(info.lastInsertRowid), name: trimmed, kind: k, color: c };
+    .prepare('INSERT INTO categories (user_id, account_id, name, kind, color, group_name) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(userId, accountId, trimmed, k, c, g);
+  return { id: Number(info.lastInsertRowid), name: trimmed, kind: k, color: c, group_name: g };
 }
 
 /** Change what a category *is* — the only way to mark one as savings after the fact. */
@@ -54,11 +70,11 @@ export function setCategoryColor(userId, accountId, id, color) {
   );
 }
 
-/** Full edit — name, kind and colour together, for the Categories page's edit row. */
-export function updateCategory(userId, accountId, id, { name, kind, color }) {
+/** Full edit — name, kind, colour and group together, for the Categories page's edit row. */
+export function updateCategory(userId, accountId, id, { name, kind, color, groupName }) {
   db.prepare(
-    'UPDATE categories SET name = ?, kind = ?, color = ? WHERE id = ? AND user_id = ? AND account_id = ?'
-  ).run(name.trim(), normaliseKind(kind), color || '#64748b', id, userId, accountId);
+    'UPDATE categories SET name = ?, kind = ?, color = ?, group_name = ? WHERE id = ? AND user_id = ? AND account_id = ?'
+  ).run(name.trim(), normaliseKind(kind), color || '#64748b', groupName?.trim() || null, id, userId, accountId);
 }
 
 export function deleteCategory(userId, accountId, id) {
@@ -559,7 +575,7 @@ export function budgetStatus(userId, month, accountId) {
   const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   const rows = db
     .prepare(
-      `SELECT c.id, c.name, c.color, c.kind,
+      `SELECT c.id, c.name, c.color, c.kind, c.group_name,
               b.amount AS target,
               COALESCE((
                 SELECT SUM(t.amount) FROM transactions t
@@ -569,7 +585,7 @@ export function budgetStatus(userId, month, accountId) {
        FROM categories c
        LEFT JOIN budgets b ON b.category_id = c.id AND b.user_id = c.user_id
        WHERE c.user_id = @userId AND c.account_id = @accountId
-       ORDER BY c.kind DESC, c.name`
+       ORDER BY c.kind DESC, (c.group_name IS NULL OR c.group_name = ''), c.group_name, c.name`
     )
     .all({ userId, accountId, month, ...accountFilter(accountId).params });
 
@@ -585,6 +601,7 @@ export function budgetStatus(userId, month, accountId) {
       name: r.name,
       color: r.color,
       kind: r.kind,
+      groupName: r.group_name || null,
       target,
       actual,
       remaining: target != null ? target - actual : null,
@@ -700,10 +717,7 @@ export function periodInsights(userId, from, to, accountId = null) {
   const spent = sum(inPeriod, (r) => r.outgoing);
   const saved = sum(inPeriod, (r) => r.saved);
 
-  // months that count towards the average: those with data, the current one
-  // only for the share of it that has happened
   const partial = to >= nowYm;
-  const effectiveMonths = inPeriod.reduce((s, r) => s + (r.ym === nowYm ? monthElapsed(r.ym) : 1), 0);
   const single = from === to;
   const share = single && partial ? monthElapsed(from) : 1;
 
@@ -719,8 +733,22 @@ export function periodInsights(userId, from, to, accountId = null) {
         : 'ok';
   const comparable = reason === 'ok';
 
-  const n = Math.max(effectiveMonths, 0.01);
-  const avg = { earned: earned / n, spent: spent / n, saved: saved / n };
+  // A single month's own "per month" figure is just that month, projected up
+  // from whatever share of it has elapsed so far. Across several months
+  // though, a plain mean is exactly the kind of figure one huge or tiny month
+  // distorts — same reason "usual" below is a median, not a mean — so the
+  // period's own typical month is a median across its complete months too. A
+  // month still in progress can't be fractionally weighted into a median the
+  // way it can a mean, so it's left out entirely rather than pro-rated.
+  const n = Math.max(single ? share : 1, 0.01);
+  const completeMonths = inPeriod.filter((r) => r.ym !== nowYm || !partial);
+  const avg = single
+    ? { earned: earned / n, spent: spent / n, saved: saved / n }
+    : {
+        earned: median(completeMonths.map((r) => r.incoming)),
+        spent: median(completeMonths.map((r) => r.outgoing)),
+        saved: median(completeMonths.map((r) => r.saved))
+      };
   const bmedian = (pick) => median(before.map(pick));
   const baseline = comparable
     ? {
@@ -741,24 +769,28 @@ export function periodInsights(userId, from, to, accountId = null) {
     )
     .all({ userId, ...af.params });
 
-  // per-category, per-earlier-month totals (zero-filled), so "usual" can be a
-  // median across those months rather than a mean skewed by one odd month
+  // per-category, per-month totals (zero-filled across each side), so both
+  // "usual" and — across several months — the period's own figure can be a
+  // median rather than a mean skewed by one odd month
   const beforeYms = before.map((r) => r.ym);
+  const completeYms = completeMonths.map((r) => r.ym);
   const byCat = new Map();
   for (const r of catRows) {
     let e = byCat.get(r.id);
     if (!e) {
-      e = { id: r.id, name: r.name, color: r.color, period: 0, beforeByMonth: new Map() };
+      e = { id: r.id, name: r.name, color: r.color, periodByMonth: new Map(), beforeByMonth: new Map() };
       byCat.set(r.id, e);
     }
-    if (r.ym >= from && r.ym <= to) e.period += r.total;
+    if (r.ym >= from && r.ym <= to) e.periodByMonth.set(r.ym, r.total);
     else if (r.ym < from) e.beforeByMonth.set(r.ym, r.total);
   }
 
   const movers = comparable
     ? [...byCat.values()]
         .map((e) => {
-          const spent = e.period / n;
+          const spent = single
+            ? (e.periodByMonth.get(from) || 0) / n
+            : median(completeYms.map((ym) => e.periodByMonth.get(ym) || 0));
           const usual = median(beforeYms.map((ym) => e.beforeByMonth.get(ym) || 0)) * share;
           return { id: e.id, name: e.name, color: e.color, spent, usual, delta: spent - usual };
         })

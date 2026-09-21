@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { db } from '$lib/server/db.js';
 import {
   listCategories,
+  listCategoryGroups,
   createCategory,
   updateCategory,
   deleteCategory,
@@ -24,6 +25,7 @@ export function load({ locals }) {
 
   return {
     categories: listCategories(userId, accountId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
+    groups: listCategoryGroups(userId, accountId),
     rules: listRules(userId, accountId),
     aiAvailable: aiEnabled() && getUserAiCategorise(userId),
     currency: locals.user.currency
@@ -36,10 +38,11 @@ export const actions = {
     const name = String(f.get('name') || '').trim();
     const kind = String(f.get('kind') || 'expense');
     const color = String(f.get('color') || '#64748b');
+    const groupName = String(f.get('group_name') || '').trim() || null;
     if (!name) return fail(400, { section: 'category', error: 'Name is required.' });
     let created;
     try {
-      created = createCategory(locals.user.id, locals.accountId, name, kind, color);
+      created = createCategory(locals.user.id, locals.accountId, name, kind, color, groupName);
     } catch {
       return fail(400, { section: 'category', error: 'A category with that name already exists.' });
     }
@@ -52,9 +55,10 @@ export const actions = {
     const name = String(f.get('name') || '').trim();
     const kind = String(f.get('kind') || 'expense');
     const color = String(f.get('color') || '#64748b');
+    const groupName = String(f.get('group_name') || '').trim() || null;
     if (!id || !name) return fail(400, { section: 'category', error: 'Name is required.' });
     try {
-      updateCategory(locals.user.id, locals.accountId, id, { name, kind, color });
+      updateCategory(locals.user.id, locals.accountId, id, { name, kind, color, groupName });
     } catch {
       return fail(400, { section: 'category', error: 'A category with that name already exists.' });
     }

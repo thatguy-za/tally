@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { formatMonth, currentMonth } from '$lib/currency.js';
-  import { formatMoney } from '$lib/privacy.svelte.js';
+  import { formatMoney, privacy } from '$lib/privacy.svelte.js';
   import Icon from '$lib/components/Icon.svelte';
   import { invalidateAll } from '$app/navigation';
   import StackedMonths from '$lib/components/StackedMonths.svelte';
@@ -64,7 +64,7 @@
     } catch {
       if (savingsModal) savingsModal.series = [];
     }
-    if (data.aiSummary && savingsModal?.series?.length) {
+    if (data.aiSummary && !privacy.hideNumbers && savingsModal?.series?.length) {
       savingsModal.summaryLoading = true;
       try {
         const res = await fetch('/insights/savings-summary', {
@@ -176,11 +176,13 @@
   let summary = $state(null);
   let summaryLoading = $state(false);
   let summaryError = $state(null);
-  let showSummary = $derived(data.aiSummary && (summaryLoading || summary || summaryError));
+  let showSummary = $derived(data.aiSummary && (summaryLoading || summary || summaryError || privacy.hideNumbers));
 
   $effect(() => {
     const ins = data.insights;
-    const key = data.aiSummary && ins && ins.reason !== 'empty' ? `${data.from}:${data.to}` : null;
+    // never fetched while numbers are hidden — the reply is free-form prose
+    // with real figures baked into it, nothing here could mask it afterwards
+    const key = data.aiSummary && !privacy.hideNumbers && ins && ins.reason !== 'empty' ? `${data.from}:${data.to}` : null;
     if (!key) {
       summary = null;
       summaryError = null;
@@ -344,7 +346,9 @@
         <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
         In a nutshell
       </h2>
-      {#if summaryLoading}
+      {#if privacy.hideNumbers}
+        <p class="text-[14px] leading-relaxed text-[var(--ink-faint)]">•••• hidden</p>
+      {:else if summaryLoading}
         <div class="space-y-2">
           <div class="ai-shimmer h-3 w-full rounded-full"></div>
           <div class="ai-shimmer h-3 w-[94%] rounded-full"></div>
@@ -448,7 +452,9 @@
 
       {#if data.aiSummary && savingsModal.series?.length}
         <div class="mb-4 rounded-[var(--radius-sm)] border border-[var(--border)] p-3">
-          {#if savingsModal.summaryLoading}
+          {#if privacy.hideNumbers}
+            <p class="text-[13px] text-[var(--ink-faint)]">•••• hidden</p>
+          {:else if savingsModal.summaryLoading}
             <div class="space-y-2">
               <div class="ai-shimmer h-3 w-full rounded-full"></div>
               <div class="ai-shimmer h-3 w-[70%] rounded-full"></div>

@@ -399,22 +399,22 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 6;
+export const SUMMARY_VERSION = 7;
 
 const SUMMARY_SYSTEM =
-  'You write a very short money summary for someone new to budgeting, covering ' +
-  'the period described. Use only the figures you are given: never calculate, ' +
-  'estimate or invent a number, and never name a category that is not in the ' +
-  'list. Write no more than 55 words, as three sentences: one on how the period ' +
-  'went; one highlighting the most notable trend or deviation from usual — a ' +
-  'category that moved a lot, a run of months heading the same direction, or ' +
-  'the biggest entry in "Biggest changes vs usual" — or, if nothing stands out, ' +
-  'say spending looked steady; then one short, concrete suggestion tied to a ' +
-  'specific category or figure above. Plain, warm, second-person English ("you ' +
+  'You write a very short money summary covering the period described. Use ' +
+  'only the figures you are given: never calculate, estimate or invent a ' +
+  'number, and never name a category that is not in the list. Write no more ' +
+  'than 40 words, as two sentences: one on how the period went; then one ' +
+  'highlighting the most notable trend or deviation from usual — a category ' +
+  'that moved a lot, a run of months heading the same direction, or the ' +
+  'biggest entry in "Biggest changes vs usual" — or, if nothing stands out, ' +
+  'say spending looked steady. Plain, warm, second-person English ("you ' +
   'spent…"). No headings, bullet points, markdown, preamble, sign-off or ' +
-  'disclaimers. Skip generic advice such as "make a budget" or "track your ' +
-  'spending" — they are already doing that. If things look healthy, say so ' +
-  'plainly rather than manufacturing a problem.';
+  'disclaimers. Never end with advice, a suggestion or a recommendation of ' +
+  'any kind, generic or specific ("track your spending", "keep an eye on ' +
+  'X", "consider…") — describe what happened and stop there. If things look ' +
+  'healthy, say so plainly rather than manufacturing a problem.';
 
 /**
  * The exact text sent to the AI for a period summary: every figure already
@@ -444,7 +444,7 @@ export function buildPeriodFacts(insights, currency) {
     lines.push(`Period: ${label}.`);
   }
 
-  const per = insights.single ? '' : ' a month on average';
+  const per = insights.single ? '' : ' in a typical month';
   const cmp = (actual, usual) =>
     usual == null ? '' : ` (usual ${money(usual)} — ${money(Math.abs(actual - usual))} ${actual >= usual ? 'more' : 'less'})`;
 
