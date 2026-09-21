@@ -1,104 +1,81 @@
 # Tally
 
-Tally is a lightweight, self-hosted, multi-user budgeting app. Import your bank transactions,
-categorise them, and see where your money goes each month.
+**See where your money goes — without handing your bank details to anyone.**
 
-## Features
+Tally is a simple budgeting app you run yourself, on your own computer or home server.
+Download a statement from your bank, drop it into Tally, and it shows you what came in,
+what went out, and what you kept. No subscriptions, no bank logins, no data leaving your house.
 
-- **Multi-user** — each person has their own login, categories, budgets, rules, currency and data, isolated at the query layer. The first account to register becomes the admin.
-- **Multiple accounts** — track more than one bank account (a current account and a savings account, say). Choose which one a transaction belongs to when you add or import it, and filter the Dashboard and Reports down to a single account or view them combined. A picker only appears once you add a second account, and everything is invisible if you only use one. A **Transfer** category kind marks the receiving side of a move between your own accounts so it is never counted as new income.
-- **CSV import** with a full **review table** — upload any bank export (columns in any order, comma/semicolon/tab delimited), then fix dates, amounts, descriptions and categories row-by-row before saving. Handles signed or debit/credit columns, many date and number formats, and flags likely **duplicates** (date + amount + description).
-- **Manual entry**, inline editing, and **bulk categorise / bulk delete**.
-- **Auto-categorisation rules** — "description contains X → category Y", applied on import, on manual entry, and re-runnable on demand. Turn any transaction into a rule straight from the transactions table.
-- **AI categorisation (optional)** — an admin adds an Anthropic (Claude) API key and picks a model in **Server settings**; Claude then sorts transactions into *your own* categories as you import a CSV. Your auto-categorisation rules run first during review, so only rows they miss are ever sent to Claude — cheaper, and rule-matched rows are marked with a ↻. On by default once a key is set; each user can opt out; usage is billed to the admin's key.
-- **Savings** — mark any category as **Savings** and money moved there counts as money you kept, not money you spent: it stays out of every spending total, and the dashboard and reports track what you have saved this month and in total. Savings categories can carry a monthly target too, scored as an amount to reach rather than to stay under.
-- **Budgets** — a monthly target per category, with target vs actual vs remaining and over-budget nudges, plus **Generate targets** to set each target from your historical average spend.
-- **Dashboard** — incoming vs outgoing for any month, 12-month trend, top spending, budget progress, and nudges for uncategorised / over budget.
-- **Reports** — pick any period (the last twelve months by default) and get a plain read of it: came in / went out / saved, measured against *your own* months before it; a **What changed** list ranking categories by how far they moved from your usual rather than by size; and a **Month by month** chart with an income bar and a spending bar per month, each stacked by category, with a hover amount on every segment. With an API key configured, Claude adds a two-line summary of the period; it only ever sees the totals above, never individual transactions, and the result is cached per period so page views are free.
-- **Configurable currency** (display formatting only), default Euro (€).
-- **Admin** — a **Server settings** page (in the account menu) for user management, the AI assistant key/model, and more; plus an offline `scripts/reset-password.mjs` for recovery.
-- **Tiny footprint** — a single Node process, the built-in `node:sqlite` (no native deps), and one SQLite file. Idles well under 100 MB RAM.
+![Insights — where your money went](docs/screenshots/insights.png)
 
-## Tech
+## What it does
 
-SvelteKit (Node adapter) · SQLite via the built-in `node:sqlite` (Node 24+) · Tailwind CSS. No external services, no native build step.
+- **Import your bank statement** — upload the CSV file your bank lets you download. Tally works out the columns, spots duplicates, and lets you check everything before it's saved.
+- **Sort spending into categories** — Groceries, Rent, Eating out, whatever makes sense to you. Set up simple rules ("anything with *Tesco* in it is Groceries") and Tally sorts new transactions for you.
+- **Set monthly budgets** — a target per category, with a clear view of how much is left. Tally can suggest targets based on what you usually spend.
+- **Track savings** — money you move into savings counts as money kept, not money spent, so your totals tell the truth.
+- **Insights** — one page that answers *where did my money go this month?* Compare any period against your own normal, see which categories shifted the most, and browse a month-by-month picture.
+- **Multiple accounts** — a current account and a savings account, say. Transfers between them are never mistaken for income.
+- **Shared, but private** — everyone in the household gets their own login, categories and data. Nobody sees anyone else's numbers.
+- **Ask Tori (optional)** — add a Claude API key and you can ask questions in plain English: *"How much did I spend on groceries this month?"* or *"Am I over budget on anything?"* Tori can also sort imported transactions into your categories and write a short summary of each period. Off unless you switch it on.
 
-## Run with Docker
+<table>
+  <tr>
+    <td><img src="docs/screenshots/import.png" alt="Reviewing a bank statement before it is saved"></td>
+    <td><img src="docs/screenshots/budgets.png" alt="Monthly budget targets"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Check every row of a statement before it's saved — duplicates are spotted, rules fill in categories</sub></td>
+    <td align="center"><sub>Monthly targets, grouped, with what's left at a glance</sub></td>
+  </tr>
+</table>
 
-Images are built and published to GitHub Container Registry by the included GitHub Action
-on every push to `main`.
+## Getting started
 
-```bash
-docker run -d --name tally \
-  -p 3000:3000 \
-  -v tally-data:/data \
-  ghcr.io/thatguy-za/tally:latest
-```
-
-Then open `http://<host>:3000` and create the first account (it becomes the admin).
-
-Or use Docker Compose:
+Tally runs in [Docker](https://www.docker.com/products/docker-desktop/) — a free tool that
+lets you run apps like this with one command. Once Docker is installed, open a terminal and run:
 
 ```bash
-docker compose up -d
+docker run -d --name tally -p 3000:3000 -v tally-data:/data ghcr.io/thatguy-za/tally:latest
 ```
 
-### Environment variables
+Then open **http://localhost:3000** in your browser and create an account. The first account
+becomes the admin. Your data is stored in a single file that stays on your machine.
 
-| Variable             | Default               | Purpose                                                        |
-|----------------------|-----------------------|---------------------------------------------------------------|
-| `PORT`               | `3000`                | HTTP port                                                      |
-| `DATABASE_PATH`      | `/data/tally.sqlite`  | SQLite file location (mount a volume here)                     |
-| `ALLOW_REGISTRATION` | `true`                | Set to `false` once your accounts exist to lock signup        |
-| `ORIGIN`             | –                     | Only for reverse-proxy setups: the public URL, e.g. `https://tally.example.com`. Direct `http://<host>:port` access needs nothing. |
-| `BODY_SIZE_LIMIT`    | `8M`                  | Max request body (large CSV imports)                           |
-| `ANTHROPIC_API_KEY`  | –                     | Optional. Enables AI categorisation. Can also be set in Server settings. |
+Want a practice run? Import [`sample-transactions.csv`](static/sample-transactions.csv) to see how it looks with some data in it.
 
-Behind a proxy you can instead pass `X-Forwarded-Proto` and `X-Forwarded-Host`
-and set the matching `PROTOCOL_HEADER` / `HOST_HEADER` env vars.
+**A few settings you might want** (set as environment variables, or in the *Server settings* page once you're logged in):
 
-## Local development
+| Setting | What it does |
+|---|---|
+| `ALLOW_REGISTRATION=false` | Stop new people signing up once your household has accounts |
+| `ANTHROPIC_API_KEY` | Switches on Ask Tori and AI sorting (can also be set in Server settings) |
+| `ORIGIN` | Only needed if you put Tally behind a reverse proxy — set it to the address you visit, e.g. `https://tally.example.com` |
 
-```bash
-npm install
-cp .env.example .env
-npm run dev
-```
-
-The database is created automatically at `DATABASE_PATH` (default `./data/tally.sqlite`).
-
-## Tests
-
-```bash
-npm test
-```
-
-Runs against a throwaway SQLite file under `.vitest-tmp/`, wiped before each run — never
-your real `DATABASE_PATH`. Covers CSV/date/amount parsing and the money math in
-`src/lib/server/queries.js` (category kinds, account filtering, budgets, period
-comparisons). `npm run test:watch` re-runs on change.
-
-## CSV import
-
-Upload any bank export — the columns can be in any order. Tally detects the
-delimiter (comma, semicolon, tab or pipe), guesses which column is which, and
-drops you into a **review table** where every row is editable before anything is
-saved:
-
-- fix a mis-parsed date, amount or description inline
-- set or change the category per row (unknown category names from the file can be
-  created on import)
-- tick rows in or out; rows with an unreadable date/amount and likely duplicates
-  are flagged and pre-excluded
-- one signed amount column *or* separate debit/credit columns; `dd/mm`, `mm/dd`,
-  ISO, `1 Jan 2026` and `YYYYMMDD` dates; `1.234,56` and `1,234.56` decimals;
-  `(123)` / `123 CR` / `123 DR` notations; a sign-flip toggle; "ignore N rows at
-  the top" for exports with preamble
-
-See [`static/sample-transactions.csv`](static/sample-transactions.csv) for a
-plain example.
+Forgot a password? Run `node scripts/reset-password.mjs` on the server.
 
 ## Backups
 
-Everything lives in the SQLite file. Back up the `/data` volume (or copy
-`tally.sqlite`, `tally.sqlite-wal`, `tally.sqlite-shm` while the app is stopped).
+Everything is in one file. Back up the `tally-data` volume (or copy `tally.sqlite` while
+the app is stopped) and you have everything.
+
+## For developers
+
+SvelteKit · SQLite via the built-in `node:sqlite` (Node 24+) · Tailwind. No external services,
+no native build step, idles under 100 MB RAM.
+
+```bash
+npm install && cp .env.example .env && npm run dev   # local dev
+npm test                                             # tests (uses a throwaway database)
+```
+
+Docker images are published to GitHub Container Registry on every push to `main`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `3000` | HTTP port |
+| `DATABASE_PATH` | `/data/tally.sqlite` | Where the SQLite file lives (mount a volume here) |
+| `ALLOW_REGISTRATION` | `true` | Set to `false` to close signup |
+| `ORIGIN` | – | Public URL when behind a reverse proxy (or pass `X-Forwarded-Proto` / `X-Forwarded-Host` with `PROTOCOL_HEADER` / `HOST_HEADER`) |
+| `BODY_SIZE_LIMIT` | `8M` | Max request body, for large CSV imports |
+| `ANTHROPIC_API_KEY` | – | Enables Ask Tori and AI categorisation |
