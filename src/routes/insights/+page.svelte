@@ -15,14 +15,7 @@
   let { data } = $props();
 
   let categoryModal = $state(null);
-  function openCategoryModal(seg, ym, source = 'expense') {
-    if (seg.id === 'other') {
-      const excludeIds = (source === 'income' ? data.chart.income : data.chart.expense)
-        .filter((c) => c.id !== 'other')
-        .map((c) => c.id);
-      categoryModal = { categoryId: 'other', categoryName: seg.name, color: seg.color, month: ym, kind: source, excludeIds };
-      return;
-    }
+  function openCategoryModal(seg, ym) {
     categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym };
   }
 

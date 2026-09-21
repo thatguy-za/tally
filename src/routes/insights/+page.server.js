@@ -21,8 +21,10 @@ function shiftMonth(ym, n) {
 
 /**
  * Rank a kind's categories by their total over the period, keep the biggest
- * and fold the rest into one "Other" slot. Order is fixed for the whole
- * period, so a category keeps its place in the stack month to month.
+ * and fold the rest into a synthetic "Other" group — expandable/collapsible
+ * the same way a real category group is, via the shared `group_name`
+ * mechanism the chart components already understand. Order is fixed for the
+ * whole period, so a category keeps its place in the stack month to month.
  */
 function seriesFor(rows, kind) {
   const totals = new Map();
@@ -35,10 +37,10 @@ function seriesFor(rows, kind) {
   const ranked = [...totals.values()].sort((a, b) => b.total - a.total);
   const kept = ranked.slice(0, MAX_SERIES);
   const folded = ranked.slice(MAX_SERIES);
-  // "Other" lumps together whatever didn't make the cut — it has no single
-  // group of its own even if some of what it folded in did
-  if (folded.length) kept.push({ id: 'other', name: `Other (${folded.length})`, color: null, group_name: null, total: 0 });
-  const slot = new Map(ranked.map((c, i) => [c.id, i < MAX_SERIES ? c.id : 'other']));
+  // folded categories lose whatever real group they belonged to — "Other" is
+  // its own bucket, not a rollup of the groups that happened to shed members
+  for (const c of folded) kept.push({ ...c, group_name: 'Other' });
+  const slot = new Map(ranked.map((c) => [c.id, c.id]));
   return { series: kept.map(({ id, name, color, group_name }) => ({ id, name, color, group_name })), slot };
 }
 
