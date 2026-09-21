@@ -141,7 +141,7 @@
               <tr class="border-b border-[var(--border)] last:border-0" style="background:var(--paper-sunk)">
                 <td colspan="5" class="p-0">
                   <form method="POST" action="?/updateCategory" use:enhance
-                    class="grid grid-cols-[1fr] gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_128px_120px_auto] sm:items-center sm:gap-2">
+                    class="grid grid-cols-[1fr] gap-2 p-3 sm:grid-cols-[196px_128px_120px_auto] sm:items-center sm:gap-2">
                     <input type="hidden" name="id" value={c.id} />
                     <div class="flex items-center gap-2">
                       <input type="hidden" name="color" value={editColor} />
@@ -200,7 +200,7 @@
             <tr class="border-b border-[var(--border)] last:border-0" style="background:var(--paper-sunk)">
               <td colspan="5" class="p-0">
                 <form method="POST" action="?/addCategory" use:enhance
-                  class="grid grid-cols-[1fr] gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_128px_120px_auto] sm:items-center sm:gap-2">
+                  class="grid grid-cols-[1fr] gap-2 p-3 sm:grid-cols-[196px_128px_120px_auto] sm:items-center sm:gap-2">
                   <div class="flex items-center gap-2">
                     <input type="hidden" name="color" value={newColor} />
                     <ColorPicker bind:value={newColor} size="h-[38px] w-10 shrink-0 rounded-[var(--radius-sm)]" label="Colour for new category" />

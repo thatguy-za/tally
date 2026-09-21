@@ -269,10 +269,11 @@
           {#each series as s (s.id)}
             {#if s.isGroup}
               <button type="button" class="flex w-full items-center gap-1.5 rounded py-[3px] text-left hover:text-[var(--ink)]"
+                aria-label="{s.expanded ? 'Collapse' : 'Expand'} {s.name}" aria-expanded={s.expanded}
                 onclick={() => toggleGroup(s.id)}>
-                <Icon name="arrowRight" size={10} class="shrink-0 text-[var(--ink-faint)] {s.expanded ? 'rotate-90' : ''}" />
                 <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
-                <span class="truncate font-medium">{s.name}</span>
+                <span class="min-w-0 flex-1 truncate font-medium">{s.name}</span>
+                <Icon name="chevronDown" size={11} class="shrink-0 text-[var(--ink-faint)] transition-transform {s.expanded ? 'rotate-180' : ''}" />
               </button>
             {:else}
               {@const isFocused = focused?.id === s.id && focused.source === source}
