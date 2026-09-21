@@ -845,6 +845,7 @@ export function monthlyCategoryTotals(userId, from, to, accountId = null) {
               COALESCE(c.id, -1) AS id,
               COALESCE(c.name, 'Uncategorised') AS name,
               c.color AS color,
+              c.group_name AS group_name,
               CASE WHEN t.amount > 0 THEN 'income' ELSE 'expense' END AS kind,
               SUM(ABS(t.amount)) AS total
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id

@@ -101,7 +101,13 @@
   let spendingSegments = $derived(
     singleMonth
       ? data.chart.expense
-          .map((c) => ({ id: c.id, name: c.name, color: c.color, value: Math.abs(data.chart.values[data.from]?.expense[c.id] || 0) }))
+          .map((c) => ({
+            id: c.id,
+            name: c.name,
+            color: c.color,
+            group_name: c.group_name || null,
+            value: Math.abs(data.chart.values[data.from]?.expense[c.id] || 0)
+          }))
           .filter((s) => s.value > 0)
       : []
   );

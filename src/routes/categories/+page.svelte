@@ -2,14 +2,17 @@
   import { enhance } from '$app/forms';
   import Icon from '$lib/components/Icon.svelte';
   import ColorPicker from '$lib/components/ColorPicker.svelte';
+  import GroupSelect from '$lib/components/GroupSelect.svelte';
   import RulesSection from '$lib/components/RulesSection.svelte';
   import { PALETTE } from '$lib/palette.js';
   import { toast } from '$lib/toast.svelte.js';
   let { data, form } = $props();
 
   let newColor = $state('#7b8a5a');
+  let newGroup = $state(null);
   let editingId = $state(null);
   let editColor = $state('#64748b');
+  let editGroup = $state(null);
   let addingNew = $state(false);
   const ok = (s) => form?.section === s && form?.ok;
   const err = (s) => (form?.section === s ? form?.error : null);
@@ -17,6 +20,7 @@
   function startEdit(c) {
     editingId = c.id;
     editColor = c.color;
+    editGroup = c.group_name;
   }
 
   const kindLabel = {
@@ -38,6 +42,7 @@
         editingId = null;
         addingNew = false;
         newColor = '#7b8a5a';
+        newGroup = null;
       } else if (form?.error) toast(form.error, { type: 'info' });
     }
   });
@@ -70,7 +75,9 @@
 
   let pickedCount = $derived(suggestions ? suggestions.filter((s) => s.picked).length : 0);
   let picksPayload = $derived(
-    JSON.stringify((suggestions || []).filter((s) => s.picked).map(({ name, kind, color }) => ({ name, kind, color })))
+    JSON.stringify(
+      (suggestions || []).filter((s) => s.picked).map(({ name, kind, color, group }) => ({ name, kind, color, group }))
+    )
   );
 
   function addSuggestedSubmit() {
@@ -117,42 +124,42 @@
       for both Mortgage and Utilities) to roll them up together in Budgets and when picking a
       category — each one keeps its own type, colour and budget.
     </p>
-    <datalist id="group-options">
-      {#each data.groups as g}<option value={g}></option>{/each}
-    </datalist>
     <div class="mb-4 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border)]">
       <table class="w-full text-[13px]">
         <thead>
           <tr class="border-b border-[var(--border)] text-left">
             <th class="th px-3 py-2">Name</th>
-            <th class="th px-3 py-2">Group</th>
-            <th class="th px-3 py-2">Type</th>
-            <th class="th px-3 py-2 text-right">Transactions</th>
+            <th class="th px-3 py-2" style="width:150px">Group</th>
+            <th class="th px-3 py-2" style="width:140px">Type</th>
+            <th class="th px-3 py-2 text-right" style="width:110px">Transactions</th>
             <th class="w-16"></th>
           </tr>
         </thead>
         <tbody>
           {#each data.categories as c (c.id)}
             {#if editingId === c.id}
-              <tr class="border-b border-[var(--border)] last:border-0">
-                <td colspan="5" class="p-3" style="background:var(--paper-sunk)">
-                  <form method="POST" action="?/updateCategory" use:enhance class="grid gap-2 sm:grid-cols-12">
+              <tr class="border-b border-[var(--border)] last:border-0" style="background:var(--paper-sunk)">
+                <td colspan="5" class="p-0">
+                  <form method="POST" action="?/updateCategory" use:enhance
+                    class="grid grid-cols-[1fr] gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_128px_120px_auto] sm:items-center sm:gap-2">
                     <input type="hidden" name="id" value={c.id} />
-                    <div class="flex items-center gap-2 sm:col-span-5">
+                    <div class="flex items-center gap-2">
                       <input type="hidden" name="color" value={editColor} />
                       <ColorPicker bind:value={editColor} size="h-[38px] w-10 shrink-0 rounded-[var(--radius-sm)]" label="Colour for {c.name}" />
                       <input class="input min-w-0 flex-1" name="name" value={c.name} required />
                     </div>
-                    <select class="input sm:col-span-3" name="kind" value={c.kind}>
+                    <div>
+                      <input type="hidden" name="group_name" value={editGroup ?? ''} />
+                      <GroupSelect groups={data.groups} value={editGroup} onChange={(v) => (editGroup = v)} triggerClass="input !py-1.5 text-[13px]" />
+                    </div>
+                    <select class="input" name="kind" value={c.kind}>
                       <option value="expense">Spending</option>
                       <option value="income">Income</option>
                       <option value="saving">Savings</option>
                       <option value="transfer">Transfer</option>
                       <option value="opening_balance">Opening balance</option>
                     </select>
-                    <input class="input sm:col-span-2" name="group_name" list="group-options"
-                      placeholder="Group (optional)" value={c.group_name ?? ''} />
-                    <div class="flex items-center gap-2 sm:col-span-2">
+                    <div class="flex items-center gap-2">
                       <button class="btn btn-primary btn-sm">Save</button>
                       <button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingId = null)}>Cancel</button>
                     </div>
@@ -190,23 +197,27 @@
             {/if}
           {/each}
           {#if addingNew}
-            <tr class="border-b border-[var(--border)] last:border-0">
-              <td colspan="5" class="p-3" style="background:var(--paper-sunk)">
-                <form method="POST" action="?/addCategory" use:enhance class="grid gap-2 sm:grid-cols-12">
-                  <div class="flex items-center gap-2 sm:col-span-5">
+            <tr class="border-b border-[var(--border)] last:border-0" style="background:var(--paper-sunk)">
+              <td colspan="5" class="p-0">
+                <form method="POST" action="?/addCategory" use:enhance
+                  class="grid grid-cols-[1fr] gap-2 p-3 sm:grid-cols-[minmax(0,1fr)_128px_120px_auto] sm:items-center sm:gap-2">
+                  <div class="flex items-center gap-2">
                     <input type="hidden" name="color" value={newColor} />
                     <ColorPicker bind:value={newColor} size="h-[38px] w-10 shrink-0 rounded-[var(--radius-sm)]" label="Colour for new category" />
                     <input class="input min-w-0 flex-1" name="name" placeholder="e.g. Mortgage" required />
                   </div>
-                  <select class="input sm:col-span-3" name="kind">
+                  <div>
+                    <input type="hidden" name="group_name" value={newGroup ?? ''} />
+                    <GroupSelect groups={data.groups} value={newGroup} onChange={(v) => (newGroup = v)} triggerClass="input !py-1.5 text-[13px]" />
+                  </div>
+                  <select class="input" name="kind">
                     <option value="expense">Spending</option>
                     <option value="income">Income</option>
                     <option value="saving">Savings</option>
                     <option value="transfer">Transfer</option>
                     <option value="opening_balance">Opening balance</option>
                   </select>
-                  <input class="input sm:col-span-2" name="group_name" list="group-options" placeholder="Group (optional)" />
-                  <div class="flex items-center gap-2 sm:col-span-2">
+                  <div class="flex items-center gap-2">
                     <button class="btn btn-primary btn-sm">Add</button>
                     <button type="button" class="btn btn-ghost btn-sm" onclick={() => (addingNew = false)}>Cancel</button>
                     {#if err('category')}<span class="text-sm" style="color:var(--negative)">{err('category')}</span>{/if}
@@ -264,6 +275,9 @@
               <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{s.color}"></span>
               <span>{s.name}</span>
               <span class="text-xs text-[var(--ink-faint)]">{kindLabel[s.kind] || s.kind}</span>
+              {#if s.group}
+                <span class="chip text-[11px]">{s.group}</span>
+              {/if}
             </label>
           </li>
         {/each}

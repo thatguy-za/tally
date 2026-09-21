@@ -8,10 +8,13 @@
    * (largest category at the bottom), so a category holds its place and colour
    * from month to month instead of reshuffling by size.
    *
+   * A category carrying a `group_name` (e.g. "Home" on both Mortgage and
+   * Utilities) stacks as one merged segment with the rest of its group until
+   * expanded from the legend — ungrouped categories are unaffected.
    * @type {{
    *   months: string[],
-   *   income: { id: string|number, name: string, color: string|null }[],
-   *   expense: { id: string|number, name: string, color: string|null }[],
+   *   income: { id: string|number, name: string, color: string|null, group_name?: string|null }[],
+   *   expense: { id: string|number, name: string, color: string|null, group_name?: string|null }[],
    *   values: Record<string, { income: Record<string, number>, expense: Record<string, number> }>,
    *   currency: string,
    *   title?: string,
@@ -39,7 +42,40 @@
     privacy.hideNumbers ? '••' : v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v));
   const fill = (c) => c || 'var(--border-strong)';
 
-  const sumSeries = (bucket, series) => series.reduce((s, c) => s + (bucket[c.id] || 0), 0);
+  // ---- category groups: collapse a shared group_name into one segment -----
+  // collapsing is a display choice, so it's local UI state, not persisted
+  let expandedGroups = $state(new Set());
+  function toggleGroup(id) {
+    const next = new Set(expandedGroups);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    expandedGroups = next;
+  }
+
+  /** `rawSeries`, with a header per group (expanded ones followed by their real members). */
+  function groupSeriesShape(rawSeries) {
+    const seenGroups = new Set();
+    const out = [];
+    for (const it of rawSeries) {
+      if (!it.group_name) { out.push(it); continue; }
+      const gid = `group:${it.group_name}`;
+      if (!seenGroups.has(it.group_name)) {
+        seenGroups.add(it.group_name);
+        out.push({ id: gid, name: it.group_name, color: it.color, isGroup: true, expanded: expandedGroups.has(gid) });
+      }
+      if (expandedGroups.has(gid)) out.push({ ...it, groupId: gid, groupName: it.group_name });
+    }
+    return out;
+  }
+  let displayIncome = $derived(groupSeriesShape(income));
+  let displayExpense = $derived(groupSeriesShape(expense));
+
+  /** A display entry's value for one month's bucket — summed from its members while collapsed. */
+  function valueFor(s, bucket, rawSeries) {
+    if (s.isGroup) return s.expanded ? 0 : rawSeries.filter((r) => r.group_name === s.name).reduce((sum, r) => sum + (bucket[r.id] || 0), 0);
+    return bucket[s.id] || 0;
+  }
+  const sumSeries = (bucket, series, rawSeries) => series.reduce((s, c) => s + valueFor(c, bucket, rawSeries), 0);
 
   // ---- click a legend entry to isolate that category across every month ----
   let focused = $state(null); // { id, source: 'income' | 'expense', name, color }
@@ -47,10 +83,10 @@
     focused = focused?.id === seg.id && focused.source === source ? null : { ...seg, source };
   }
   let activeIncome = $derived(
-    !focused ? income : focused.source === 'income' ? income.filter((s) => s.id === focused.id) : []
+    !focused ? displayIncome : focused.source === 'income' ? displayIncome.filter((s) => s.id === focused.id) : []
   );
   let activeExpense = $derived(
-    !focused ? expense : focused.source === 'expense' ? expense.filter((s) => s.id === focused.id) : []
+    !focused ? displayExpense : focused.source === 'expense' ? displayExpense.filter((s) => s.id === focused.id) : []
   );
 
   // ---- vertical zoom: a multiplier on top of the auto-fit ceiling ----
@@ -66,7 +102,10 @@
   let autoMax = $derived(
     Math.max(
       1,
-      ...months.flatMap((m) => [sumSeries(values[m].income, activeIncome), sumSeries(values[m].expense, activeExpense)])
+      ...months.flatMap((m) => [
+        sumSeries(values[m].income, activeIncome, income),
+        sumSeries(values[m].expense, activeExpense, expense)
+      ])
     )
   );
   // a tidy ceiling: 1, 2 or 5 × a power of ten
@@ -98,11 +137,11 @@
   }
 
   /** Segment geometry for one bar, bottom-up. */
-  function stack(x, series, bucket) {
+  function stack(x, series, bucket, rawSeries) {
     let acc = 0;
     const segs = series
-      .filter((s) => bucket[s.id] > 0)
-      .map((s) => ({ ...s, v: bucket[s.id] }));
+      .map((s) => ({ ...s, v: valueFor(s, bucket, rawSeries) }))
+      .filter((s) => s.v > 0);
     const total = segs.reduce((s, d) => s + d.v, 0);
     const out = segs.map((d, i) => {
       const top = y(acc + d.v);
@@ -128,8 +167,8 @@
         xIn,
         xOut,
         label: label(ym),
-        income: stack(xIn, activeIncome, values[ym].income),
-        expense: stack(xOut, activeExpense, values[ym].expense)
+        income: stack(xIn, activeIncome, values[ym].income, income),
+        expense: stack(xOut, activeExpense, values[ym].expense, expense)
       };
     })
   );
@@ -188,11 +227,11 @@
         {#each [[b.income, b.xIn, 'income'], [b.expense, b.xOut, 'expense']] as [st, x, source]}
           {#each st.segs as seg (seg.id)}
             <path d={seg.path} fill={fill(seg.color)} class="transition-[filter] duration-150 hover:brightness-110"
-              style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
+              style="cursor:{(onSegmentClick || seg.isGroup) ? 'pointer' : 'default'}"
               role="presentation"
               onmousemove={(e) => show(e, seg, b.ym)}
               onmouseleave={() => (tip = null)}
-              onclick={() => onSegmentClick?.(seg, b.ym, source)}></path>
+              onclick={() => (seg.isGroup ? toggleGroup(seg.id) : onSegmentClick?.(seg, b.ym, source))}></path>
           {/each}
           {#if showTotals && st.total > 0}
             <text x={x + barW / 2} y={y(st.total) - 7} text-anchor="middle" font-size="10.5"
@@ -223,19 +262,28 @@
   </div>
 
   <div class="flex w-[150px] shrink-0 flex-col gap-4 text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
-    {#each [['Income', income, 'income'], ['Spending', expense, 'expense']] as [groupTitle, series, source]}
+    {#each [['Income', displayIncome, 'income'], ['Spending', displayExpense, 'expense']] as [groupTitle, series, source]}
       {#if series.length}
         <div>
           <p class="kicker mb-1.5">{groupTitle}</p>
           {#each series as s (s.id)}
-            {@const isFocused = focused?.id === s.id && focused.source === source}
-            {@const dimmed = focused && !isFocused}
-            <button type="button"
-              class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''}"
-              onclick={() => toggleFocus(s, source)}>
-              <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
-              <span class="truncate {isFocused ? 'font-semibold text-[var(--ink)]' : ''}">{s.name}</span>
-            </button>
+            {#if s.isGroup}
+              <button type="button" class="flex w-full items-center gap-1.5 rounded py-[3px] text-left hover:text-[var(--ink)]"
+                onclick={() => toggleGroup(s.id)}>
+                <Icon name="arrowRight" size={10} class="shrink-0 text-[var(--ink-faint)] {s.expanded ? 'rotate-90' : ''}" />
+                <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
+                <span class="truncate font-medium">{s.name}</span>
+              </button>
+            {:else}
+              {@const isFocused = focused?.id === s.id && focused.source === source}
+              {@const dimmed = focused && !isFocused}
+              <button type="button"
+                class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''} {s.groupId ? 'pl-4' : ''}"
+                onclick={() => toggleFocus(s, source)}>
+                <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
+                <span class="truncate {isFocused ? 'font-semibold text-[var(--ink)]' : ''}">{s.name}</span>
+              </button>
+            {/if}
           {/each}
         </div>
       {/if}

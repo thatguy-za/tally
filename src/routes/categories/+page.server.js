@@ -114,7 +114,7 @@ export const actions = {
       const name = String(p?.name || '').trim();
       if (!name) continue;
       try {
-        createCategory(locals.user.id, locals.accountId, name, p?.kind || 'expense', p?.color);
+        createCategory(locals.user.id, locals.accountId, name, p?.kind || 'expense', p?.color, p?.group || null);
         added++;
       } catch {
         /* skip duplicates */

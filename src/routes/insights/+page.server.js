@@ -28,16 +28,18 @@ function seriesFor(rows, kind) {
   const totals = new Map();
   for (const r of rows) {
     if (r.kind !== kind) continue;
-    const e = totals.get(r.id) || { id: r.id, name: r.name, color: r.color, total: 0 };
+    const e = totals.get(r.id) || { id: r.id, name: r.name, color: r.color, group_name: r.group_name || null, total: 0 };
     e.total += r.total;
     totals.set(r.id, e);
   }
   const ranked = [...totals.values()].sort((a, b) => b.total - a.total);
   const kept = ranked.slice(0, MAX_SERIES);
   const folded = ranked.slice(MAX_SERIES);
-  if (folded.length) kept.push({ id: 'other', name: `Other (${folded.length})`, color: null, total: 0 });
+  // "Other" lumps together whatever didn't make the cut — it has no single
+  // group of its own even if some of what it folded in did
+  if (folded.length) kept.push({ id: 'other', name: `Other (${folded.length})`, color: null, group_name: null, total: 0 });
   const slot = new Map(ranked.map((c, i) => [c.id, i < MAX_SERIES ? c.id : 'other']));
-  return { series: kept.map(({ id, name, color }) => ({ id, name, color })), slot };
+  return { series: kept.map(({ id, name, color, group_name }) => ({ id, name, color, group_name })), slot };
 }
 
 /** @type {import('./$types').PageServerLoad} */

@@ -1,16 +1,54 @@
 <script>
   import { formatMoney } from '$lib/privacy.svelte.js';
+  import Icon from './Icon.svelte';
 
   /**
    * A single month's spending by category, as a doughnut with a legend and a
    * centred total. Used by Insights when the period picker is set to one month
    * (StackedMonths needs several months to be worth a bar chart).
-   * @type {{ segments: { id: any, name: string, color: string|null, value: number }[], currency: string, title?: string, onSegmentClick?: (seg: object) => void }}
+   *
+   * A segment carrying a `group_name` (e.g. "Home" on both Mortgage and
+   * Utilities) is folded into one merged slice under that group until the
+   * viewer expands it — categories with no group are unaffected.
+   * @type {{ segments: { id: any, name: string, color: string|null, value: number, group_name?: string|null }[], currency: string, title?: string, onSegmentClick?: (seg: object) => void }}
    */
   let { segments, currency, title = '', onSegmentClick } = $props();
 
   const fill = (c) => c || 'var(--border-strong)';
   const money = (v) => formatMoney(v, currency);
+
+  // groups a viewer hasn't expanded render as one merged slice — collapsing
+  // is purely a display choice here, so it lives as local UI state rather
+  // than anything persisted
+  let expandedGroups = $state(new Set());
+  function toggleGroup(id) {
+    const next = new Set(expandedGroups);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    expandedGroups = next;
+  }
+
+  /** `segments`, with grouped categories folded into one slice unless expanded. */
+  let displaySegments = $derived.by(() => {
+    const headers = new Map(); // group_name -> the merged slice pushed into `out`
+    const out = [];
+    for (const it of segments) {
+      if (!it.group_name) {
+        out.push(it);
+        continue;
+      }
+      const gid = `group:${it.group_name}`;
+      let header = headers.get(it.group_name);
+      if (!header) {
+        header = { id: gid, name: it.group_name, color: it.color, value: 0, isGroup: true, expanded: expandedGroups.has(gid) };
+        headers.set(it.group_name, header);
+        out.push(header);
+      }
+      if (header.expanded) out.push({ ...it, groupId: gid, groupName: it.group_name });
+      else header.value += it.value;
+    }
+    return out;
+  });
 
   const R = 90; // outer radius
   const R_INNER = 55;
@@ -45,7 +83,7 @@
 
   let arcs = $derived.by(() => {
     let acc = 0;
-    return segments.map((s) => {
+    return displaySegments.map((s) => {
       const startDeg = (acc / total) * 360;
       acc += s.value;
       const endDeg = (acc / total) * 360;
@@ -76,10 +114,10 @@
         aria-label="Spending by category this month">
         {#each arcs as seg (seg.id)}
           <path d={seg.path} fill={fill(seg.color)} class="transition-[filter] duration-150 hover:brightness-110"
-            style="cursor:{onSegmentClick ? 'pointer' : 'default'}"
+            style="cursor:{(onSegmentClick || seg.isGroup) ? 'pointer' : 'default'}"
             role="presentation"
             onmousemove={(e) => show(e, seg)} onmouseleave={() => (tip = null)}
-            onclick={() => onSegmentClick?.(seg)}></path>
+            onclick={() => (seg.isGroup ? toggleGroup(seg.id) : onSegmentClick?.(seg))}></path>
         {/each}
         <text x={CX} y={CY - 6} text-anchor="middle" font-size="11" fill="var(--ink-faint)">Spent</text>
         <text x={CX} y={CY + 14} text-anchor="middle" font-size="16" font-weight="600" fill="var(--ink)">
@@ -101,13 +139,23 @@
   <div class="flex w-full flex-col gap-[3px] text-[12px] text-[var(--ink-soft)] sm:w-[170px] sm:shrink-0">
     <p class="kicker mb-1">Spending</p>
     {#each arcs as s (s.id)}
+      {#if s.isGroup}
+        <button type="button" class="flex items-center gap-1.5 rounded py-[3px] text-left hover:text-[var(--ink)]"
+          onclick={() => toggleGroup(s.id)}>
+          <Icon name="arrowRight" size={10} class="shrink-0 text-[var(--ink-faint)] {s.expanded ? 'rotate-90' : ''}" />
+          <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
+          <span class="min-w-0 flex-1 truncate font-medium">{s.name}</span>
+          {#if !s.expanded}<span class="tnum shrink-0 text-[var(--ink-faint)]">{Math.round(s.pct * 100)}%</span>{/if}
+        </button>
+      {:else}
       <button type="button" disabled={!onSegmentClick}
-        class="flex items-center gap-2 rounded py-[3px] text-left {onSegmentClick ? 'hover:text-[var(--ink)]' : ''}"
+        class="flex items-center gap-2 rounded py-[3px] text-left {onSegmentClick ? 'hover:text-[var(--ink)]' : ''} {s.groupId ? 'pl-4' : ''}"
         onclick={() => onSegmentClick?.(s)}>
         <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
         <span class="min-w-0 flex-1 truncate">{s.name}</span>
         <span class="tnum shrink-0 text-[var(--ink-faint)]">{Math.round(s.pct * 100)}%</span>
       </button>
+      {/if}
     {/each}
   </div>
 </div>
