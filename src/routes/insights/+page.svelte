@@ -15,7 +15,14 @@
   let { data } = $props();
 
   let categoryModal = $state(null);
-  function openCategoryModal(seg, ym) {
+  function openCategoryModal(seg, ym, source = 'expense') {
+    if (seg.id === 'other') {
+      const excludeIds = (source === 'income' ? data.chart.income : data.chart.expense)
+        .filter((c) => c.id !== 'other')
+        .map((c) => c.id);
+      categoryModal = { categoryId: 'other', categoryName: seg.name, color: seg.color, month: ym, kind: source, excludeIds };
+      return;
+    }
     categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym };
   }
 
@@ -94,13 +101,7 @@
   let spendingSegments = $derived(
     singleMonth
       ? data.chart.expense
-          .map((c) => ({
-            id: c.id,
-            name: c.name,
-            color: c.color,
-            group_name: c.group_name || null,
-            value: Math.abs(data.chart.values[data.from]?.expense[c.id] || 0)
-          }))
+          .map((c) => ({ id: c.id, name: c.name, color: c.color, value: Math.abs(data.chart.values[data.from]?.expense[c.id] || 0) }))
           .filter((s) => s.value > 0)
       : []
   );

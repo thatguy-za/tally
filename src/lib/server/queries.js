@@ -5,23 +5,8 @@ import { guessDomain, logoKey } from '$lib/logo.js';
 
 export function listCategories(userId, accountId) {
   return db
-    .prepare(
-      `SELECT * FROM categories WHERE user_id = ? AND account_id = ?
-       ORDER BY kind DESC, (group_name IS NULL OR group_name = ''), group_name, name`
-    )
+    .prepare('SELECT * FROM categories WHERE user_id = ? AND account_id = ? ORDER BY kind DESC, name')
     .all(userId, accountId);
-}
-
-/** Every distinct, non-empty group label already in use, for autocomplete. */
-export function listCategoryGroups(userId, accountId) {
-  return db
-    .prepare(
-      `SELECT DISTINCT group_name FROM categories
-       WHERE user_id = ? AND account_id = ? AND group_name IS NOT NULL AND group_name != ''
-       ORDER BY group_name`
-    )
-    .all(userId, accountId)
-    .map((r) => r.group_name);
 }
 
 /**
@@ -40,15 +25,14 @@ export const normaliseKind = (k) => (CATEGORY_KINDS.includes(k) ? k : 'expense')
 /** Kinds left out of income/spending totals wherever they're computed. */
 export const NON_SPENDING_KINDS = ['saving', 'transfer', 'opening_balance'];
 
-export function createCategory(userId, accountId, name, kind, color, groupName = null) {
+export function createCategory(userId, accountId, name, kind, color) {
   const k = normaliseKind(kind);
   const c = color || '#64748b';
   const trimmed = name.trim();
-  const g = groupName?.trim() || null;
   const info = db
-    .prepare('INSERT INTO categories (user_id, account_id, name, kind, color, group_name) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(userId, accountId, trimmed, k, c, g);
-  return { id: Number(info.lastInsertRowid), name: trimmed, kind: k, color: c, group_name: g };
+    .prepare('INSERT INTO categories (user_id, account_id, name, kind, color) VALUES (?, ?, ?, ?, ?)')
+    .run(userId, accountId, trimmed, k, c);
+  return { id: Number(info.lastInsertRowid), name: trimmed, kind: k, color: c };
 }
 
 /** Change what a category *is* — the only way to mark one as savings after the fact. */
@@ -70,11 +54,11 @@ export function setCategoryColor(userId, accountId, id, color) {
   );
 }
 
-/** Full edit — name, kind, colour and group together, for the Categories page's edit row. */
-export function updateCategory(userId, accountId, id, { name, kind, color, groupName }) {
+/** Full edit — name, kind and colour together, for the Categories page's edit row. */
+export function updateCategory(userId, accountId, id, { name, kind, color }) {
   db.prepare(
-    'UPDATE categories SET name = ?, kind = ?, color = ?, group_name = ? WHERE id = ? AND user_id = ? AND account_id = ?'
-  ).run(name.trim(), normaliseKind(kind), color || '#64748b', groupName?.trim() || null, id, userId, accountId);
+    'UPDATE categories SET name = ?, kind = ?, color = ? WHERE id = ? AND user_id = ? AND account_id = ?'
+  ).run(name.trim(), normaliseKind(kind), color || '#64748b', id, userId, accountId);
 }
 
 export function deleteCategory(userId, accountId, id) {
@@ -575,7 +559,7 @@ export function budgetStatus(userId, month, accountId) {
   const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   const rows = db
     .prepare(
-      `SELECT c.id, c.name, c.color, c.kind, c.group_name,
+      `SELECT c.id, c.name, c.color, c.kind,
               b.amount AS target,
               COALESCE((
                 SELECT SUM(t.amount) FROM transactions t
@@ -585,7 +569,7 @@ export function budgetStatus(userId, month, accountId) {
        FROM categories c
        LEFT JOIN budgets b ON b.category_id = c.id AND b.user_id = c.user_id
        WHERE c.user_id = @userId AND c.account_id = @accountId
-       ORDER BY c.kind DESC, (c.group_name IS NULL OR c.group_name = ''), c.group_name, c.name`
+       ORDER BY c.kind DESC, c.name`
     )
     .all({ userId, accountId, month, ...accountFilter(accountId).params });
 
@@ -601,7 +585,6 @@ export function budgetStatus(userId, month, accountId) {
       name: r.name,
       color: r.color,
       kind: r.kind,
-      groupName: r.group_name || null,
       target,
       actual,
       remaining: target != null ? target - actual : null,
@@ -845,7 +828,6 @@ export function monthlyCategoryTotals(userId, from, to, accountId = null) {
               COALESCE(c.id, -1) AS id,
               COALESCE(c.name, 'Uncategorised') AS name,
               c.color AS color,
-              c.group_name AS group_name,
               CASE WHEN t.amount > 0 THEN 'income' ELSE 'expense' END AS kind,
               SUM(ABS(t.amount)) AS total
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id

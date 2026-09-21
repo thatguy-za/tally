@@ -1,68 +1,16 @@
 <script>
   import { formatMoney } from '$lib/privacy.svelte.js';
-  import Icon from './Icon.svelte';
 
   /**
    * A single month's spending by category, as a doughnut with a legend and a
    * centred total. Used by Insights when the period picker is set to one month
    * (StackedMonths needs several months to be worth a bar chart).
-   *
-   * Ungrouped categories always render as their own slice. A category
-   * carrying a `group_name` (e.g. "Home" on both Mortgage and Utilities)
-   * starts collapsed under a group heading in the legend. Clicking a group's
-   * expand button only reveals its members there; clicking its name (like
-   * clicking any category's name) isolates the doughnut to just that group.
-   * @type {{ segments: { id: any, name: string, color: string|null, value: number, group_name?: string|null }[], currency: string, title?: string, onSegmentClick?: (seg: object) => void }}
+   * @type {{ segments: { id: any, name: string, color: string|null, value: number }[], currency: string, title?: string, onSegmentClick?: (seg: object) => void }}
    */
   let { segments, currency, title = '', onSegmentClick } = $props();
 
   const fill = (c) => c || 'var(--border-strong)';
   const money = (v) => formatMoney(v, currency);
-
-  // expanding a group in the legend is purely a display choice — it only
-  // reveals that group's members there, entirely separate from clicking its
-  // name to isolate the doughnut to that group
-  let expandedGroups = $state(new Set());
-  function toggleExpand(name) {
-    const next = new Set(expandedGroups);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    expandedGroups = next;
-  }
-
-  let focusedGroup = $state(null);
-  function toggleFocusGroup(name) {
-    focusedGroup = focusedGroup === name ? null : name;
-  }
-
-  /** `segments`, filtered down to the focused group's categories, if any. */
-  let displaySegments = $derived(focusedGroup ? segments.filter((s) => s.group_name === focusedGroup) : segments);
-
-  /**
-   * `segments`, as {kind:'header', name, color} / {kind:'item', ...category}
-   * entries for the legend — a group's members always sit together right
-   * after its header, even when they're not adjacent in `segments`' own rank
-   * order (an ungrouped category ranked in between them would otherwise
-   * split the group apart and look like one of its members).
-   */
-  let legendEntries = $derived.by(() => {
-    const groupItems = new Map(); // group name -> every one of its items, in rank order
-    for (const it of segments) {
-      if (!it.group_name) continue;
-      if (!groupItems.has(it.group_name)) groupItems.set(it.group_name, []);
-      groupItems.get(it.group_name).push(it);
-    }
-    const seenGroups = new Set();
-    const out = [];
-    for (const it of segments) {
-      if (!it.group_name) { out.push({ kind: 'item', ...it }); continue; }
-      if (seenGroups.has(it.group_name)) continue;
-      seenGroups.add(it.group_name);
-      out.push({ kind: 'header', name: it.group_name, color: it.color });
-      for (const member of groupItems.get(it.group_name)) out.push({ kind: 'item', ...member });
-    }
-    return out;
-  });
 
   const R = 90; // outer radius
   const R_INNER = 55;
@@ -70,7 +18,7 @@
   const CY = 100;
   const GAP_DEG = 1.4; // thin surface gap between segments, angle-equivalent of StackedMonths' 2px
 
-  let total = $derived(displaySegments.reduce((s, d) => s + d.value, 0));
+  let total = $derived(segments.reduce((s, d) => s + d.value, 0));
 
   function polar(r, angleDeg) {
     const a = ((angleDeg - 90) * Math.PI) / 180;
@@ -97,7 +45,7 @@
 
   let arcs = $derived.by(() => {
     let acc = 0;
-    return displaySegments.map((s) => {
+    return segments.map((s) => {
       const startDeg = (acc / total) * 360;
       acc += s.value;
       const endDeg = (acc / total) * 360;
@@ -152,32 +100,14 @@
 
   <div class="flex w-full flex-col gap-[3px] text-[12px] text-[var(--ink-soft)] sm:w-[170px] sm:shrink-0">
     <p class="kicker mb-1">Spending</p>
-    {#each legendEntries as entry (entry.kind === 'header' ? `h:${entry.name}` : entry.id)}
-      {#if entry.kind === 'header'}
-        {@const isFocused = focusedGroup === entry.name}
-        {@const dimmed = focusedGroup && !isFocused}
-        {@const expanded = expandedGroups.has(entry.name)}
-        <div class="flex items-center gap-1 rounded py-[3px] transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''}">
-          <button type="button" class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-            onclick={() => toggleFocusGroup(entry.name)}>
-            <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(entry.color)}"></span>
-            <span class="min-w-0 flex-1 truncate font-medium {isFocused ? 'text-[var(--ink)]' : ''}">{entry.name}</span>
-          </button>
-          <button type="button" class="shrink-0 rounded p-0.5 text-[var(--ink-faint)] hover:text-[var(--ink)]"
-            aria-label="{expanded ? 'Collapse' : 'Expand'} {entry.name}" aria-expanded={expanded}
-            onclick={() => toggleExpand(entry.name)}>
-            <Icon name="chevronDown" size={11} class="transition-transform {expanded ? 'rotate-180' : ''}" />
-          </button>
-        </div>
-      {:else if !entry.group_name || expandedGroups.has(entry.group_name)}
-        {@const dimmed = focusedGroup && entry.group_name !== focusedGroup}
-        <button type="button" disabled={!onSegmentClick}
-          class="flex items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {onSegmentClick ? 'hover:text-[var(--ink)]' : ''} {entry.group_name ? 'pl-4' : ''} {dimmed ? 'opacity-40' : ''}"
-          onclick={() => onSegmentClick?.(entry)}>
-          <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(entry.color)}"></span>
-          <span class="min-w-0 flex-1 truncate">{entry.name}</span>
-        </button>
-      {/if}
+    {#each arcs as s (s.id)}
+      <button type="button" disabled={!onSegmentClick}
+        class="flex items-center gap-2 rounded py-[3px] text-left {onSegmentClick ? 'hover:text-[var(--ink)]' : ''}"
+        onclick={() => onSegmentClick?.(s)}>
+        <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
+        <span class="min-w-0 flex-1 truncate">{s.name}</span>
+        <span class="tnum shrink-0 text-[var(--ink-faint)]">{Math.round(s.pct * 100)}%</span>
+      </button>
     {/each}
   </div>
 </div>

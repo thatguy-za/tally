@@ -77,10 +77,6 @@ db.exec(`
     name       TEXT NOT NULL,
     kind       TEXT NOT NULL DEFAULT 'expense',
     color      TEXT NOT NULL DEFAULT '#64748b',
-    -- purely cosmetic label for rolling several categories up together (e.g.
-    -- "Home" for both Mortgage and Utilities) — categories stay independent,
-    -- each keeping its own kind, colour and budget
-    group_name TEXT,
     UNIQUE (account_id, name)
   );
 
@@ -283,13 +279,6 @@ if (rebuildingCategories || rebuildingRules) {
     throw new Error(`Foreign key check failed after category/rule migration: ${JSON.stringify(violations)}`);
   }
   db.exec('PRAGMA foreign_keys = ON');
-}
-
-// Existing databases predate the optional group label used to roll several
-// categories up together for display (e.g. "Home" for Mortgage + Utilities).
-const catColsNow = db.prepare('PRAGMA table_info(categories)').all().map((c) => c.name);
-if (!catColsNow.includes('group_name')) {
-  db.exec('ALTER TABLE categories ADD COLUMN group_name TEXT');
 }
 
 // Savings used to be seeded as an expense, which counted money you kept as

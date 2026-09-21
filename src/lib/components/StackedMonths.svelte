@@ -8,16 +8,10 @@
    * (largest category at the bottom), so a category holds its place and colour
    * from month to month instead of reshuffling by size.
    *
-   * Every category renders as its own segment in the bars. In the legend, an
-   * ungrouped category always shows on its own, but a category carrying a
-   * `group_name` (e.g. "Home" on both Mortgage and Utilities) starts
-   * collapsed under a group heading — clicking that heading only reveals its
-   * members there; clicking a category's own name is what isolates the bars
-   * down to just that one category.
    * @type {{
    *   months: string[],
-   *   income: { id: string|number, name: string, color: string|null, group_name?: string|null }[],
-   *   expense: { id: string|number, name: string, color: string|null, group_name?: string|null }[],
+   *   income: { id: string|number, name: string, color: string|null }[],
+   *   expense: { id: string|number, name: string, color: string|null }[],
    *   values: Record<string, { income: Record<string, number>, expense: Record<string, number> }>,
    *   currency: string,
    *   title?: string,
@@ -45,82 +39,19 @@
     privacy.hideNumbers ? '••' : v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v));
   const fill = (c) => c || 'var(--border-strong)';
 
-  // with groups set up, the group names carry enough meaning on their own —
-  // the generic "Income"/"Spending" section headings just add noise
-  let hasGroups = $derived(income.some((c) => c.group_name) || expense.some((c) => c.group_name));
+  const sumSeries = (bucket, series) => series.reduce((s, c) => s + (bucket[c.id] || 0), 0);
 
-  /**
-   * `series`, as {kind:'header', name, color} / {kind:'item', ...category}
-   * entries for the legend — a group's members always sit together right
-   * after its header, even when they're not adjacent in `series`' own rank
-   * order (an ungrouped category ranked in between them would otherwise
-   * split the group apart and look like one of its members).
-   */
-  function legendShape(series) {
-    const groupItems = new Map(); // group name -> every one of its items, in rank order
-    for (const it of series) {
-      if (!it.group_name) continue;
-      if (!groupItems.has(it.group_name)) groupItems.set(it.group_name, []);
-      groupItems.get(it.group_name).push(it);
-    }
-    const seenGroups = new Set();
-    const out = [];
-    for (const it of series) {
-      if (!it.group_name) { out.push({ kind: 'item', ...it }); continue; }
-      if (seenGroups.has(it.group_name)) continue;
-      seenGroups.add(it.group_name);
-      out.push({ kind: 'header', name: it.group_name, color: it.color });
-      for (const member of groupItems.get(it.group_name)) out.push({ kind: 'item', ...member });
-    }
-    return out;
+  // ---- click a legend entry to isolate that category across every month ----
+  let focused = $state(null); // { id, source: 'income' | 'expense', name, color }
+  function toggleFocus(seg, source) {
+    focused = focused?.id === seg.id && focused.source === source ? null : { ...seg, source };
   }
-  let legendIncome = $derived(legendShape(income));
-  let legendExpense = $derived(legendShape(expense));
-
-  // ---- expanding a group in the legend is purely a display choice — it only
-  // reveals that group's members there, it never touches the chart ----
-  let expandedGroups = $state(new Set());
-  function toggleExpand(name, source) {
-    const key = `${source}:${name}`;
-    const next = new Set(expandedGroups);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    expandedGroups = next;
-  }
-  const isExpanded = (name, source) => expandedGroups.has(`${source}:${name}`);
-
-  // ---- click a category's own name, or a group's own name, to isolate it
-  // across every month — entirely separate from expanding that group above ----
-  let focused = $state(null); // { type: 'category' | 'group', id?, name, color, source, group_name? }
-  function toggleFocusCategory(seg, source) {
-    focused = focused?.type === 'category' && focused.id === seg.id && focused.source === source
-      ? null
-      : { type: 'category', id: seg.id, name: seg.name, color: seg.color, source, group_name: seg.group_name || null };
-  }
-  function toggleFocusGroup(name, color, source) {
-    focused = focused?.type === 'group' && focused.name === name && focused.source === source
-      ? null
-      : { type: 'group', name, color, source };
-  }
-  function headerDimmed(name, source) {
-    if (!focused) return false;
-    if (focused.source !== source) return true;
-    return (focused.type === 'group' ? focused.name : focused.group_name) !== name;
-  }
-  function itemDimmed(entry, source) {
-    if (!focused) return false;
-    if (focused.source !== source) return true;
-    if (focused.type === 'category') return focused.id !== entry.id;
-    return entry.group_name !== focused.name;
-  }
-  function filterActive(series, source) {
-    if (!focused) return series;
-    if (focused.source !== source) return [];
-    if (focused.type === 'category') return series.filter((s) => s.id === focused.id);
-    return series.filter((s) => s.group_name === focused.name);
-  }
-  let activeIncome = $derived(filterActive(income, 'income'));
-  let activeExpense = $derived(filterActive(expense, 'expense'));
+  let activeIncome = $derived(
+    !focused ? income : focused.source === 'income' ? income.filter((s) => s.id === focused.id) : []
+  );
+  let activeExpense = $derived(
+    !focused ? expense : focused.source === 'expense' ? expense.filter((s) => s.id === focused.id) : []
+  );
 
   // ---- vertical zoom: a multiplier on top of the auto-fit ceiling ----
   const ZOOM_MIN = 0.25;
@@ -130,17 +61,12 @@
   function zoomOut() { zoom = Math.max(ZOOM_MIN, zoom / 1.5); }
   function zoomReset() { zoom = 1; }
 
-  const sumSeries = (bucket, series) => series.reduce((s, c) => s + (bucket[c.id] || 0), 0);
-
   // auto-fit ceiling from the unzoomed data, so zoom scales smoothly instead
   // of jumping only when the shrunk max crosses into the next tidy bracket
   let autoMax = $derived(
     Math.max(
       1,
-      ...months.flatMap((m) => [
-        sumSeries(values[m].income, activeIncome),
-        sumSeries(values[m].expense, activeExpense)
-      ])
+      ...months.flatMap((m) => [sumSeries(values[m].income, activeIncome), sumSeries(values[m].expense, activeExpense)])
     )
   );
   // a tidy ceiling: 1, 2 or 5 × a power of ten
@@ -175,8 +101,8 @@
   function stack(x, series, bucket) {
     let acc = 0;
     const segs = series
-      .map((s) => ({ ...s, v: bucket[s.id] || 0 }))
-      .filter((s) => s.v > 0);
+      .filter((s) => bucket[s.id] > 0)
+      .map((s) => ({ ...s, v: bucket[s.id] }));
     const total = segs.reduce((s, d) => s + d.v, 0);
     const out = segs.map((d, i) => {
       const top = y(acc + d.v);
@@ -250,9 +176,6 @@
         </div>
       </div>
     </div>
-    {#if !showInOut}
-      <p class="mb-2 text-[11px] text-[var(--ink-faint)]">Income left, spending right.</p>
-    {/if}
     <div class="relative" bind:this={wrap} bind:clientWidth={cw}>
     <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"
       aria-label="Monthly income and spending, each stacked by category">
@@ -300,40 +223,25 @@
   </div>
 
   <div class="flex w-[150px] shrink-0 flex-col gap-4 text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
-    {#each [['Income', legendIncome, 'income'], ['Spending', legendExpense, 'expense']] as [groupTitle, entries, source]}
-      {#if entries.length}
+    {#each [['Income', income, 'income'], ['Spending', expense, 'expense']] as [groupTitle, series, source]}
+      {#if series.length}
         <div>
-          {#if !hasGroups}<p class="kicker mb-1.5">{groupTitle}</p>{/if}
-          {#each entries as entry (entry.kind === 'header' ? `h:${entry.name}` : entry.id)}
-            {#if entry.kind === 'header'}
-              {@const dimmed = headerDimmed(entry.name, source)}
-              {@const groupFocused = focused?.type === 'group' && focused.name === entry.name && focused.source === source}
-              {@const expanded = isExpanded(entry.name, source)}
-              <div class="flex w-full items-center gap-1 rounded py-[3px] transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''}">
-                <button type="button" class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                  onclick={() => toggleFocusGroup(entry.name, entry.color, source)}>
-                  <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(entry.color)}"></span>
-                  <span class="min-w-0 flex-1 truncate font-medium {groupFocused ? 'text-[var(--ink)]' : ''}">{entry.name}</span>
-                </button>
-                <button type="button" class="shrink-0 rounded p-0.5 text-[var(--ink-faint)] hover:text-[var(--ink)]"
-                  aria-label="{expanded ? 'Collapse' : 'Expand'} {entry.name}" aria-expanded={expanded}
-                  onclick={() => toggleExpand(entry.name, source)}>
-                  <Icon name="chevronDown" size={11} class="transition-transform {expanded ? 'rotate-180' : ''}" />
-                </button>
-              </div>
-            {:else if !entry.group_name || isExpanded(entry.group_name, source)}
-              {@const isFocused = focused?.type === 'category' && focused.id === entry.id && focused.source === source}
-              {@const dimmed = itemDimmed(entry, source)}
-              <button type="button"
-                class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''} {entry.group_name ? 'pl-4' : ''}"
-                onclick={() => toggleFocusCategory(entry, source)}>
-                <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(entry.color)}"></span>
-                <span class="truncate {isFocused ? 'font-semibold text-[var(--ink)]' : ''}">{entry.name}</span>
-              </button>
-            {/if}
+          <p class="kicker mb-1.5">{groupTitle}</p>
+          {#each series as s (s.id)}
+            {@const isFocused = focused?.id === s.id && focused.source === source}
+            {@const dimmed = focused && !isFocused}
+            <button type="button"
+              class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''}"
+              onclick={() => toggleFocus(s, source)}>
+              <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
+              <span class="truncate {isFocused ? 'font-semibold text-[var(--ink)]' : ''}">{s.name}</span>
+            </button>
           {/each}
         </div>
       {/if}
     {/each}
+    {#if !showInOut}
+      <p class="text-[11px] text-[var(--ink-faint)]">Income left, spending right.</p>
+    {/if}
   </div>
 </div>

@@ -272,15 +272,7 @@ const SUGGEST_CATEGORIES_TOOL = {
           required: ['name', 'kind'],
           properties: {
             name: { type: 'string', description: 'Short, human category name, e.g. "Childcare"' },
-            kind: { type: 'string', enum: ['income', 'expense', 'saving'] },
-            group: {
-              type: 'string',
-              description:
-                'Optional shared label to roll this up with other related categories, e.g. "Home" for ' +
-                'both Mortgage and Utilities. Reuse one of the existing groups given below when it fits ' +
-                'rather than inventing a near-duplicate. Omit entirely when nothing meaningful ties this ' +
-                "category to any other — most categories won't need one."
-            }
+            kind: { type: 'string', enum: ['income', 'expense', 'saving'] }
           }
         }
       }
@@ -298,17 +290,13 @@ const SUGGEST_CATEGORIES_SYSTEM =
   '"Groceries", not one category per store). Never repeat a category that already exists ' +
   '(matching is case-insensitive). Suggest at most 8, and suggest none if the existing list ' +
   'already covers the transactions reasonably. Use short, plain category names a person would ' +
-  'actually choose. Give a category a "group" only when it clearly belongs with another category ' +
-  '(existing or newly suggested) under one umbrella a person would recognise, e.g. "Home" for ' +
-  'Mortgage and Utilities, or "Car" for Fuel and Insurance — reuse an existing group from the list ' +
-  "below when one fits, and leave most categories ungrouped rather than forcing a group where there " +
-  'is no real link. Respond solely by calling suggest_categories.';
+  'actually choose. Respond solely by calling suggest_categories.';
 
 /**
  * Look at a sample of the user's own transactions and propose categories not
  * already covered by their existing list.
  * @param {number} userId
- * @returns {Promise<{ suggestions: {name:string,kind:string,group:string|null}[], usage:object, costUsd:number }>}
+ * @returns {Promise<{ suggestions: {name:string,kind:string}[], usage:object, costUsd:number }>}
  */
 export async function suggestNewCategories(userId, accountId) {
   const existing = listCategories(userId, accountId);
@@ -317,10 +305,8 @@ export async function suggestNewCategories(userId, accountId) {
   if (!sample.length) return empty;
 
   const existingList = existing.length
-    ? existing.map((c) => `- ${c.name} (${c.kind}${c.group_name ? `, group: ${c.group_name}` : ''})`).join('\n')
+    ? existing.map((c) => `- ${c.name} (${c.kind})`).join('\n')
     : '(none yet)';
-  const existingGroups = [...new Set(existing.map((c) => c.group_name).filter(Boolean))];
-  const groupsList = existingGroups.length ? existingGroups.join(', ') : '(none yet)';
   const txList = sample.map((r) => `${Number(r.amount).toFixed(2)}\t${r.description}`).join('\n');
 
   const { input, usage } = await callTool({
@@ -329,12 +315,10 @@ export async function suggestNewCategories(userId, accountId) {
     toolName: 'suggest_categories',
     userText:
       `Existing categories:\n${existingList}\n\n` +
-      `Existing groups: ${groupsList}\n\n` +
       `Sample transactions (amount, description):\n${txList}`
   });
 
   const existingNames = new Set(existing.map((c) => c.name.trim().toLowerCase()));
-  const groupByLower = new Map(existingGroups.map((g) => [g.toLowerCase(), g]));
   const seen = new Set();
   const suggestions = [];
   for (const c of Array.isArray(input?.categories) ? input.categories : []) {
@@ -343,11 +327,7 @@ export async function suggestNewCategories(userId, accountId) {
     const key = name.toLowerCase();
     if (!name || existingNames.has(key) || seen.has(key)) continue;
     seen.add(key);
-    const rawGroup = String(c?.group || '').trim();
-    // snap to an existing group's own casing when the model reused one, so
-    // "home" and "Home" don't split into two groups later
-    const group = rawGroup ? groupByLower.get(rawGroup.toLowerCase()) || rawGroup : null;
-    suggestions.push({ name, kind, group });
+    suggestions.push({ name, kind });
   }
 
   return { suggestions, usage, costUsd: estimateCost(usage, getModel()) };

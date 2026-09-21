@@ -50,21 +50,6 @@
     if (!q) return categories;
     return categories.filter((c) => c.name.toLowerCase().includes(q));
   });
-  // categories sharing a group_name are clustered under it (in the order the
-  // group first appears); ungrouped ones just follow, unlabelled
-  let groupedFiltered = $derived.by(() => {
-    const byGroup = new Map();
-    const ungrouped = [];
-    for (const c of filtered) {
-      if (!c.group_name) {
-        ungrouped.push(c);
-        continue;
-      }
-      if (!byGroup.has(c.group_name)) byGroup.set(c.group_name, []);
-      byGroup.get(c.group_name).push(c);
-    }
-    return { groups: [...byGroup.entries()], ungrouped };
-  });
   let showPlaceholder = $derived(!search.trim() || placeholder.toLowerCase().includes(search.trim().toLowerCase()));
 
   async function openPopover() {
@@ -184,24 +169,14 @@
             {placeholder}
           </button>
         {/if}
-        {#each groupedFiltered.groups as [groupName, items]}
-          <p class="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-faint)]">{groupName}</p>
-          {#each items as c}
-            <button type="button" class="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)] focus:bg-[var(--paper-sunk)] focus:outline-none"
-              onclick={() => pick(c.id)}>
-              <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{c.color}"></span>
-              <span class="truncate">{c.name}</span>
-            </button>
-          {/each}
-        {/each}
-        {#each groupedFiltered.ungrouped as c}
+        {#each filtered as c}
           <button type="button" class="flex w-full items-center gap-2 rounded-[var(--radius-xs)] px-2 py-1.5 text-left text-[13px] hover:bg-[var(--paper-sunk)] focus:bg-[var(--paper-sunk)] focus:outline-none"
             onclick={() => pick(c.id)}>
             <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:{c.color}"></span>
             <span class="truncate">{c.name}</span>
           </button>
         {:else}
-          {#if !showPlaceholder && !groupedFiltered.groups.length}
+          {#if !showPlaceholder}
             <p class="px-2 py-3 text-center text-[12px] text-[var(--ink-faint)]">No matching categories.</p>
           {/if}
         {/each}

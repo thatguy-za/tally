@@ -17,7 +17,7 @@ export function GET({ url, locals }) {
   const rows = monthlyCategoryTotals(locals.user.id, month, month, locals.accountId);
   const segments = rows
     .filter((r) => r.kind === 'expense' || r.kind === 'saving')
-    .map((r) => ({ id: r.id, name: r.name, color: r.color, value: r.total, group_name: r.group_name || null }))
+    .map((r) => ({ id: r.id, name: r.name, color: r.color, value: r.total }))
     .sort((a, b) => b.value - a.value);
 
   return json({ segments });
