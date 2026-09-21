@@ -8,6 +8,10 @@
    * (largest category at the bottom), so a category holds its place and colour
    * from month to month instead of reshuffling by size.
    *
+   * Clicking a category in the legend hides just that one, so several can be
+   * hidden at once to declutter the bars; clicking the "Income"/"Spending"
+   * heading hides or shows every category in that side together.
+   *
    * @type {{
    *   months: string[],
    *   income: { id: string|number, name: string, color: string|null }[],
@@ -41,17 +45,30 @@
 
   const sumSeries = (bucket, series) => series.reduce((s, c) => s + (bucket[c.id] || 0), 0);
 
-  // ---- click a legend entry to isolate that category across every month ----
-  let focused = $state(null); // { id, source: 'income' | 'expense', name, color }
-  function toggleFocus(seg, source) {
-    focused = focused?.id === seg.id && focused.source === source ? null : { ...seg, source };
+  // ---- click a legend entry to hide just that category across every month;
+  // click the section heading to hide or show every category in it at once ----
+  let hidden = $state(new Set());
+  const hideKey = (id, source) => `${source}:${id}`;
+  const isHidden = (id, source) => hidden.has(hideKey(id, source));
+  function toggleHidden(seg, source) {
+    const next = new Set(hidden);
+    const key = hideKey(seg.id, source);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    hidden = next;
   }
-  let activeIncome = $derived(
-    !focused ? income : focused.source === 'income' ? income.filter((s) => s.id === focused.id) : []
-  );
-  let activeExpense = $derived(
-    !focused ? expense : focused.source === 'expense' ? expense.filter((s) => s.id === focused.id) : []
-  );
+  function toggleSection(series, source) {
+    const allHidden = series.every((c) => isHidden(c.id, source));
+    const next = new Set(hidden);
+    for (const c of series) {
+      const key = hideKey(c.id, source);
+      if (allHidden) next.delete(key);
+      else next.add(key);
+    }
+    hidden = next;
+  }
+  let activeIncome = $derived(income.filter((c) => !isHidden(c.id, 'income')));
+  let activeExpense = $derived(expense.filter((c) => !isHidden(c.id, 'expense')));
 
   // ---- vertical zoom: a multiplier on top of the auto-fit ceiling ----
   const ZOOM_MIN = 0.25;
@@ -155,10 +172,9 @@
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       {#if title}<h2 class="text-lg">{title}</h2>{/if}
       <div class="ml-auto flex items-center gap-2">
-        {#if focused}
-          <button type="button" class="chip flex items-center gap-1.5 text-[12px]" onclick={() => (focused = null)}>
-            <span class="h-2 w-2 rounded-full" style="background:{fill(focused.color)}"></span>
-            {focused.name}
+        {#if hidden.size}
+          <button type="button" class="chip flex items-center gap-1.5 text-[12px]" onclick={() => (hidden = new Set())}>
+            {hidden.size} hidden
             <Icon name="x" size={11} />
           </button>
         {/if}
@@ -226,15 +242,15 @@
     {#each [['Income', income, 'income'], ['Spending', expense, 'expense']] as [groupTitle, series, source]}
       {#if series.length}
         <div>
-          <p class="kicker mb-1.5">{groupTitle}</p>
+          <button type="button" class="kicker mb-1.5 block hover:text-[var(--ink)]"
+            onclick={() => toggleSection(series, source)}>{groupTitle}</button>
           {#each series as s (s.id)}
-            {@const isFocused = focused?.id === s.id && focused.source === source}
-            {@const dimmed = focused && !isFocused}
+            {@const isHiddenItem = isHidden(s.id, source)}
             <button type="button"
-              class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''}"
-              onclick={() => toggleFocus(s, source)}>
+              class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {isHiddenItem ? 'opacity-40' : ''}"
+              onclick={() => toggleHidden(s, source)}>
               <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
-              <span class="truncate {isFocused ? 'font-semibold text-[var(--ink)]' : ''}">{s.name}</span>
+              <span class="truncate {isHiddenItem ? 'line-through' : ''}">{s.name}</span>
             </button>
           {/each}
         </div>
