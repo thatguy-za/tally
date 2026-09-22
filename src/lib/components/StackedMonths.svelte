@@ -167,7 +167,7 @@
   }
 </script>
 
-<div class="flex items-start gap-5">
+<div class="flex flex-col gap-5 sm:flex-row sm:items-start">
   <div class="min-w-0 flex-1">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       {#if title}<h2 class="text-lg">{title}</h2>{/if}
@@ -238,7 +238,7 @@
     </div>
   </div>
 
-  <div class="flex w-[150px] shrink-0 flex-col gap-4 text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
+  <div class="flex w-full shrink-0 flex-col gap-4 text-[12px] text-[var(--ink-soft)] sm:w-[170px]">
     {#each [['Income', income, 'income'], ['Spending', expense, 'expense']] as [groupTitle, series, source]}
       {#if series.length}
         <div>

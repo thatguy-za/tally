@@ -130,7 +130,7 @@
             </td>
             <td class="px-3 py-2.5 text-right tnum text-[var(--ink-faint)]">{r.priority}</td>
             <td class="px-3 py-2.5">
-              <form method="POST" action="/settings?/deleteRule" use:enhance={submitDelete} class="flex justify-end opacity-0 transition group-hover:opacity-100">
+              <form method="POST" action="/settings?/deleteRule" use:enhance={submitDelete} class="flex justify-end opacity-70 transition group-hover:opacity-100">
                 <input type="hidden" name="id" value={r.id} />
                 <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]" data-tip="Delete rule" aria-label="Delete rule">
                   <Icon name="trash" size={14} />

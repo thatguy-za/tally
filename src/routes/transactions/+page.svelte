@@ -255,6 +255,7 @@
 
 <div class="card card-flush">
   {#if data.transactions.length}
+    <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-[var(--border)] text-left">
@@ -360,7 +361,7 @@
                 <Money value={t.amount} currency={data.currency} colour="auto" class="font-medium" />
               </td>
               <td class="py-2.5 pr-3">
-                <div class="flex justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
+                <div class="flex justify-end gap-0.5 opacity-70 transition group-hover:opacity-100">
                   <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--accent)]"
                     data-tip="Save as rule" aria-label="Save as auto-categorisation rule"
                     onclick={() => { rulingId = t.id; editingId = null; ruleCategoryId = String(t.category_id ?? ''); }}><Icon name="repeat" size={14} /></button>
@@ -381,6 +382,7 @@
         {/each}
       </tbody>
     </table>
+    </div>
   {:else}
     <EmptyState
       icon="transactions"

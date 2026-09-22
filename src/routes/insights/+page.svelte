@@ -245,30 +245,31 @@
 </div>
 
 {#if ins && ins.reason !== 'empty'}
-  <div class="mb-4 grid gap-4 {data.savings.configured ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}">
-    <div class="card">
-      <p class="kicker">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
-      <span class="mt-2 block stat-value text-[24px]" style="color:var(--positive)">
+  <div class="mb-4 grid {data.savings.configured ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-[var(--border)] overflow-hidden rounded-[var(--radius)] border border-[var(--border)]"
+    style="background:var(--surface);box-shadow:var(--shadow-sm)">
+    <div class="min-w-0 px-2.5 py-3 sm:px-5 sm:py-4">
+      <p class="kicker truncate">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
+      <span class="mt-1 block stat-value truncate text-[15px] sm:mt-2 sm:text-[24px]" style="color:var(--positive)">
         <Money value={ins.earned} currency={data.currency} colour="none" />
       </span>
-      <p class="mt-1 text-xs text-[var(--ink-faint)]">{sub(ins, 'earned')}</p>
+      <p class="mt-1 hidden truncate text-xs text-[var(--ink-faint)] sm:block">{sub(ins, 'earned')}</p>
     </div>
-    <div class="card">
-      <p class="kicker">Went out{ins.single && ins.partial ? ' so far' : ''}</p>
+    <div class="min-w-0 px-2.5 py-3 sm:px-5 sm:py-4">
+      <p class="kicker truncate">Went out{ins.single && ins.partial ? ' so far' : ''}</p>
       <!-- deliberately not red: spending more than usual isn't automatically
            bad, so the number stays neutral and the breakdown explains what moved -->
-      <span class="mt-2 block stat-value text-[24px]"><Money value={ins.spent} currency={data.currency} /></span>
-      <p class="mt-1 text-xs text-[var(--ink-faint)]">{sub(ins, 'spent')}</p>
+      <span class="mt-1 block stat-value truncate text-[15px] sm:mt-2 sm:text-[24px]"><Money value={ins.spent} currency={data.currency} /></span>
+      <p class="mt-1 hidden truncate text-xs text-[var(--ink-faint)] sm:block">{sub(ins, 'spent')}</p>
     </div>
     {#if data.savings.configured}
-      <button type="button" class="card w-full text-left transition-colors hover:border-[var(--border-strong)]"
+      <button type="button" class="min-w-0 px-2.5 py-3 text-left transition-colors hover:bg-[var(--paper-sunk)] sm:px-5 sm:py-4"
         onclick={openSavingsModal}>
-        <p class="kicker">Saved{ins.single && ins.partial ? ' so far' : ''}</p>
-        <span class="mt-2 block stat-value text-[24px]"
+        <p class="kicker truncate">Saved{ins.single && ins.partial ? ' so far' : ''}</p>
+        <span class="mt-1 block stat-value truncate text-[15px] sm:mt-2 sm:text-[24px]"
           style="color:{ins.saved < 0 ? 'var(--ink)' : 'var(--positive)'}">
           <Money value={ins.saved} currency={data.currency} colour="none" />
         </span>
-        <p class="mt-1 text-xs text-[var(--ink-faint)]">
+        <p class="mt-1 hidden truncate text-xs text-[var(--ink-faint)] sm:block">
           {#if ins.saved < 0}
             taken out of savings
           {:else if sub(ins, 'saved')}

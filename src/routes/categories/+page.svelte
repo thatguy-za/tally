@@ -162,7 +162,7 @@
                 <td class="px-3 py-2.5 text-[var(--ink-faint)]">{kindLabel[c.kind] || c.kind}</td>
                 <td class="px-3 py-2.5 text-right tnum text-[var(--ink-faint)]">{c.count}</td>
                 <td class="px-3 py-2.5">
-                  <div class="flex justify-end gap-0.5 opacity-0 transition group-hover:opacity-100">
+                  <div class="flex justify-end gap-0.5 opacity-70 transition group-hover:opacity-100">
                     <button type="button" class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"
                       data-tip="Edit" aria-label="Edit {c.name}" onclick={() => startEdit(c)}>
                       <Icon name="edit" size={14} />
