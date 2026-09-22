@@ -227,6 +227,12 @@
   let aiSuggested = $state(new Set()); // rows the AI set
   let aiPending = $state(new Set()); // rows currently being categorised
   let aiKick = '';
+  // lets "Cancel" stop the loop between chunks — the chunk already in flight
+  // still finishes (and is still billed), but no further chunks are sent
+  let aiController = null;
+  function cancelAiSuggest() {
+    aiController?.abort();
+  }
 
   $effect(() => {
     if (phase !== 'review' || !data.aiAvailable) return;
@@ -250,14 +256,22 @@
     aiSuggested = new Set();
     let cost = 0;
     let count = 0;
+    const controller = new AbortController();
+    aiController = controller;
 
     for (let i = 0; i < targets.length; i += AI_CHUNK) {
+      if (controller.signal.aborted) {
+        aiPending = new Set();
+        aiState = { ...aiState, running: false, cancelled: true, count, cost };
+        return;
+      }
       const chunk = targets.slice(i, i + AI_CHUNK);
       aiPending = new Set(chunk.map((r) => r.i));
       try {
         const res = await fetch('/transactions/import/suggest', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             rows: chunk.map((r) => ({ ref: String(r.i), date: r.date, description: r.description, amount: r.amount }))
           })
@@ -279,7 +293,11 @@
         cost += j.costUsd || 0;
       } catch (e) {
         aiPending = new Set();
-        aiState = { ...aiState, running: false, error: e?.message || 'AI categorisation failed.', count, cost };
+        if (e?.name === 'AbortError') {
+          aiState = { ...aiState, running: false, cancelled: true, count, cost };
+        } else {
+          aiState = { ...aiState, running: false, error: e?.message || 'AI categorisation failed.', count, cost };
+        }
         return;
       }
       aiPending = new Set();
@@ -481,6 +499,10 @@
           {#if aiState.running}
             <span>The AI is categorising… <b class="tnum">{aiPct}%</b>
               <span class="text-[var(--ink-faint)]">({aiState.done}/{aiState.total})</span></span>
+          {:else if aiState.cancelled}
+            <span class="text-[var(--ink-faint)]">
+              Cancelled{#if aiState.count} — {aiState.count} row(s) were done first{/if}.
+            </span>
           {:else if aiState.error}
             <span style="color:var(--negative)">
               Couldn't finish — {aiState.error}{#if aiState.count} {aiState.count} row(s) were done first.{/if}
@@ -492,9 +514,13 @@
           {:else if aiState.ran}
             <span>The AI didn't find confident matches — set the categories below.</span>
           {/if}
-          <button type="button" class="btn btn-ghost btn-sm ml-auto" disabled={aiState.running} onclick={runAiSuggest}>
-            {aiState.running ? 'Working…' : aiState.ran ? 'Re-run' : 'Categorise'}
-          </button>
+          {#if aiState.running}
+            <button type="button" class="btn btn-ghost btn-sm ml-auto" onclick={cancelAiSuggest}>Cancel</button>
+          {:else}
+            <button type="button" class="btn btn-ghost btn-sm ml-auto" onclick={runAiSuggest}>
+              {aiState.ran ? 'Re-run' : 'Categorise'}
+            </button>
+          {/if}
         </div>
         {#if aiState.running || (aiState.total && aiState.done < aiState.total && !aiState.error)}
           <div class="mt-2 h-1 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
