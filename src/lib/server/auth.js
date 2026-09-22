@@ -89,7 +89,7 @@ export function deleteSession(sessionId) {
  * are reliable; fall back to the resolved URL.
  * @param {import('@sveltejs/kit').RequestEvent} event
  */
-function servedOverHttps(event) {
+export function servedOverHttps(event) {
   const fwd = event.request.headers.get('x-forwarded-proto');
   if (fwd) return fwd.split(',')[0].trim() === 'https';
   const origin = event.request.headers.get('origin');

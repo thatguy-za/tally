@@ -2,6 +2,7 @@
   import { invalidateAll } from '$app/navigation';
   import Icon from './Icon.svelte';
   import AddAccountModal from './AddAccountModal.svelte';
+  import { toast } from '$lib/toast.svelte.js';
 
   /**
    * The global "which account" switcher — every page's figures are scoped to
@@ -37,12 +38,18 @@
   async function switchTo(id) {
     switching = true;
     try {
-      await fetch('/account-switch', {
+      const res = await fetch('/account-switch', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ accountId: id })
       });
+      if (!res.ok) {
+        toast("Couldn't switch accounts — try again.", { type: 'info' });
+        return;
+      }
       await invalidateAll();
+    } catch {
+      toast("Couldn't switch accounts — try again.", { type: 'info' });
     } finally {
       switching = false;
     }
