@@ -11,6 +11,7 @@
   import AddImportOverlay from '$lib/components/AddImportOverlay.svelte';
   import CategorySelect from '$lib/components/CategorySelect.svelte';
   import { toast } from '$lib/toast.svelte.js';
+  import { guessDomain } from '$lib/logo.js';
   let { data, form } = $props();
 
   let showAddImport = $state($page.url.searchParams.has('new'));
@@ -18,6 +19,7 @@
   let editingId = $state(null);
   let rulingId = $state(null);
   let ruleCategoryId = $state('');
+  let ruleMatchText = $state('');
   let editingLogoFor = $state(null);
   let selected = $state(new Set());
 
@@ -294,7 +296,10 @@
                 <form method="POST" action="?/saveRule" use:enhance class="grid gap-2 sm:grid-cols-6">
                   <div class="sm:col-span-3">
                     <label class="label" for="rule-match-{t.id}">When description contains</label>
-                    <input class="input" id="rule-match-{t.id}" name="match_text" value={t.description} required />
+                    <div class="flex items-center gap-2">
+                      <MerchantLogo domain={guessDomain(ruleMatchText)} color={catColor(currentCat(t))} size={22} />
+                      <input class="input min-w-0 flex-1" id="rule-match-{t.id}" name="match_text" bind:value={ruleMatchText} required />
+                    </div>
                   </div>
                   <div class="sm:col-span-2">
                     <label class="label" for="rule-cat-{t.id}">Category</label>
@@ -364,7 +369,7 @@
                 <div class="flex justify-end gap-0.5 opacity-70 transition group-hover:opacity-100">
                   <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--accent)]"
                     data-tip="Save as rule" aria-label="Save as auto-categorisation rule"
-                    onclick={() => { rulingId = t.id; editingId = null; ruleCategoryId = String(t.category_id ?? ''); }}><Icon name="repeat" size={14} /></button>
+                    onclick={() => { rulingId = t.id; editingId = null; ruleCategoryId = String(t.category_id ?? ''); ruleMatchText = t.description; }}><Icon name="repeat" size={14} /></button>
                   <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"
                     data-tip="Edit" aria-label="Edit transaction"
                     onclick={() => { editingId = t.id; rulingId = null; }}><Icon name="edit" size={14} /></button>

@@ -4,6 +4,8 @@
   import Icon from './Icon.svelte';
   import CategorySelect from './CategorySelect.svelte';
   import Money from './Money.svelte';
+  import MerchantLogo from './MerchantLogo.svelte';
+  import { guessDomain } from '$lib/logo.js';
   import { toast } from '$lib/toast.svelte.js';
 
   /**
@@ -125,8 +127,13 @@
         {#each rules as r (r.id)}
           <tr class="group border-b border-[var(--border)] last:border-0 transition-colors hover:bg-[var(--paper-sunk)]/60">
             <td class="px-3 py-2.5">
-              “{r.match_text}” →
-              <span class="font-medium" style="color:{r.category_color}">{r.category_name}</span>
+              <div class="flex items-center gap-2.5">
+                <MerchantLogo domain={guessDomain(r.match_text)} color={r.category_color} size={22} />
+                <span>
+                  “{r.match_text}” →
+                  <span class="font-medium" style="color:{r.category_color}">{r.category_name}</span>
+                </span>
+              </div>
             </td>
             <td class="px-3 py-2.5 text-right tnum text-[var(--ink-faint)]">{r.priority}</td>
             <td class="px-3 py-2.5">
