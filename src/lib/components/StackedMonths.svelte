@@ -8,12 +8,12 @@
    * (largest category at the bottom), so a category holds its place and colour
    * from month to month instead of reshuffling by size.
    *
-   * Clicking a category in the legend isolates it (every other category in
-   * that side hides), so it reads like "show me just this one"; clicking
-   * another then reveals that one too, and so on until every category is
-   * back or the "N hidden" chip is used to clear them all at once. Clicking
-   * the "Income"/"Spending" heading hides or shows every category in that
-   * side together.
+   * Clicking a category in the legend isolates it (every other category,
+   * income and spending alike, hides), so it reads like "show me just this
+   * one"; clicking another then reveals that one too, and so on until every
+   * category is back or the "N hidden" chip is used to clear them all at
+   * once. Clicking the "Income"/"Spending" heading hides or shows every
+   * category in that side together.
    *
    * @type {{
    *   months: string[],
@@ -49,22 +49,23 @@
   const sumSeries = (bucket, series) => series.reduce((s, c) => s + (bucket[c.id] || 0), 0);
 
   // ---- click a legend entry to isolate just that category across every
-  // month (every other category on that side hides); click another to bring
-  // it back too, and so on until every category is visible again or the "N
-  // hidden" chip clears them all at once. Click the section heading to hide
-  // or show every category in it at once ----
+  // month AND across both Income and Spending (everything else hides); click
+  // another to bring it back too, and so on until every category is visible
+  // again or the "N hidden" chip clears them all at once. Click the section
+  // heading to hide or show every category in it at once ----
   let hidden = $state(new Set());
   const hideKey = (id, source) => `${source}:${id}`;
   const isHidden = (id, source) => hidden.has(hideKey(id, source));
-  function toggleHidden(seg, series, source) {
+  function toggleHidden(seg, source) {
     const next = new Set(hidden);
     const key = hideKey(seg.id, source);
-    const anyHiddenInSource = series.some((c) => isHidden(c.id, source));
-    if (!anyHiddenInSource) {
-      // nothing hidden yet on this side — isolate the clicked category
-      for (const c of series) {
-        if (c.id === seg.id) continue;
-        next.add(hideKey(c.id, source));
+    if (hidden.size === 0) {
+      // nothing hidden yet anywhere — isolate the clicked category across both sides
+      for (const [series, src] of [[income, 'income'], [expense, 'expense']]) {
+        for (const c of series) {
+          if (src === source && c.id === seg.id) continue;
+          next.add(hideKey(c.id, src));
+        }
       }
     } else if (next.has(key)) {
       next.delete(key);
@@ -264,7 +265,7 @@
             {@const isHiddenItem = isHidden(s.id, source)}
             <button type="button"
               class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {isHiddenItem ? 'opacity-40' : ''}"
-              onclick={() => toggleHidden(s, series, source)}>
+              onclick={() => toggleHidden(s, source)}>
               <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
               <span class="truncate {isHiddenItem ? 'line-through' : ''}">{s.name}</span>
             </button>
