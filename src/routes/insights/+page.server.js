@@ -5,6 +5,7 @@ import {
   monthRange,
   periodInsights,
   monthlyCategoryTotals,
+  savingsSummary,
   getUserAiCategorise
 } from '$lib/server/queries.js';
 
@@ -82,6 +83,7 @@ export function load({ locals, url }) {
       expense: expense.series,
       values
     },
+    savings: savingsSummary(userId, { from, to }, accountId),
     aiSummary: aiEnabled() && getUserAiCategorise(userId),
     currency: locals.user.currency
   };

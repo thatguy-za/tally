@@ -9,6 +9,7 @@
   import SpendingDoughnut from '$lib/components/SpendingDoughnut.svelte';
   import PeriodPicker from '$lib/components/PeriodPicker.svelte';
   import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
+  import SavingsChart from '$lib/components/SavingsChart.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Money from '$lib/components/Money.svelte';
   let { data } = $props();
@@ -25,6 +26,18 @@
     categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym };
   }
 
+  /** Every saving-category transaction for one month, from a savings-chart bar. */
+  function openSavingsCategoryModal(bar) {
+    categoryModal = {
+      categoryId: 'other',
+      categoryName: 'Savings',
+      color: 'var(--positive)',
+      month: bar.ym,
+      kind: 'saving',
+      excludeIds: []
+    };
+  }
+
   let monthModal = $state(null);
   async function openMonthModal(ym) {
     monthModal = { month: ym, segments: null, loading: true };
@@ -37,9 +50,47 @@
       monthModal = { month: ym, segments: [], loading: false };
     }
   }
+  let savingsModal = $state(null);
+  async function openSavingsModal() {
+    const from = data.from, to = data.to;
+    savingsModal = { series: null, total: 0, summary: null, summaryLoading: false, summaryError: null };
+    const params = new URLSearchParams({ from, to });
+    try {
+      const res = await fetch(`/insights/savings-breakdown?${params}`);
+      const j = await res.json();
+      if (!savingsModal) return; // closed while loading
+      savingsModal.series = j.series || [];
+      savingsModal.total = j.total || 0;
+    } catch {
+      if (savingsModal) savingsModal.series = [];
+    }
+    if (data.aiSummary && !privacy.hideNumbers && savingsModal?.series?.length) {
+      savingsModal.summaryLoading = true;
+      try {
+        const res = await fetch('/insights/savings-summary', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ from, to })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.message || 'the request failed');
+        if (savingsModal) {
+          savingsModal.summary = body.summary;
+          savingsModal.summaryLoading = false;
+        }
+      } catch (e) {
+        if (savingsModal) {
+          savingsModal.summaryError = e.message;
+          savingsModal.summaryLoading = false;
+        }
+      }
+    }
+  }
+
   function onWindowKey(e) {
     if (e.key === 'Escape') {
-      if (monthModal) monthModal = null;
+      if (savingsModal) savingsModal = null;
+      else if (monthModal) monthModal = null;
     }
   }
 
@@ -194,7 +245,7 @@
 </div>
 
 {#if ins && ins.reason !== 'empty'}
-  <div class="mb-4 grid grid-cols-2 divide-x divide-[var(--border)] overflow-hidden rounded-[var(--radius)] border border-[var(--border)]"
+  <div class="mb-4 grid {data.savings.configured ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-[var(--border)] overflow-hidden rounded-[var(--radius)] border border-[var(--border)]"
     style="background:var(--surface);box-shadow:var(--shadow-sm)">
     <div class="min-w-0 px-2.5 py-3 sm:px-5 sm:py-4">
       <p class="kicker truncate">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
@@ -210,6 +261,25 @@
       <span class="mt-1 block stat-value truncate text-[15px] sm:mt-2 sm:text-[24px]"><Money value={ins.spent} currency={data.currency} /></span>
       <p class="mt-1 hidden truncate text-xs text-[var(--ink-faint)] sm:block">{sub(ins, 'spent')}</p>
     </div>
+    {#if data.savings.configured}
+      <button type="button" class="min-w-0 px-2.5 py-3 text-left transition-colors hover:bg-[var(--paper-sunk)] sm:px-5 sm:py-4"
+        onclick={openSavingsModal}>
+        <p class="kicker truncate">Saved{ins.single && ins.partial ? ' so far' : ''}</p>
+        <span class="mt-1 block stat-value truncate text-[15px] sm:mt-2 sm:text-[24px]"
+          style="color:{ins.saved < 0 ? 'var(--ink)' : 'var(--positive)'}">
+          <Money value={ins.saved} currency={data.currency} colour="none" />
+        </span>
+        <p class="mt-1 hidden truncate text-xs text-[var(--ink-faint)] sm:block">
+          {#if ins.saved < 0}
+            taken out of savings
+          {:else if sub(ins, 'saved')}
+            {sub(ins, 'saved')}
+          {:else}
+            {money(data.savings.total)} saved in total
+          {/if}
+        </p>
+      </button>
+    {/if}
   </div>
 {/if}
 
@@ -356,6 +426,61 @@
           onSegmentClick={(seg) => openCategoryModal(seg, monthModal.month, 'expense')} />
       {:else}
         <EmptyState icon="reports" title="Nothing spent in {shortMonth(monthModal.month)}" />
+      {/if}
+    </div>
+  </div>
+{/if}
+
+{#if savingsModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_interactive_supports_focus -->
+  <div class="overlay" role="dialog" aria-modal="true" aria-label="Savings breakdown"
+    onclick={(e) => e.target === e.currentTarget && (savingsModal = null)}>
+    <div class="card w-full max-w-2xl rise max-h-[85vh] overflow-y-auto">
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <p class="kicker mb-1">{periodLabel}</p>
+          <h2 class="text-xl" style="font-family:var(--font-display)">Your savings by month</h2>
+        </div>
+        <button
+          class="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--ink-faint)] transition-colors hover:bg-[var(--paper-sunk)] hover:text-[var(--ink)]"
+          onclick={() => (savingsModal = null)}
+          aria-label="Close"
+        >
+          <Icon name="x" size={16} />
+        </button>
+      </div>
+
+      {#if data.aiSummary && savingsModal.series?.length}
+        <div class="mb-4 rounded-[var(--radius-sm)] border border-[var(--border)] p-3">
+          {#if privacy.hideNumbers}
+            <p class="text-[13px] text-[var(--ink-faint)]">•••• hidden</p>
+          {:else if savingsModal.summaryLoading}
+            <div class="space-y-2">
+              <div class="ai-shimmer h-3 w-full rounded-full"></div>
+              <div class="ai-shimmer h-3 w-[70%] rounded-full"></div>
+            </div>
+          {:else if savingsModal.summary}
+            <p class="flex items-start gap-2 text-[13px] leading-relaxed text-[var(--ink-soft)]">
+              <Icon name="sparkle" size={14} class="mt-0.5 shrink-0 text-[var(--accent)]" />
+              {savingsModal.summary}
+            </p>
+          {:else if savingsModal.summaryError}
+            <p class="text-[13px] text-[var(--ink-faint)]">No summary just now — {savingsModal.summaryError}</p>
+          {/if}
+        </div>
+      {/if}
+
+      {#if savingsModal.series === null}
+        <div class="flex h-[220px] items-end gap-2 px-2">
+          {#each [45, 70, 55, 85, 40, 65, 30, 75, 50, 60, 35, 80] as h}
+            <div class="ai-shimmer flex-1 rounded-t-md" style="height:{h}%"></div>
+          {/each}
+        </div>
+      {:else if savingsModal.series.length}
+        <SavingsChart series={savingsModal.series} currency={data.currency} onBarClick={openSavingsCategoryModal} />
+      {:else}
+        <p class="py-8 text-center text-sm text-[var(--ink-faint)]">No savings-category transactions in this period.</p>
       {/if}
     </div>
   </div>
