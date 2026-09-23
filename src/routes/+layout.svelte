@@ -22,12 +22,17 @@
 
   let current = $derived($page.url.pathname);
 
+  // the full nav list only needs its own dropdown on mobile, where the
+  // header row is too narrow for labelled links — see the hamburger below
+  let mobileNavOpen = $state(false);
+
   $effect(() => {
     initTheme();
     initPrivacy();
   });
 
   onNavigate((navigation) => {
+    mobileNavOpen = false;
     if (!document.startViewTransition) return;
     return new Promise((resolve) => {
       document.startViewTransition(async () => {
@@ -55,7 +60,7 @@
           <span class="text-[17px] font-medium tracking-tight" style="font-family:var(--font-display)">Tally</span>
         </a>
 
-        <nav class="ml-1 flex flex-1 items-center gap-0.5 overflow-x-auto sm:ml-2">
+        <nav class="ml-1 hidden flex-1 items-center gap-0.5 overflow-x-auto sm:ml-2 sm:flex">
           {#each nav as item}
             {@const active = current.startsWith(item.href)}
             <a
@@ -71,12 +76,41 @@
           {/each}
         </nav>
 
+        <div class="flex-1 sm:hidden"></div>
+
         {#if data.accounts}
           <AccountSwitcher accounts={data.accounts} accountId={data.accountId} />
         {/if}
 
         <UserMenu user={data.user} />
+
+        <button
+          type="button"
+          class="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-sm)] text-[var(--ink-soft)] transition-colors hover:bg-[var(--paper-sunk)] sm:hidden"
+          aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={mobileNavOpen}
+          onclick={() => (mobileNavOpen = !mobileNavOpen)}
+        >
+          <Icon name={mobileNavOpen ? 'x' : 'menu'} size={19} />
+        </button>
       </div>
+
+      {#if mobileNavOpen}
+        <nav class="border-t border-[var(--border)] px-4 py-2 sm:hidden">
+          {#each nav as item}
+            {@const active = current.startsWith(item.href)}
+            <a
+              href={item.href}
+              class="flex items-center gap-2.5 rounded-[var(--radius-sm)] px-2.5 py-2.5 text-[14px] font-medium transition-colors
+                {active ? 'text-[var(--ink)]' : 'text-[var(--ink-faint)] hover:text-[var(--ink-soft)]'}"
+              style={active ? 'background:var(--paper-sunk)' : ''}
+            >
+              <Icon name={item.icon} size={16} stroke={active ? 2 : 1.75} class={active ? 'text-[var(--accent)]' : ''} />
+              {item.label}
+            </a>
+          {/each}
+        </nav>
+      {/if}
     </header>
 
     <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-9">
