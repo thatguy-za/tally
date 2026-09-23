@@ -168,7 +168,12 @@
                       <Icon name="edit" size={14} />
                     </button>
                     <form method="POST" action="?/deleteCategory" use:enhance
-                      onsubmit={(e) => { if (c.count && !confirm(`${c.count} transactions will become uncategorised. Continue?`)) e.preventDefault(); }}>
+                      onsubmit={(e) => {
+                        const msg = c.count
+                          ? `Delete "${c.name}"? ${c.count} transaction${c.count === 1 ? '' : 's'} will become uncategorised.`
+                          : `Delete "${c.name}"?`;
+                        if (!confirm(msg)) e.preventDefault();
+                      }}>
                       <input type="hidden" name="id" value={c.id} />
                       <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"
                         data-tip="Delete" aria-label="Delete {c.name}">
