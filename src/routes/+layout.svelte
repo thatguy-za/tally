@@ -63,7 +63,7 @@
           <Icon name={mobileNavOpen ? 'x' : 'menu'} size={19} />
         </button>
 
-        <a href="/insights" class="hidden shrink-0 items-center gap-2.5 sm:flex">
+        <a href="/insights" class="flex shrink-0 items-center gap-2.5">
           <span class="grid h-8 w-8 place-items-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-contrast)]">
             <Icon name="wallet" size={17} stroke={2} />
           </span>
