@@ -8,6 +8,8 @@ import {
   savingsSummary,
   getUserAiCategorise
 } from '$lib/server/queries.js';
+import { servedOverHttps } from '$lib/server/auth.js';
+import { PERIOD_COOKIE } from '$lib/server/period-cookie.js';
 
 const YM = /^\d{4}-\d{2}$/;
 const MAX_SERIES = 7; // beyond this, categories fold into "Other"
@@ -41,7 +43,8 @@ function seriesFor(rows, kind) {
 }
 
 /** @type {import('./$types').PageServerLoad} */
-export function load({ locals, url }) {
+export function load(event) {
+  const { locals, url, cookies } = event;
   const userId = locals.user.id;
   const accountId = locals.accountId;
   const months = listMonths(userId, accountId); // newest first
@@ -52,11 +55,24 @@ export function load({ locals, url }) {
   const defTo = latest;
   const defFrom = [earliest, shiftMonth(latest, -11)].sort()[1];
 
-  let from = url.searchParams.get('from') || defFrom;
-  let to = url.searchParams.get('to') || defTo;
+  // an explicit range in the URL wins; otherwise fall back to whatever range
+  // this user picked last time, remembered in a cookie, before the computed default
+  const saved = cookies.get(PERIOD_COOKIE);
+  const [savedFrom, savedTo] = saved ? saved.split(':') : [];
+
+  let from = url.searchParams.get('from') || savedFrom || defFrom;
+  let to = url.searchParams.get('to') || savedTo || defTo;
   if (!YM.test(from)) from = defFrom;
   if (!YM.test(to)) to = defTo;
   if (from > to) [from, to] = [to, from];
+
+  cookies.set(PERIOD_COOKIE, `${from}:${to}`, {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: servedOverHttps(event),
+    maxAge: 60 * 60 * 24 * 365
+  });
 
   // rows are already bucketed into 'income'/'expense' by sign — see
   // monthlyCategoryTotals

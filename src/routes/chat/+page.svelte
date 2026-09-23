@@ -2,6 +2,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import ChatBarChart from '$lib/components/ChatBarChart.svelte';
   import { formatMoney } from '$lib/privacy.svelte.js';
+  import { renderChatMarkdown } from '$lib/chat-format.js';
   let { data } = $props();
 
   const STARTERS = [
@@ -129,7 +130,11 @@
           style={m.role === 'user'
             ? 'background:var(--accent);color:var(--accent-contrast)'
             : 'background:var(--paper-sunk);color:var(--ink)'}>
-          <p class="whitespace-pre-wrap">{m.content}</p>
+          {#if m.role === 'assistant'}
+            <p class="whitespace-pre-wrap">{@html renderChatMarkdown(m.content)}</p>
+          {:else}
+            <p class="whitespace-pre-wrap">{m.content}</p>
+          {/if}
           {#each m.charts || [] as c}
             <ChatBarChart title={c.title} bars={c.bars} currency={data.currency} />
           {/each}

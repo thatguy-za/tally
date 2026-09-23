@@ -399,7 +399,7 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 10;
+export const SUMMARY_VERSION = 11;
 
 const SUMMARY_SYSTEM =
   'You write a very short money summary covering the period described. The ' +
@@ -415,7 +415,10 @@ const SUMMARY_SYSTEM =
   'sentences, each naming a concrete category or figure — no vague filler ' +
   'like "spending was mixed" or "a few categories changed". Plain, warm, ' +
   'second-person English ("you spent…"). No headings, bullet points, ' +
-  'markdown, preamble, sign-off or disclaimers. Never end with advice, a ' +
+  'markdown, preamble, sign-off or disclaimers. Never use statistics jargon ' +
+  'like "median", "average", "mean" or "baseline" — say "usual" instead, ' +
+  'exactly as the facts below describe it, since the reader isn\'t a ' +
+  'statistician. Never end with advice, a ' +
   'suggestion or a recommendation of any kind, generic or specific ("track ' +
   'your spending", "keep an eye on X", "consider…") — describe what happened ' +
   'and stop there. If nothing in the category detail stands out, say so ' +
@@ -468,12 +471,12 @@ export function buildPeriodFacts(insights, currency) {
   }
   lines.push(
     b
-      ? `"Usual" means this person's own median month across the ${b.months} month${b.months === 1 ? '' : 's'} before this period — the middle value, not the average, so one unusually big or quiet month doesn't skew it.`
+      ? `"Usual" means this person's own typical month across the ${b.months} month${b.months === 1 ? '' : 's'} before this period (the middle value across those months, not a plain average, so one unusually big or quiet month doesn't skew it — but say "usual", never "median", to the reader).`
       : 'There is nothing before this period to compare against.'
   );
 
   if (insights.movers.length) {
-    lines.push('', `Biggest changes vs usual${insights.single ? '' : ' (medians)'}:`);
+    lines.push('', 'Biggest changes vs usual:');
     for (const m of insights.movers) {
       lines.push(
         `- ${m.name}: ${money(m.spent)} (usual ${money(m.usual)} — ` +

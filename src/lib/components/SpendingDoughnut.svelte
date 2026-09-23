@@ -101,13 +101,11 @@
   <div class="flex w-full flex-col gap-[3px] text-[12px] text-[var(--ink-soft)] sm:w-[170px] sm:shrink-0">
     <p class="kicker mb-1">Spending</p>
     {#each arcs as s (s.id)}
-      <button type="button" disabled={!onSegmentClick}
-        class="flex items-center gap-2 rounded py-[3px] text-left {onSegmentClick ? 'hover:text-[var(--ink)]' : ''}"
-        onclick={() => onSegmentClick?.(s)}>
+      <div class="flex items-center gap-2 py-[3px]">
         <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
         <span class="min-w-0 flex-1 truncate">{s.name}</span>
         <span class="tnum shrink-0 text-[var(--ink-faint)]">{Math.round(s.pct * 100)}%</span>
-      </button>
+      </div>
     {/each}
   </div>
 </div>

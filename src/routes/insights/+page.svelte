@@ -311,11 +311,11 @@
   </div>
   <p class="mb-4 text-[13px] text-[var(--ink-faint)]">
     {#if ins.single}
-      Against your own median month over {ins.baseline.months} earlier month{ins.baseline.months === 1 ? '' : 's'}{ins.partial
+      Against what's usual for you, based on the {ins.baseline.months} earlier month{ins.baseline.months === 1 ? '' : 's'}{ins.partial
         ? `, scaled to the ${Math.round(ins.share * 100)}% of ${formatMonth(ins.from)} gone so far`
         : ''}.
     {:else}
-      Monthly averages for this period, against the median of the {ins.baseline.months} month{ins.baseline.months === 1 ? '' : 's'} before it.
+      Monthly averages for this period, against what's usual based on the {ins.baseline.months} month{ins.baseline.months === 1 ? '' : 's'} before it.
     {/if}
   </p>
   <ul class="space-y-2.5">
