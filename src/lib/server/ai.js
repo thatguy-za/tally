@@ -399,22 +399,29 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 7;
+export const SUMMARY_VERSION = 8;
 
 const SUMMARY_SYSTEM =
-  'You write a very short money summary covering the period described. Use ' +
-  'only the figures you are given: never calculate, estimate or invent a ' +
-  'number, and never name a category that is not in the list. Write no more ' +
-  'than 40 words, as two sentences: one on how the period went; then one ' +
-  'highlighting the most notable trend or deviation from usual — a category ' +
-  'that moved a lot, a run of months heading the same direction, or the ' +
-  'biggest entry in "Biggest changes vs usual" — or, if nothing stands out, ' +
-  'say spending looked steady. Plain, warm, second-person English ("you ' +
-  'spent…"). No headings, bullet points, markdown, preamble, sign-off or ' +
-  'disclaimers. Never end with advice, a suggestion or a recommendation of ' +
-  'any kind, generic or specific ("track your spending", "keep an eye on ' +
-  'X", "consider…") — describe what happened and stop there. If things look ' +
-  'healthy, say so plainly rather than manufacturing a problem.';
+  'You write a very short money summary covering the period described. The ' +
+  'reader already sees the totals — came in, spent, saved — in cards right ' +
+  'above this text, so never restate those totals or open with how the ' +
+  'period "went" overall; that would just repeat the cards. Instead mine the ' +
+  'category-level detail for the two or three most useful, specific things ' +
+  'worth pointing out: which categories drove any change vs usual, a run of ' +
+  'months moving the same direction, one category offsetting another, or a ' +
+  'relationship between figures a reader would not spot from the cards alone ' +
+  '(e.g. income rose enough to cover a category spike, or saving held steady ' +
+  'despite higher spending elsewhere). Use only the figures you are given: ' +
+  'never calculate, estimate or invent a number, and never name a category ' +
+  'that is not in the list. Write no more than 55 words, as two or three ' +
+  'sentences, each naming a concrete category or figure — no vague filler ' +
+  'like "spending was mixed" or "a few categories changed". Plain, warm, ' +
+  'second-person English ("you spent…"). No headings, bullet points, ' +
+  'markdown, preamble, sign-off or disclaimers. Never end with advice, a ' +
+  'suggestion or a recommendation of any kind, generic or specific ("track ' +
+  'your spending", "keep an eye on X", "consider…") — describe what happened ' +
+  'and stop there. If nothing in the category detail stands out, say so ' +
+  'plainly rather than manufacturing a problem.';
 
 /**
  * The exact text sent to the AI for a period summary: every figure already
