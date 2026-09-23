@@ -41,7 +41,13 @@
       });
     });
   });
+
+  function onMobileNavKey(e) {
+    if (e.key === 'Escape') mobileNavOpen = false;
+  }
 </script>
+
+<svelte:window onkeydown={onMobileNavKey} />
 
 <LoadingBar />
 <Toaster />
@@ -98,7 +104,16 @@
       </div>
 
       {#if mobileNavOpen}
-        <nav class="border-t border-[var(--border)] px-4 py-2 sm:hidden">
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="fixed inset-0 z-30 bg-black/40 sm:hidden"
+          onclick={() => (mobileNavOpen = false)}
+        ></div>
+        <nav
+          class="menu-pop absolute left-0 top-full z-40 w-[67%] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-br-[var(--radius)] border-b border-r border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2 shadow-[var(--shadow-lg)] sm:hidden"
+          style="transform-origin:top left"
+        >
           {#each nav as item}
             {@const active = current.startsWith(item.href)}
             <a

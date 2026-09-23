@@ -114,7 +114,6 @@
     >
       <Icon name="repeat" size={16} class="shrink-0 {switching ? 'animate-spin' : ''}" />
       <span class="flex-1">Switch account</span>
-      <span class="max-w-[110px] truncate text-[12px] font-normal text-[var(--ink-faint)]">{current?.name}</span>
       <Icon name="arrowRight" size={13} class="shrink-0 text-[var(--ink-faint)] transition-transform {open ? 'rotate-90' : ''}" />
     </button>
     {#if open}
