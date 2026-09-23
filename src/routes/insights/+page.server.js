@@ -5,7 +5,6 @@ import {
   monthRange,
   periodInsights,
   monthlyCategoryTotals,
-  savingsSummary,
   getUserAiCategorise
 } from '$lib/server/queries.js';
 
@@ -59,8 +58,7 @@ export function load({ locals, url }) {
   if (from > to) [from, to] = [to, from];
 
   // rows are already bucketed into 'income'/'expense' by sign — see
-  // monthlyCategoryTotals for the one exception, a savings-transfer
-  // category's own quirk when accountId isn't itself a savings account
+  // monthlyCategoryTotals
   const rows = monthlyCategoryTotals(userId, from, to, accountId);
   const income = seriesFor(rows, 'income');
   const expense = seriesFor(rows, 'expense');
@@ -84,7 +82,6 @@ export function load({ locals, url }) {
       expense: expense.series,
       values
     },
-    savings: savingsSummary(userId, { from, to }, accountId),
     aiSummary: aiEnabled() && getUserAiCategorise(userId),
     currency: locals.user.currency
   };

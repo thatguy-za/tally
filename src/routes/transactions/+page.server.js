@@ -132,7 +132,7 @@ export const actions = {
     const id = Number(f.get('id'));
     const categoryId = f.get('category_id') ? Number(f.get('category_id')) : null;
     if (!id) return fail(400);
-    updateTransaction(locals.user.id, id, { category_id: categoryId });
+    updateTransaction(locals.user.id, locals.accountId, id, { category_id: categoryId });
     return { updated: true };
   },
 
@@ -144,7 +144,7 @@ export const actions = {
     const magnitude = num(f.get('amount'));
     const direction = String(f.get('direction') || 'out');
     if (!id || !date || magnitude == null) return fail(400, { error: 'Invalid values.' });
-    updateTransaction(locals.user.id, id, {
+    updateTransaction(locals.user.id, locals.accountId, id, {
       date,
       description,
       amount: magnitude * (direction === 'in' ? 1 : -1)
@@ -155,7 +155,7 @@ export const actions = {
   delete: async ({ request, locals }) => {
     const f = await request.formData();
     const id = Number(f.get('id'));
-    if (id) deleteTransaction(locals.user.id, id);
+    if (id) deleteTransaction(locals.user.id, locals.accountId, id);
     return { deleted: true };
   },
 
@@ -163,13 +163,13 @@ export const actions = {
     const f = await request.formData();
     const selected = ids(f);
     const categoryId = f.get('category_id') ? Number(f.get('category_id')) : null;
-    const n = bulkCategorise(locals.user.id, selected, categoryId);
+    const n = bulkCategorise(locals.user.id, locals.accountId, selected, categoryId);
     return { bulk: `Updated ${n} transaction${n === 1 ? '' : 's'}.` };
   },
 
   bulkDelete: async ({ request, locals }) => {
     const f = await request.formData();
-    const n = bulkDelete(locals.user.id, ids(f));
+    const n = bulkDelete(locals.user.id, locals.accountId, ids(f));
     return { bulk: `Deleted ${n} transaction${n === 1 ? '' : 's'}.` };
   },
 

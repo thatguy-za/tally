@@ -388,7 +388,7 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
   for (const [ref, name] of byRef) {
     const categoryId = byName.get(name);
     if (!categoryId) continue;
-    updateTransaction(userId, Number(ref), { category_id: categoryId });
+    updateTransaction(userId, accountId, Number(ref), { category_id: categoryId });
     updated++;
   }
 
@@ -399,19 +399,17 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 8;
+export const SUMMARY_VERSION = 9;
 
 const SUMMARY_SYSTEM =
   'You write a very short money summary covering the period described. The ' +
-  'reader already sees the totals — came in, spent, saved — in cards right ' +
-  'above this text, so never restate those totals or open with how the ' +
-  'period "went" overall; that would just repeat the cards. Instead mine the ' +
+  'reader already sees the totals — came in, spent — in cards right above ' +
+  'this text, so never restate those totals or open with how the period ' +
+  '"went" overall; that would just repeat the cards. Instead mine the ' +
   'category-level detail for the two or three most useful, specific things ' +
   'worth pointing out: which categories drove any change vs usual, a run of ' +
-  'months moving the same direction, one category offsetting another, or a ' +
-  'relationship between figures a reader would not spot from the cards alone ' +
-  '(e.g. income rose enough to cover a category spike, or saving held steady ' +
-  'despite higher spending elsewhere). Use only the figures you are given: ' +
+  'months moving the same direction, or one category offsetting another. Use ' +
+  'only the figures you are given: ' +
   'never calculate, estimate or invent a number, and never name a category ' +
   'that is not in the list. Write no more than 55 words, as two or three ' +
   'sentences, each naming a concrete category or figure — no vague filler ' +
@@ -457,17 +455,6 @@ export function buildPeriodFacts(insights, currency) {
 
   lines.push(`Came in: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(insights.avg.earned, b?.earned));
   lines.push(`Spent: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(insights.avg.spent, b?.spent));
-  if (insights.saved > 0) {
-    lines.push(`Saved: ${money(insights.saved)}` + (insights.single ? '' : ` in total, ${money(insights.avg.saved)}${per}`) + cmp(insights.avg.saved, b?.saved));
-  } else if (insights.saved < 0) {
-    lines.push(`Taken back out of savings: ${money(-insights.saved)}`);
-  }
-  if (insights.saved) {
-    lines.push(
-      'Money moved into savings is excluded from the "Spent" figure. Do not describe ' +
-        'it as spending.'
-    );
-  }
   lines.push(
     b
       ? `"Usual" means this person's own median month across the ${b.months} month${b.months === 1 ? '' : 's'} before this period — the middle value, not the average, so one unusually big or quiet month doesn't skew it.`
@@ -503,55 +490,6 @@ export async function summarisePeriod(insights, currency) {
   return { text, usage, costUsd: estimateCost(usage, model) };
 }
 
-/**
- * Bumped whenever the savings-summary prompt changes, same purpose as
- * SUMMARY_VERSION above.
- */
-export const SAVINGS_SUMMARY_VERSION = 1;
-
-const SAVINGS_SUMMARY_SYSTEM =
-  'You write a very short note on how someone has been putting money aside, covering the ' +
-  'period described. Use only the figures you are given: never calculate, estimate or invent a ' +
-  "number. Write no more than 45 words, as one or two sentences, and call out whatever a plain " +
-  'reader would actually notice — a lump sum much bigger than the rest, a month with nothing set ' +
-  'aside, money taken back out, or a clear run of months trending up or down. If the monthly ' +
-  'amounts are fairly steady with nothing to point at, say that plainly rather than manufacturing ' +
-  'a pattern. Plain, warm, second-person English ("you put aside…"). No headings, bullet points, ' +
-  'markdown, preamble, sign-off or disclaimers.';
-
-/**
- * The exact text sent to the AI for a savings summary — every month's
- * contribution already formatted, so the model narrates rather than
- * calculates.
- * @param {{ ym: string, saved: number }[]} series
- * @param {string} currency
- */
-export function buildSavingsFacts(series, currency) {
-  const money = (n) => formatMoney(n, currency);
-  if (!series.length) return 'No savings-category transactions in this period.';
-  const lines = ['Money put aside per month (negative means more was taken out than paid in):'];
-  for (const p of series) lines.push(`- ${p.ym}: ${money(p.saved)}`);
-  const total = series.reduce((s, p) => s + p.saved, 0);
-  lines.push(`Total across the period: ${money(total)}.`);
-  return lines.join('\n');
-}
-
-/**
- * Turn a `savingsSummary` series into a plain-English read of the pattern.
- * @param {{ ym: string, saved: number }[]} series
- * @param {string} currency
- */
-export async function summariseSavings(series, currency) {
-  const model = getModel();
-  const { text, usage } = await callText({
-    system: SAVINGS_SUMMARY_SYSTEM,
-    userText: buildSavingsFacts(series, currency),
-    maxTokens: 150,
-    model
-  });
-  return { text, usage, costUsd: estimateCost(usage, model) };
-}
-
 /* ------------------------------------------------------------ chat with your data */
 
 const CHAT_MAX_ROUNDS = 4; // tool round-trips per user message, before giving up
@@ -573,7 +511,7 @@ const CHAT_TOOLS = [
   },
   {
     name: 'category_totals',
-    description: 'Total income/expense/savings per category over a month range, for the currently active account — for "how much did I spend on X" questions.',
+    description: 'Total income/expense per category over a month range, for the currently active account — for "how much did I spend on X" questions.',
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -603,7 +541,7 @@ const CHAT_TOOLS = [
   },
   {
     name: 'period_summary',
-    description: 'Earned/spent/saved for a period, and how it compares to this person\'s usual (median) month — for "how am I doing" / "is this more than usual" questions.',
+    description: 'Earned/spent for a period, and how it compares to this person\'s usual (median) month — for "how am I doing" / "is this more than usual" questions.',
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -721,7 +659,6 @@ function executeChatTool(userId, accountId, name, input, charts) {
       return {
         earned: ins.earned,
         spent: ins.spent,
-        saved: ins.saved,
         kept: ins.kept,
         savingsRate: ins.rate,
         avgPerMonth: ins.avg,

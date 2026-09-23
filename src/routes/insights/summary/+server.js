@@ -35,7 +35,7 @@ export async function POST({ request, locals }) {
   const accountId = locals.accountId;
 
   const insights = periodInsights(locals.user.id, from, to, accountId);
-  if (!insights.earned && !insights.spent && !insights.saved) return json({ summary: null });
+  if (!insights.earned && !insights.spent) return json({ summary: null });
 
   const fingerprint = createHash('sha1')
     .update(
@@ -44,7 +44,6 @@ export async function POST({ request, locals }) {
         SUMMARY_VERSION,
         Math.round(insights.earned),
         Math.round(insights.spent),
-        Math.round(insights.saved),
         insights.movers.map((m) => [m.id, Math.round(m.spent), Math.round(m.usual)])
       ])
     )

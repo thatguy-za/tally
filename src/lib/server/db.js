@@ -50,13 +50,14 @@ db.exec(`
     expires_at TEXT NOT NULL
   );
 
-  -- a real-world account (checking, savings, ...). Transactions belong to one
-  -- so money moving between a user's own accounts can be told apart from
-  -- actual income or spending — see the 'transfer' category kind. The kind
-  -- column distinguishes the one auto-seeded checking account from any
-  -- savings accounts the user adds — the global account switcher uses it to
-  -- know which is which; every figure in the app is always scoped to exactly
-  -- one account at a time, never combined across them.
+  -- a real-world account (checking, savings, ...) — every account is treated
+  -- identically no matter what it's for; transactions belong to one so money
+  -- moving between a user's own accounts can be told apart from actual income
+  -- or spending — see the 'transfer' category kind. Every figure in the app
+  -- is always scoped to exactly one account at a time, never combined across
+  -- them. The kind column is a leftover from when accounts were split into
+  -- 'checking'/'savings' with different reporting rules — nothing reads or
+  -- writes it anymore.
   CREATE TABLE IF NOT EXISTS accounts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -170,8 +171,8 @@ if (!userCols.includes('date_format')) {
   db.exec("ALTER TABLE users ADD COLUMN date_format TEXT NOT NULL DEFAULT 'dmy'");
 }
 
-// Existing databases predate the `kind` column that tells a savings account
-// apart from the one auto-seeded checking account.
+// Existing databases predate the accounts table's `kind` column (see its
+// own comment above — nothing reads or writes it anymore).
 const acctCols = db.prepare('PRAGMA table_info(accounts)').all().map((c) => c.name);
 if (!acctCols.includes('kind')) {
   db.exec("ALTER TABLE accounts ADD COLUMN kind TEXT NOT NULL DEFAULT 'checking'");

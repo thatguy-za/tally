@@ -80,8 +80,8 @@
       </button>
     </div>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
-      Add another account — transactional or savings — to track it completely separately. Switch
-      between them from the picker in the top bar; figures are never combined across accounts.
+      Add another account to track it completely separately. Switch between them from the picker
+      in the top bar; figures are never combined across accounts.
     </p>
     <ul class="divide-y divide-[var(--border)]">
       {#each data.accounts as a}
@@ -105,7 +105,7 @@
           </form>
           <span class="flex items-center gap-3">
             <span class="text-xs text-[var(--ink-faint)]">
-              {a.kind === 'checking' ? 'Transactional' : 'Savings'} · {a.count} tx
+              {a.count} tx
             </span>
             {#if data.accounts.length > 1}
               <form method="POST" action="?/deleteAccount" use:enhance

@@ -5,21 +5,15 @@
 
   /**
    * The "+ Add account" journey — a proper overlay (not a cramped dropdown
-   * form) so there's room to choose the account's type up front.
-   * @type {{ onClose: () => void, onCreated: (account: {id:number,name:string,color:string,kind:string}) => void }}
+   * form) so there's room for a colour picker alongside the name.
+   * @type {{ onClose: () => void, onCreated: (account: {id:number,name:string,color:string}) => void }}
    */
   let { onClose, onCreated } = $props();
 
   let name = $state('');
   let color = $state('#7b8a5a');
-  let kind = $state('checking');
   let saving = $state(false);
   let error = $state('');
-
-  const KINDS = [
-    { value: 'checking', label: 'Transactional', hint: 'Everyday spending and income — a current or checking account.' },
-    { value: 'savings', label: 'Savings', hint: 'Money set aside, tracked completely separately.' }
-  ];
 
   async function submit(e) {
     e.preventDefault();
@@ -29,7 +23,6 @@
     const body = new FormData();
     body.set('name', name.trim());
     body.set('color', color);
-    body.set('kind', kind);
     try {
       const res = await fetch('/settings?/addAccount', {
         method: 'POST',
@@ -73,23 +66,6 @@
     </div>
 
     <form onsubmit={submit} class="space-y-4">
-      <div>
-        <span class="label">Type</span>
-        <div class="grid grid-cols-2 gap-2">
-          {#each KINDS as k}
-            <button type="button"
-              class="rounded-[var(--radius-sm)] border p-2.5 text-left transition-colors"
-              style={kind === k.value
-                ? 'border-color:var(--accent);background:var(--accent-wash)'
-                : 'border-color:var(--border)'}
-              onclick={() => (kind = k.value)}>
-              <span class="block text-[13px] font-medium" style={kind === k.value ? 'color:var(--accent-strong)' : ''}>{k.label}</span>
-              <span class="mt-0.5 block text-[11px] text-[var(--ink-faint)]">{k.hint}</span>
-            </button>
-          {/each}
-        </div>
-      </div>
-
       <div class="flex items-center gap-2">
         <ColorPicker bind:value={color} size="h-9 w-9" label="Colour for new account" />
         <div class="min-w-0 flex-1">

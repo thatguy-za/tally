@@ -7,12 +7,15 @@ import {
   setCategoryKind,
   addTransaction,
   updateTransaction,
+  deleteTransaction,
   bulkInsert,
   bulkCategorise,
+  bulkDelete,
   uncategorisedCount,
   monthlyTotals,
   categoryBreakdown,
   createRule,
+  deleteRule,
   applyRules,
   categoriseByRules,
   previewRuleRerun,
@@ -23,7 +26,6 @@ import {
   monthRange,
   periodInsights,
   monthlyCategoryTotals,
-  savingsSummary,
   getLogoDomains
 } from './queries.js';
 
@@ -86,7 +88,7 @@ describe('monthRange', () => {
 });
 
 describe('category kinds and monthlyTotals', () => {
-  it('counts expense/income normally, excludes saving from spend and reports it as saved', () => {
+  it('counts a saving category exactly like expense/income, by the transaction\'s own sign', () => {
     const u = makeUser();
     const salary = makeCategory(u, 'Salary', 'income');
     const groceries = makeCategory(u, 'Groceries', 'expense');
@@ -94,28 +96,24 @@ describe('category kinds and monthlyTotals', () => {
 
     addTx(u, { date: '2026-03-01', amount: 3000, category_id: salary });
     addTx(u, { date: '2026-03-05', amount: -200, category_id: groceries });
-    // money leaving the current account into savings: negative, saving kind
     addTx(u, { date: '2026-03-06', amount: -400, category_id: savings });
 
     const [row] = monthlyTotals(u, 1);
     expect(row.incoming).toBe(3000);
-    expect(row.outgoing).toBe(200); // the saving transfer must not inflate this
-    expect(row.saved).toBe(400);
+    expect(row.outgoing).toBe(600); // groceries + the saving-kind spend, alike
   });
 
-  it('excludes transfer (the receiving side of a move between accounts) from income, outgoing and saved alike', () => {
+  it('excludes transfer (the receiving side of a move between accounts) from income and outgoing alike', () => {
     const u = makeUser();
     const transfer = makeCategory(u, 'Transfer', 'transfer');
-    // the arrival of a transfer already counted as "saved" on the sending side
     addTx(u, { date: '2026-03-06', amount: 400, category_id: transfer });
 
     const [row] = monthlyTotals(u, 1);
     expect(row.incoming).toBe(0);
     expect(row.outgoing).toBe(0);
-    expect(row.saved).toBe(0);
   });
 
-  it('excludes opening_balance (the starting balance of a tracked account) from income, outgoing and saved alike', () => {
+  it('excludes opening_balance (the starting balance of a tracked account) from income and outgoing alike', () => {
     const u = makeUser();
     const opening = makeCategory(u, 'Opening balance', 'opening_balance');
     addTx(u, { date: '2026-03-01', amount: 1000, category_id: opening });
@@ -123,10 +121,9 @@ describe('category kinds and monthlyTotals', () => {
     const [row] = monthlyTotals(u, 1);
     expect(row.incoming).toBe(0);
     expect(row.outgoing).toBe(0);
-    expect(row.saved).toBe(0);
   });
 
-  it('treats an uncategorised transaction as ordinary spending/income, not saving', () => {
+  it('treats an uncategorised transaction as ordinary spending/income', () => {
     const u = makeUser();
     addTx(u, { date: '2026-03-01', amount: -50 });
     addTx(u, { date: '2026-03-02', amount: 50 });
@@ -134,7 +131,6 @@ describe('category kinds and monthlyTotals', () => {
     const [row] = monthlyTotals(u, 1);
     expect(row.outgoing).toBe(50);
     expect(row.incoming).toBe(50);
-    expect(row.saved).toBe(0);
   });
 
   it('filters to one account, or to unassigned transactions, without double-counting', () => {
@@ -322,6 +318,22 @@ describe('previewRuleRerun', () => {
   });
 });
 
+describe('deleteRule', () => {
+  it('does nothing when the rule belongs to a different account than the one given', () => {
+    const u = makeUser();
+    const home = makeAccount(u, 'Home');
+    const other = makeAccount(u, 'Other');
+    const groceries = makeCategory(u, 'Groceries', 'expense', home);
+    const id = Number(createRule(u, home, 'SPAR', groceries, 0).lastInsertRowid);
+
+    deleteRule(u, other, id);
+    expect(db.prepare('SELECT 1 FROM rules WHERE id = ?').get(id)).toBeTruthy();
+
+    deleteRule(u, home, id);
+    expect(db.prepare('SELECT 1 FROM rules WHERE id = ?').get(id)).toBeUndefined();
+  });
+});
+
 describe('applyCategoryChanges', () => {
   it('applies exactly the given id -> category_id pairs and nothing else', () => {
     const u = makeUser();
@@ -386,7 +398,7 @@ describe('uncategorisedCount and bulkCategorise', () => {
     expect(uncategorisedCount(u)).toBe(2);
     expect(uncategorisedCount(u, acct)).toBe(1);
 
-    bulkCategorise(u, [id1], cat);
+    bulkCategorise(u, acct, [id1], cat);
     expect(uncategorisedCount(u)).toBe(1);
   });
 });
@@ -479,9 +491,8 @@ describe('periodInsights', () => {
     expect(ins.single).toBe(true);
     expect(ins.partial).toBe(false); // safely in the past
     expect(ins.earned).toBe(1000);
-    expect(ins.spent).toBe(300);
-    expect(ins.saved).toBe(400);
-    expect(ins.kept).toBe(700); // earned - spent; saving is not spending
+    expect(ins.spent).toBe(700); // groceries + the saving-kind spend, alike
+    expect(ins.kept).toBe(300);
     expect(ins.comparable).toBe(true);
     expect(ins.baseline.months).toBe(2);
     expect(ins.baseline.spent).toBe(150); // median of 100 and 200
@@ -490,6 +501,18 @@ describe('periodInsights', () => {
     expect(mover.usual).toBe(150);
     expect(mover.spent).toBe(300);
     expect(mover.delta).toBe(150);
+  });
+
+  it('treats a saving category exactly like any other, on any account, including a savings account', () => {
+    const u = makeUser();
+    const acct = makeAccount(u, 'Emergency fund', '#000000', 'savings');
+    const savings = makeCategory(u, 'Savings', 'saving', acct);
+    addTx(u, { date: '2026-01-01', amount: 500, category_id: savings, account_id: acct });
+    addTx(u, { date: '2026-01-02', amount: -50, category_id: savings, account_id: acct });
+
+    const ins = periodInsights(u, '2026-01', '2026-01', acct);
+    expect(ins.earned).toBe(500);
+    expect(ins.spent).toBe(50);
   });
 
   it('reports no baseline for the very first month of data', () => {
@@ -589,14 +612,17 @@ describe('monthlyCategoryTotals', () => {
     expect(savingsRow.total).toBe(50);
   });
 
-  it('excludes a saving category\'s withdrawal (a positive amount)', () => {
+  it('counts a saving category\'s deposit (a positive amount) as income, on any account', () => {
     const u = makeUser();
     const savings = makeCategory(u, 'Savings', 'saving');
     addTx(u, { date: '2026-01-01', amount: 50, category_id: savings });
-    expect(monthlyCategoryTotals(u, '2026-01', '2026-01')).toHaveLength(0);
+
+    const rows = monthlyCategoryTotals(u, '2026-01', '2026-01');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: savings, kind: 'income', total: 50 });
   });
 
-  it('does not exclude a saving category\'s deposit when the account being viewed is itself a savings account', () => {
+  it('counts a saving category\'s deposit as income when the account being viewed is itself a savings account too', () => {
     const u = makeUser();
     const acct = makeAccount(u, 'Emergency fund', '#000000', 'savings');
     const savings = makeCategory(u, 'Savings', 'saving', acct);
@@ -636,62 +662,15 @@ describe('monthlyCategoryTotals', () => {
   });
 });
 
-describe('savingsSummary', () => {
-  it('builds a running total and reports the balance at each point', () => {
-    const u = makeUser();
-    const savings = makeCategory(u, 'Savings', 'saving');
-    addTx(u, { date: '2026-01-15', amount: -100, category_id: savings });
-    addTx(u, { date: '2026-02-15', amount: -50, category_id: savings });
-    addTx(u, { date: '2026-03-15', amount: 30, category_id: savings }); // a withdrawal
-
-    const s = savingsSummary(u, 12);
-    expect(s.total).toBe(120); // 100 + 50 - 30
-    expect(s.series.map((p) => p.saved)).toEqual([100, 50, -30]);
-    expect(s.series.map((p) => p.total)).toEqual([100, 150, 120]);
-    expect(s.configured).toBe(true);
-  });
-
-  it('accepts a {from, to} window and reports the balance as of the end of it', () => {
-    const u = makeUser();
-    const savings = makeCategory(u, 'Savings', 'saving');
-    addTx(u, { date: '2026-01-15', amount: -100, category_id: savings });
-    addTx(u, { date: '2026-02-15', amount: -50, category_id: savings });
-
-    const s = savingsSummary(u, { from: '2026-02', to: '2026-02' });
-    expect(s.inWindow).toBe(50);
-    expect(s.total).toBe(150); // cumulative through the end of the window
-  });
-
-  it('is false for configured, and empty, when the user has no savings category', () => {
-    const u = makeUser();
-    makeCategory(u, 'Groceries', 'expense');
-    const s = savingsSummary(u, 12);
-    expect(s.configured).toBe(false);
-    expect(s.total).toBe(0);
-  });
-
-  it('narrows to a single account', () => {
-    const u = makeUser();
-    const acct = makeAccount(u, 'Checking');
-    const savings = makeCategory(u, 'Savings', 'saving');
-    addTx(u, { date: '2026-01-15', amount: -100, category_id: savings, account_id: acct });
-    addTx(u, { date: '2026-01-16', amount: -20, category_id: savings });
-
-    expect(savingsSummary(u, 12, acct).total).toBe(100);
-    expect(savingsSummary(u, 12).total).toBe(120);
-  });
-});
-
 describe('setCategoryKind', () => {
-  it('changes what a category is, which changes how its transactions are read', () => {
+  it('changes what a category is, without changing how its transactions are read (saving counts as spending too)', () => {
     const u = makeUser();
     const cat = makeCategory(u, 'Misc', 'expense');
     addTx(u, { date: '2026-01-01', amount: -75, category_id: cat });
     expect(monthlyTotals(u, 1)[0].outgoing).toBe(75);
 
     setCategoryKind(u, defaultAccount(u), cat, 'saving');
-    expect(monthlyTotals(u, 1)[0].outgoing).toBe(0);
-    expect(monthlyTotals(u, 1)[0].saved).toBe(75);
+    expect(monthlyTotals(u, 1)[0].outgoing).toBe(75);
   });
 });
 
@@ -701,12 +680,55 @@ describe('updateTransaction', () => {
     const cat = makeCategory(u, 'Groceries', 'expense');
     const id = Number(addTx(u, { date: '2026-01-01', amount: -10, description: 'Coffee' }).lastInsertRowid);
 
-    updateTransaction(u, id, { category_id: cat });
+    updateTransaction(u, null, id, { category_id: cat });
 
     const row = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
     expect(row.category_id).toBe(cat);
     expect(row.description).toBe('Coffee'); // untouched
     expect(row.amount).toBe(-10); // untouched
+  });
+
+  it('does nothing when the transaction belongs to a different account than the one given', () => {
+    const u = makeUser();
+    const home = makeAccount(u, 'Home');
+    const other = makeAccount(u, 'Other');
+    const cat = makeCategory(u, 'Groceries', 'expense', home);
+    const id = Number(addTx(u, { date: '2026-01-01', amount: -10, account_id: home }).lastInsertRowid);
+
+    updateTransaction(u, other, id, { category_id: cat });
+
+    const row = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
+    expect(row.category_id).toBeNull(); // untouched — id belongs to `home`, not `other`
+  });
+});
+
+describe('deleteTransaction, bulkCategorise and bulkDelete stay within one account', () => {
+  it('deleteTransaction only removes a row that belongs to the given account', () => {
+    const u = makeUser();
+    const home = makeAccount(u, 'Home');
+    const other = makeAccount(u, 'Other');
+    const id = Number(addTx(u, { date: '2026-01-01', amount: -10, account_id: home }).lastInsertRowid);
+
+    deleteTransaction(u, other, id);
+    expect(db.prepare('SELECT 1 FROM transactions WHERE id = ?').get(id)).toBeTruthy();
+
+    deleteTransaction(u, home, id);
+    expect(db.prepare('SELECT 1 FROM transactions WHERE id = ?').get(id)).toBeUndefined();
+  });
+
+  it('bulkCategorise and bulkDelete ignore ids outside the given account', () => {
+    const u = makeUser();
+    const home = makeAccount(u, 'Home');
+    const other = makeAccount(u, 'Other');
+    const cat = makeCategory(u, 'Groceries', 'expense', home);
+    const inHome = Number(addTx(u, { date: '2026-01-01', amount: -10, account_id: home }).lastInsertRowid);
+    const inOther = Number(addTx(u, { date: '2026-01-02', amount: -5, account_id: other }).lastInsertRowid);
+
+    expect(bulkCategorise(u, home, [inHome, inOther], cat)).toBe(1);
+    expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(inOther).category_id).toBeNull();
+
+    expect(bulkDelete(u, home, [inHome, inOther])).toBe(1);
+    expect(db.prepare('SELECT 1 FROM transactions WHERE id = ?').get(inOther)).toBeTruthy();
   });
 });
 

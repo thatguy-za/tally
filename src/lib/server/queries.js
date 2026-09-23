@@ -10,11 +10,12 @@ export function listCategories(userId, accountId) {
 }
 
 /**
- * `saving` is money kept rather than spent — it is left out of every "spent"
- * figure and reported on its own. `transfer` is for the receiving side of a
- * move between two of the user's own accounts (e.g. into a savings account
- * whose statement is also imported): it is excluded from income, spending
- * and "saved" alike, since that money was already accounted for on the
+ * `saving` is just a label for organising categories ("Savings & investments")
+ * — it counts toward income/spending exactly like `income`/`expense` do, by
+ * the transaction's own sign, on every account alike. `transfer` is for the
+ * receiving side of a move between two of the user's own accounts (e.g. into
+ * a savings account whose statement is also imported): it is excluded from
+ * income and spending, since that money was already accounted for on the
  * sending side. `opening_balance` is the starting balance you had when you
  * began tracking an account (the way most bank exports and other budgeting
  * apps represent it) — also excluded everywhere, since it isn't income,
@@ -23,7 +24,7 @@ export function listCategories(userId, accountId) {
 export const CATEGORY_KINDS = ['income', 'expense', 'saving', 'transfer', 'opening_balance'];
 export const normaliseKind = (k) => (CATEGORY_KINDS.includes(k) ? k : 'expense');
 /** Kinds left out of income/spending totals wherever they're computed. */
-export const NON_SPENDING_KINDS = ['saving', 'transfer', 'opening_balance'];
+export const NON_SPENDING_KINDS = ['transfer', 'opening_balance'];
 
 export function createCategory(userId, accountId, name, kind, color) {
   const k = normaliseKind(kind);
@@ -76,16 +77,13 @@ export function listAccounts(userId) {
 }
 
 /** New accounts get their own copy of the default categories — never another account's. */
-export function createAccount(userId, name, color, kind = 'checking') {
+export function createAccount(userId, name, color) {
   const trimmed = name.trim();
   const c = color || '#64748b';
-  const k = kind === 'savings' ? 'savings' : 'checking';
-  const info = db
-    .prepare('INSERT INTO accounts (user_id, name, color, kind) VALUES (?, ?, ?, ?)')
-    .run(userId, trimmed, c, k);
+  const info = db.prepare('INSERT INTO accounts (user_id, name, color) VALUES (?, ?, ?)').run(userId, trimmed, c);
   const id = Number(info.lastInsertRowid);
   seedCategories(userId, id);
-  return { id, name: trimmed, color: c, kind: k };
+  return { id, name: trimmed, color: c };
 }
 
 export function renameAccount(userId, id, name, color) {
@@ -200,41 +198,47 @@ export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
   return { inserted, duplicates };
 }
 
-export function updateTransaction(userId, id, fields) {
+// `IS` rather than `=` for account_id below: a transaction's account_id can
+// be NULL (unassigned, e.g. after its account was deleted), and `= NULL`
+// never matches in SQL even when the bound value is also null — `IS` is the
+// null-safe equality that still behaves like `=` for two real ids.
+
+/** `accountId` is the account currently active, not a field being changed — a transaction can only ever be touched from the account it's already in. */
+export function updateTransaction(userId, accountId, id, fields) {
   const allowed = ['date', 'description', 'amount', 'category_id', 'account_id'];
   const sets = [];
-  const params = { id, userId };
+  const params = { id, userId, scopeAccountId: accountId };
   for (const k of allowed) {
     if (k in fields) { sets.push(`${k} = @${k}`); params[k] = fields[k]; }
   }
   if (!sets.length) return;
   db.prepare(
-    `UPDATE transactions SET ${sets.join(', ')} WHERE id = @id AND user_id = @userId`
+    `UPDATE transactions SET ${sets.join(', ')} WHERE id = @id AND user_id = @userId AND account_id IS @scopeAccountId`
   ).run(params);
 }
 
-export function deleteTransaction(userId, id) {
-  db.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?').run(id, userId);
+export function deleteTransaction(userId, accountId, id) {
+  db.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ? AND account_id IS ?').run(id, userId, accountId);
 }
 
-export function bulkCategorise(userId, ids, categoryId) {
+export function bulkCategorise(userId, accountId, ids, categoryId) {
   if (!ids.length) return 0;
   const placeholders = ids.map(() => '?').join(',');
   const info = db
     .prepare(
       `UPDATE transactions SET category_id = ?
-       WHERE user_id = ? AND id IN (${placeholders})`
+       WHERE user_id = ? AND account_id IS ? AND id IN (${placeholders})`
     )
-    .run(categoryId || null, userId, ...ids);
+    .run(categoryId || null, userId, accountId, ...ids);
   return Number(info.changes);
 }
 
-export function bulkDelete(userId, ids) {
+export function bulkDelete(userId, accountId, ids) {
   if (!ids.length) return 0;
   const placeholders = ids.map(() => '?').join(',');
   const info = db
-    .prepare(`DELETE FROM transactions WHERE user_id = ? AND id IN (${placeholders})`)
-    .run(userId, ...ids);
+    .prepare(`DELETE FROM transactions WHERE user_id = ? AND account_id IS ? AND id IN (${placeholders})`)
+    .run(userId, accountId, ...ids);
   return Number(info.changes);
 }
 
@@ -302,11 +306,10 @@ export function setUncategorisedDismissed(userId, id, dismissed) {
 
 /* --------------------------------------------------------------------- reports */
 
-// SQL fragments for splitting out what counts as ordinary income/spending.
-// 'transfer' and 'opening_balance' are excluded from both, same as 'saving',
-// but never counted as saved either — see NON_SPENDING_KINDS above.
-const IS_SAVING = `COALESCE(c.kind, 'expense') = 'saving'`;
-const NOT_SAVING = `COALESCE(c.kind, 'expense') NOT IN (${NON_SPENDING_KINDS.map((k) => `'${k}'`).join(', ')})`;
+// A category counts toward income/spending unless it's 'transfer' or
+// 'opening_balance' — see NON_SPENDING_KINDS above. Same rule for every
+// account; 'saving' isn't special here.
+const NOT_SPENDING = `COALESCE(c.kind, 'expense') NOT IN (${NON_SPENDING_KINDS.map((k) => `'${k}'`).join(', ')})`;
 
 /**
  * An optional account filter as a SQL fragment + the params to bind. Every
@@ -320,19 +323,14 @@ function accountFilter(accountId) {
   return { sql: '', params: {} };
 }
 
-/**
- * Per-month in / out / saved. Money in a `saving` category is money kept, so it
- * is excluded from `outgoing` and reported as `saved` — a net contribution, so
- * a withdrawal shows up negative rather than being hidden.
- */
+/** Per-month in / out, bucketed by the transaction's own sign on every account alike. */
 export function monthlyTotals(userId, months = 12, accountId = null) {
   const af = accountFilter(accountId);
   return db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
-              SUM(CASE WHEN t.amount > 0 AND ${NOT_SAVING} THEN t.amount ELSE 0 END) AS incoming,
-              SUM(CASE WHEN t.amount < 0 AND ${NOT_SAVING} THEN -t.amount ELSE 0 END) AS outgoing,
-              SUM(CASE WHEN ${IS_SAVING} THEN -t.amount ELSE 0 END) AS saved
+              SUM(CASE WHEN t.amount > 0 AND ${NOT_SPENDING} THEN t.amount ELSE 0 END) AS incoming,
+              SUM(CASE WHEN t.amount < 0 AND ${NOT_SPENDING} THEN -t.amount ELSE 0 END) AS outgoing
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
        WHERE t.user_id = @userId ${af.sql}
        GROUP BY ym ORDER BY ym DESC LIMIT @months`
@@ -416,8 +414,8 @@ export function createRule(userId, accountId, matchText, categoryId, priority = 
     .run(userId, accountId, matchText.trim(), categoryId, priority);
 }
 
-export function deleteRule(userId, id) {
-  db.prepare('DELETE FROM rules WHERE id = ? AND user_id = ?').run(id, userId);
+export function deleteRule(userId, accountId, id) {
+  db.prepare('DELETE FROM rules WHERE id = ? AND user_id = ? AND account_id = ?').run(id, userId, accountId);
 }
 
 /**
@@ -683,9 +681,8 @@ export function periodInsights(userId, from, to, accountId = null) {
   const totals = db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
-              SUM(CASE WHEN t.amount > 0 AND ${NOT_SAVING} THEN t.amount ELSE 0 END) AS incoming,
-              SUM(CASE WHEN t.amount < 0 AND ${NOT_SAVING} THEN -t.amount ELSE 0 END) AS outgoing,
-              SUM(CASE WHEN ${IS_SAVING} THEN -t.amount ELSE 0 END) AS saved
+              SUM(CASE WHEN t.amount > 0 AND ${NOT_SPENDING} THEN t.amount ELSE 0 END) AS incoming,
+              SUM(CASE WHEN t.amount < 0 AND ${NOT_SPENDING} THEN -t.amount ELSE 0 END) AS outgoing
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
        WHERE t.user_id = @userId ${af.sql}
        GROUP BY ym`
@@ -698,7 +695,6 @@ export function periodInsights(userId, from, to, accountId = null) {
 
   const earned = sum(inPeriod, (r) => r.incoming);
   const spent = sum(inPeriod, (r) => r.outgoing);
-  const saved = sum(inPeriod, (r) => r.saved);
 
   const partial = to >= nowYm;
   const single = from === to;
@@ -707,7 +703,7 @@ export function periodInsights(userId, from, to, accountId = null) {
   // Scaling a lone month by days elapsed assumes spending is spread evenly,
   // which it isn't — rent lands on the 1st, salary near the end. In the first
   // quarter of a single month that noise swamps the signal, so hold back.
-  const reason = !(earned || spent || saved)
+  const reason = !(earned || spent)
     ? 'empty'
     : !before.length
       ? 'no-history'
@@ -726,20 +722,18 @@ export function periodInsights(userId, from, to, accountId = null) {
   const n = Math.max(single ? share : 1, 0.01);
   const completeMonths = inPeriod.filter((r) => r.ym !== nowYm || !partial);
   const avg = single
-    ? { earned: earned / n, spent: spent / n, saved: saved / n }
+    ? { earned: earned / n, spent: spent / n }
     : {
         earned: median(completeMonths.map((r) => r.incoming)),
-        spent: median(completeMonths.map((r) => r.outgoing)),
-        saved: median(completeMonths.map((r) => r.saved))
+        spent: median(completeMonths.map((r) => r.outgoing))
       };
   const bmedian = (pick) => median(before.map(pick));
   const baseline = comparable
     ? {
         months: before.length,
-        // income and savings land in lumps, so a part-month can't be compared
+        // income lands in lumps, so a part-month can't be compared
         earned: single && partial ? null : bmedian((r) => r.incoming),
-        spent: bmedian((r) => r.outgoing) * share,
-        saved: single && partial ? null : bmedian((r) => r.saved)
+        spent: bmedian((r) => r.outgoing) * share
       }
     : null;
 
@@ -747,7 +741,7 @@ export function periodInsights(userId, from, to, accountId = null) {
     .prepare(
       `SELECT c.id, c.name, c.color, substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS total
        FROM transactions t JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = @userId AND t.amount < 0 AND c.kind = 'expense' ${af.sql}
+       WHERE t.user_id = @userId AND t.amount < 0 AND c.kind IN ('expense', 'saving') ${af.sql}
        GROUP BY c.id, ym`
     )
     .all({ userId, ...af.params });
@@ -793,7 +787,6 @@ export function periodInsights(userId, from, to, accountId = null) {
     reason,
     earned,
     spent,
-    saved,
     kept: earned - spent,
     rate: earned > 0 ? Math.round(((earned - spent) / earned) * 100) : null,
     avg,
@@ -814,21 +807,12 @@ export function periodInsights(userId, from, to, accountId = null) {
  * expense-kind category like "Shopping", a correction on an income-kind one)
  * was silently dropped from both bars here while still counting up there.
  * An uncategorised transaction is folded into its own "Uncategorised" bucket
- * (id -1) the same way. The one kind that still needs special care is
- * 'saving' — but only when viewing an account that isn't itself a savings
- * account: there, it represents a transfer out to an external, untracked
- * pot, so money leaving counts as spending, but a withdrawal (a positive
- * amount) is money moving back, not new incoming money, so it's excluded
- * rather than counted as "in". Viewed from the savings account itself,
- * though, that same category is just its own ordinary activity — a deposit
- * is income there, a withdrawal is spending, exactly like every other
- * category — so the exclusion doesn't apply.
+ * (id -1) the same way. A 'saving'-kind category is no exception — a deposit
+ * is income, a withdrawal is spending, exactly like every other category, on
+ * every account alike.
  */
 export function monthlyCategoryTotals(userId, from, to, accountId = null) {
   const af = accountFilter(accountId);
-  const account =
-    accountId && accountId !== 'none' ? db.prepare('SELECT kind FROM accounts WHERE id = ? AND user_id = ?').get(accountId, userId) : null;
-  const excludeSavingWithdrawals = account?.kind !== 'savings';
   return db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
@@ -841,66 +825,10 @@ export function monthlyCategoryTotals(userId, from, to, accountId = null) {
        WHERE t.user_id = @userId
          AND substr(t.date, 1, 7) BETWEEN @from AND @to
          AND (c.id IS NULL OR c.kind IN ('income', 'expense', 'saving'))
-         ${excludeSavingWithdrawals ? "AND (c.kind IS NULL OR c.kind != 'saving' OR t.amount <= 0)" : ''}
          ${af.sql}
        GROUP BY ym, COALESCE(c.id, -1), CASE WHEN t.amount > 0 THEN 'income' ELSE 'expense' END`
     )
     .all({ userId, from, to, ...af.params });
-}
-
-/**
- * Everything the savings views need: the running total put aside, and a
- * month-by-month series carrying both that month's contribution and the balance
- * built up to it.
- *
- * Pass a number for the last N months (dashboard) or `{ from, to }` for a
- * range (reports). `total` is the balance at the end of the window.
- *
- * These are *net contributions*, never an account balance — Tally has no sight
- * of interest or market growth, and a withdrawal shows up as a negative
- * contribution rather than being hidden. Label it "put aside", not "savings".
- */
-export function savingsSummary(userId, window = 12, accountId = null) {
-  const af = accountFilter(accountId);
-  const rows = db
-    .prepare(
-      `SELECT substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS saved
-       FROM transactions t JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = @userId AND c.kind = 'saving' ${af.sql}
-       GROUP BY ym ORDER BY ym`
-    )
-    .all({ userId, ...af.params });
-
-  let running = 0;
-  const all = rows.map((r) => {
-    running += r.saved;
-    return { ym: r.ym, saved: r.saved, total: running };
-  });
-
-  let series;
-  let total;
-  if (typeof window === 'number') {
-    series = all.slice(-window);
-    total = running;
-  } else {
-    series = all.filter((p) => p.ym >= window.from && p.ym <= window.to);
-    const upTo = all.filter((p) => p.ym <= window.to);
-    total = upTo.length ? upTo[upTo.length - 1].total : 0;
-  }
-
-  const configured = accountId
-    ? db
-        .prepare(`SELECT 1 AS ok FROM categories WHERE user_id = ? AND account_id = ? AND kind = 'saving' LIMIT 1`)
-        .get(userId, accountId)
-    : db.prepare(`SELECT 1 AS ok FROM categories WHERE user_id = ? AND kind = 'saving' LIMIT 1`).get(userId);
-
-  return {
-    total,
-    inWindow: series.reduce((s, p) => s + p.saved, 0),
-    series,
-    months: rows.length,
-    configured: !!configured
-  };
 }
 
 /** Cached AI summary for a report scope, or null when the numbers have moved on. */

@@ -9,7 +9,7 @@
    * exactly one of the user's own accounts at a time (never combined), so
    * this is the one place that changes it. Always visible (even with just
    * one account) since "+ Add account" lives at the bottom of its own list.
-   * @type {{ accounts: {id:number,name:string,color:string,kind:string}[], accountId: number }}
+   * @type {{ accounts: {id:number,name:string,color:string}[], accountId: number }}
    */
   let { accounts, accountId } = $props();
 

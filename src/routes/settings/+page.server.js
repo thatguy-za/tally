@@ -69,11 +69,10 @@ export const actions = {
     const f = await request.formData();
     const name = String(f.get('name') || '').trim();
     const color = String(f.get('color') || '#64748b');
-    const kind = f.get('kind') === 'savings' ? 'savings' : 'checking';
     if (!name) return fail(400, { section: 'account', error: 'Name is required.' });
     let created;
     try {
-      created = createAccount(locals.user.id, name, color, kind);
+      created = createAccount(locals.user.id, name, color);
     } catch {
       return fail(400, { section: 'account', error: 'An account with that name already exists.' });
     }
@@ -120,7 +119,7 @@ export const actions = {
 
   deleteRule: async ({ request, locals }) => {
     const f = await request.formData();
-    deleteRule(locals.user.id, Number(f.get('id')));
+    deleteRule(locals.user.id, locals.accountId, Number(f.get('id')));
     return { section: 'rule', ok: true };
   },
 
