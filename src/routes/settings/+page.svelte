@@ -81,7 +81,8 @@
     </div>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       Add another account to track it completely separately. Switch between them from the picker
-      in the top bar; figures are never combined across accounts.
+      in the top bar; figures are never combined across accounts. On a <b>Savings</b> account, a
+      <b>Savings</b>-category transaction counts as its own income, not a separate "saved" figure.
     </p>
     <ul class="divide-y divide-[var(--border)]">
       {#each data.accounts as a}
@@ -102,6 +103,12 @@
             <input name="name" value={a.name} class="cell min-w-0 flex-1 text-[13px]"
               aria-label="Name for {a.name}"
               onchange={(e) => e.currentTarget.form.requestSubmit()} />
+            <select name="kind" value={a.kind} class="input !w-auto shrink-0 !py-1 text-[13px]"
+              aria-label="Type for {a.name}"
+              onchange={(e) => e.currentTarget.form.requestSubmit()}>
+              <option value="checking">Transactional</option>
+              <option value="savings">Savings</option>
+            </select>
           </form>
           <span class="flex items-center gap-3">
             <span class="text-xs text-[var(--ink-faint)]">

@@ -50,14 +50,14 @@ db.exec(`
     expires_at TEXT NOT NULL
   );
 
-  -- a real-world account (checking, savings, ...) — every account is treated
-  -- identically no matter what it's for; transactions belong to one so money
-  -- moving between a user's own accounts can be told apart from actual income
-  -- or spending — see the 'transfer' category kind. Every figure in the app
-  -- is always scoped to exactly one account at a time, never combined across
-  -- them. The kind column is a leftover from when accounts were split into
-  -- 'checking'/'savings' with different reporting rules — nothing reads or
-  -- writes it anymore.
+  -- a real-world account (checking, savings, ...); transactions belong to
+  -- one so money moving between a user's own accounts can be told apart from
+  -- actual income or spending — see the 'transfer' category kind. Every
+  -- figure in the app is always scoped to exactly one account at a time,
+  -- never combined across them. The kind column changes one reporting rule: on a
+  -- 'savings' account, a 'saving'-kind transaction counts as that account's
+  -- own income/expense rather than a separately tracked "saved" figure — see
+  -- isSavingsAccount() in queries.js.
   CREATE TABLE IF NOT EXISTS accounts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -172,7 +172,7 @@ if (!userCols.includes('date_format')) {
 }
 
 // Existing databases predate the accounts table's `kind` column (see its
-// own comment above — nothing reads or writes it anymore).
+// own comment above).
 const acctCols = db.prepare('PRAGMA table_info(accounts)').all().map((c) => c.name);
 if (!acctCols.includes('kind')) {
   db.exec("ALTER TABLE accounts ADD COLUMN kind TEXT NOT NULL DEFAULT 'checking'");

@@ -7,6 +7,7 @@ import {
   listAccounts,
   createAccount,
   renameAccount,
+  setAccountKind,
   deleteAccount,
   listRules,
   createRule,
@@ -69,10 +70,11 @@ export const actions = {
     const f = await request.formData();
     const name = String(f.get('name') || '').trim();
     const color = String(f.get('color') || '#64748b');
+    const kind = String(f.get('kind') || 'checking');
     if (!name) return fail(400, { section: 'account', error: 'Name is required.' });
     let created;
     try {
-      created = createAccount(locals.user.id, name, color);
+      created = createAccount(locals.user.id, name, color, kind);
     } catch {
       return fail(400, { section: 'account', error: 'An account with that name already exists.' });
     }
@@ -84,12 +86,14 @@ export const actions = {
     const id = Number(f.get('id'));
     const name = String(f.get('name') || '').trim();
     const color = String(f.get('color') || '#64748b');
+    const kind = String(f.get('kind') || 'checking');
     if (!id || !name) return fail(400, { section: 'account', error: 'Name is required.' });
     try {
       renameAccount(locals.user.id, id, name, color);
     } catch {
       return fail(400, { section: 'account', error: 'An account with that name already exists.' });
     }
+    setAccountKind(locals.user.id, id, kind);
     return { section: 'account', ok: true, msg: 'Account updated' };
   },
 

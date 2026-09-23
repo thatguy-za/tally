@@ -162,6 +162,19 @@ describe('category kinds and monthlyTotals', () => {
     // the three slices add back up to the combined total
     expect(checkingOnly.outgoing + savingsOnly.outgoing + unassigned.outgoing).toBe(all.outgoing);
   });
+
+  it('treats a saving category as ordinary income/spending on a dedicated savings account', () => {
+    const u = makeUser();
+    const acct = makeAccount(u, 'Emergency fund', '#000000', 'savings');
+    const savings = makeCategory(u, 'Savings', 'saving', acct);
+    addTx(u, { date: '2026-03-01', amount: 500, category_id: savings, account_id: acct });
+    addTx(u, { date: '2026-03-02', amount: -50, category_id: savings, account_id: acct });
+
+    const [row] = monthlyTotals(u, 1, acct);
+    expect(row.incoming).toBe(500);
+    expect(row.outgoing).toBe(50);
+    expect(row.saved).toBe(0);
+  });
 });
 
 describe('categoryBreakdown', () => {
@@ -511,9 +524,9 @@ describe('periodInsights', () => {
     expect(mover.delta).toBe(150);
   });
 
-  it('excludes a saving category from earned/spent and counts it as saved, on every account alike', () => {
+  it('excludes a saving category from earned/spent and counts it as saved, on a regular account', () => {
     const u = makeUser();
-    const acct = makeAccount(u, 'Emergency fund', '#000000', 'savings');
+    const acct = makeAccount(u, 'Checking');
     const savings = makeCategory(u, 'Savings', 'saving', acct);
     addTx(u, { date: '2026-01-01', amount: 500, category_id: savings, account_id: acct }); // a deposit
     addTx(u, { date: '2026-01-02', amount: -50, category_id: savings, account_id: acct }); // a withdrawal
@@ -522,6 +535,19 @@ describe('periodInsights', () => {
     expect(ins.earned).toBe(0);
     expect(ins.spent).toBe(0);
     expect(ins.saved).toBe(-450); // net: -500 deposited + 50 withdrawn
+  });
+
+  it('treats a saving category as ordinary earned/spent on a dedicated savings account, not as saved', () => {
+    const u = makeUser();
+    const acct = makeAccount(u, 'Emergency fund', '#000000', 'savings');
+    const savings = makeCategory(u, 'Savings', 'saving', acct);
+    addTx(u, { date: '2026-01-01', amount: 500, category_id: savings, account_id: acct }); // a deposit
+    addTx(u, { date: '2026-01-02', amount: -50, category_id: savings, account_id: acct }); // a withdrawal
+
+    const ins = periodInsights(u, '2026-01', '2026-01', acct);
+    expect(ins.earned).toBe(500);
+    expect(ins.spent).toBe(50);
+    expect(ins.saved).toBe(0);
   });
 
   it('reports no baseline for the very first month of data', () => {
@@ -714,6 +740,18 @@ describe('savingsSummary', () => {
 
     expect(savingsSummary(u, 12, acct).total).toBe(100);
     expect(savingsSummary(u, 12).total).toBe(120);
+  });
+
+  it('reports unconfigured on a dedicated savings account, since it counts as ordinary income/expense there instead', () => {
+    const u = makeUser();
+    const acct = makeAccount(u, 'Emergency fund', '#000000', 'savings');
+    const savings = makeCategory(u, 'Savings', 'saving', acct);
+    addTx(u, { date: '2026-01-15', amount: 100, category_id: savings, account_id: acct });
+
+    const s = savingsSummary(u, 12, acct);
+    expect(s.configured).toBe(false);
+    expect(s.total).toBe(0);
+    expect(s.series).toEqual([]);
   });
 });
 

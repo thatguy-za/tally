@@ -12,6 +12,7 @@
 
   let name = $state('');
   let color = $state('#7b8a5a');
+  let kind = $state('checking');
   let saving = $state(false);
   let error = $state('');
 
@@ -23,6 +24,7 @@
     const body = new FormData();
     body.set('name', name.trim());
     body.set('color', color);
+    body.set('kind', kind);
     try {
       const res = await fetch('/settings?/addAccount', {
         method: 'POST',
@@ -73,6 +75,18 @@
           <input class="input w-full" id="new-acct-name" placeholder="e.g. Emergency fund"
             bind:value={name} required />
         </div>
+      </div>
+
+      <div>
+        <label class="label" for="new-acct-kind">Type</label>
+        <select class="input w-full" id="new-acct-kind" bind:value={kind}>
+          <option value="checking">Transactional</option>
+          <option value="savings">Savings</option>
+        </select>
+        <p class="mt-1 text-xs text-[var(--ink-faint)]">
+          On a savings account, a <b>Savings</b>-category transaction counts as this account's own income, not a
+          separate "saved" figure.
+        </p>
       </div>
 
       {#if error}<p class="text-sm" style="color:var(--negative)">{error}</p>{/if}

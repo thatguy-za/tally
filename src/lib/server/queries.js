@@ -12,7 +12,9 @@ export function listCategories(userId, accountId) {
 /**
  * `saving` is money kept rather than spent — any transaction in a category of
  * this kind is left out of income/spending and reported on its own as
- * "saved" instead, on every account alike. `transfer` is for the receiving
+ * "saved" instead. The one exception is a dedicated savings account, where
+ * that money IS the account's own income/spending rather than a separate
+ * figure — see isSavingsAccount() below. `transfer` is for the receiving
  * side of a move between two of the user's own accounts (e.g. into a savings
  * account whose statement is also imported): it is excluded from income,
  * spending and "saved" alike, since that money was already accounted for on
@@ -77,13 +79,22 @@ export function listAccounts(userId) {
 }
 
 /** New accounts get their own copy of the default categories — never another account's. */
-export function createAccount(userId, name, color) {
+export function createAccount(userId, name, color, kind) {
   const trimmed = name.trim();
   const c = color || '#64748b';
-  const info = db.prepare('INSERT INTO accounts (user_id, name, color) VALUES (?, ?, ?)').run(userId, trimmed, c);
+  const k = kind === 'savings' ? 'savings' : 'checking';
+  const info = db
+    .prepare('INSERT INTO accounts (user_id, name, color, kind) VALUES (?, ?, ?, ?)')
+    .run(userId, trimmed, c, k);
   const id = Number(info.lastInsertRowid);
   seedCategories(userId, id);
-  return { id, name: trimmed, color: c };
+  return { id, name: trimmed, color: c, kind: k };
+}
+
+/** A savings account's own `saving`-kind transactions count as its ordinary income/expense — see isSavingsAccount(). */
+export function setAccountKind(userId, id, kind) {
+  const k = kind === 'savings' ? 'savings' : 'checking';
+  db.prepare('UPDATE accounts SET kind = ? WHERE id = ? AND user_id = ?').run(k, id, userId);
 }
 
 export function renameAccount(userId, id, name, color) {
@@ -307,11 +318,23 @@ export function setUncategorisedDismissed(userId, id, dismissed) {
 /* --------------------------------------------------------------------- reports */
 
 // SQL fragments for splitting out what counts as ordinary income/spending.
-// 'transfer' and 'opening_balance' are excluded from both, same as 'saving',
-// but never counted as saved either — see NON_SPENDING_KINDS above. Same
-// rule for every account; nothing here branches on the account itself.
-const NOT_SPENDING = `COALESCE(c.kind, 'expense') NOT IN (${NON_SPENDING_KINDS.map((k) => `'${k}'`).join(', ')})`;
-const IS_SAVING = `COALESCE(c.kind, 'expense') = 'saving'`;
+// 'transfer' and 'opening_balance' are excluded from both everywhere, but
+// 'saving' is only pulled out on a *non*-savings account — see
+// isSavingsAccount() below. On a savings account, a 'saving'-kind transaction
+// IS the account's whole purpose, so it's just ordinary income/spending there
+// (by sign) rather than a separate "saved" figure, which would double-count it.
+const NON_SPENDING_KINDS_SANS_SAVING = NON_SPENDING_KINDS.filter((k) => k !== 'saving');
+const notSpendingSql = (onSavingsAccount) =>
+  `COALESCE(c.kind, 'expense') NOT IN (${(onSavingsAccount ? NON_SPENDING_KINDS_SANS_SAVING : NON_SPENDING_KINDS)
+    .map((k) => `'${k}'`)
+    .join(', ')})`;
+const isSavingSql = (onSavingsAccount) => (onSavingsAccount ? '0' : `COALESCE(c.kind, 'expense') = 'saving'`);
+
+/** Whether the account being viewed is a dedicated savings account, or the combined/unassigned view. */
+function isSavingsAccount(userId, accountId) {
+  if (!accountId || accountId === 'none') return false;
+  return db.prepare('SELECT kind FROM accounts WHERE id = ? AND user_id = ?').get(accountId, userId)?.kind === 'savings';
+}
 
 /**
  * An optional account filter as a SQL fragment + the params to bind. Every
@@ -328,16 +351,21 @@ function accountFilter(accountId) {
 /**
  * Per-month in / out / saved. Money in a `saving` category is money kept, so it
  * is excluded from `outgoing` and reported as `saved` — a net contribution, so
- * a withdrawal shows up negative rather than being hidden.
+ * a withdrawal shows up negative rather than being hidden. On a dedicated
+ * savings account, that money IS the account's income, so it counts as
+ * ordinary in/out there instead — see isSavingsAccount().
  */
 export function monthlyTotals(userId, months = 12, accountId = null) {
   const af = accountFilter(accountId);
+  const savings = isSavingsAccount(userId, accountId);
+  const notSpending = notSpendingSql(savings);
+  const isSaving = isSavingSql(savings);
   return db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
-              SUM(CASE WHEN t.amount > 0 AND ${NOT_SPENDING} THEN t.amount ELSE 0 END) AS incoming,
-              SUM(CASE WHEN t.amount < 0 AND ${NOT_SPENDING} THEN -t.amount ELSE 0 END) AS outgoing,
-              SUM(CASE WHEN ${IS_SAVING} THEN -t.amount ELSE 0 END) AS saved
+              SUM(CASE WHEN t.amount > 0 AND ${notSpending} THEN t.amount ELSE 0 END) AS incoming,
+              SUM(CASE WHEN t.amount < 0 AND ${notSpending} THEN -t.amount ELSE 0 END) AS outgoing,
+              SUM(CASE WHEN ${isSaving} THEN -t.amount ELSE 0 END) AS saved
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
        WHERE t.user_id = @userId ${af.sql}
        GROUP BY ym ORDER BY ym DESC LIMIT @months`
@@ -685,12 +713,15 @@ export function monthRange(from, to) {
 export function periodInsights(userId, from, to, accountId = null) {
   const nowYm = ym(new Date());
   const af = accountFilter(accountId);
+  const savings = isSavingsAccount(userId, accountId);
+  const notSpending = notSpendingSql(savings);
+  const isSaving = isSavingSql(savings);
   const totals = db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
-              SUM(CASE WHEN t.amount > 0 AND ${NOT_SPENDING} THEN t.amount ELSE 0 END) AS incoming,
-              SUM(CASE WHEN t.amount < 0 AND ${NOT_SPENDING} THEN -t.amount ELSE 0 END) AS outgoing,
-              SUM(CASE WHEN ${IS_SAVING} THEN -t.amount ELSE 0 END) AS saved
+              SUM(CASE WHEN t.amount > 0 AND ${notSpending} THEN t.amount ELSE 0 END) AS incoming,
+              SUM(CASE WHEN t.amount < 0 AND ${notSpending} THEN -t.amount ELSE 0 END) AS outgoing,
+              SUM(CASE WHEN ${isSaving} THEN -t.amount ELSE 0 END) AS saved
        FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
        WHERE t.user_id = @userId ${af.sql}
        GROUP BY ym`
@@ -854,8 +885,16 @@ export function monthlyCategoryTotals(userId, from, to, accountId = null) {
  * These are *net contributions*, never an account balance — Tally has no sight
  * of interest or market growth, and a withdrawal shows up as a negative
  * contribution rather than being hidden. Label it "put aside", not "savings".
+ *
+ * On a dedicated savings account, `saving`-kind transactions already count as
+ * ordinary income/expense for that account (see isSavingsAccount()), so
+ * tracking them again here as a separate "saved" figure would double-count
+ * them — this reports unconfigured for that account instead.
  */
 export function savingsSummary(userId, window = 12, accountId = null) {
+  if (isSavingsAccount(userId, accountId)) {
+    return { total: 0, inWindow: 0, series: [], months: 0, configured: false };
+  }
   const af = accountFilter(accountId);
   const rows = db
     .prepare(
