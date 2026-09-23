@@ -814,14 +814,21 @@ export function periodInsights(userId, from, to, accountId = null) {
  * expense-kind category like "Shopping", a correction on an income-kind one)
  * was silently dropped from both bars here while still counting up there.
  * An uncategorised transaction is folded into its own "Uncategorised" bucket
- * (id -1) the same way. The one kind that still matters is 'saving': money
- * moved into savings left the account that month, so it belongs in the "out"
- * bar next to real spending, but a withdrawal (a positive amount) is money
- * moving back from a self-tracked bucket, not new incoming money, so it's
- * excluded rather than counted as "in".
+ * (id -1) the same way. The one kind that still needs special care is
+ * 'saving' — but only when viewing an account that isn't itself a savings
+ * account: there, it represents a transfer out to an external, untracked
+ * pot, so money leaving counts as spending, but a withdrawal (a positive
+ * amount) is money moving back, not new incoming money, so it's excluded
+ * rather than counted as "in". Viewed from the savings account itself,
+ * though, that same category is just its own ordinary activity — a deposit
+ * is income there, a withdrawal is spending, exactly like every other
+ * category — so the exclusion doesn't apply.
  */
 export function monthlyCategoryTotals(userId, from, to, accountId = null) {
   const af = accountFilter(accountId);
+  const account =
+    accountId && accountId !== 'none' ? db.prepare('SELECT kind FROM accounts WHERE id = ? AND user_id = ?').get(accountId, userId) : null;
+  const excludeSavingWithdrawals = account?.kind !== 'savings';
   return db
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
@@ -834,7 +841,7 @@ export function monthlyCategoryTotals(userId, from, to, accountId = null) {
        WHERE t.user_id = @userId
          AND substr(t.date, 1, 7) BETWEEN @from AND @to
          AND (c.id IS NULL OR c.kind IN ('income', 'expense', 'saving'))
-         AND (c.kind IS NULL OR c.kind != 'saving' OR t.amount <= 0)
+         ${excludeSavingWithdrawals ? "AND (c.kind IS NULL OR c.kind != 'saving' OR t.amount <= 0)" : ''}
          ${af.sql}
        GROUP BY ym, COALESCE(c.id, -1), CASE WHEN t.amount > 0 THEN 'income' ELSE 'expense' END`
     )

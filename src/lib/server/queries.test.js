@@ -596,6 +596,17 @@ describe('monthlyCategoryTotals', () => {
     expect(monthlyCategoryTotals(u, '2026-01', '2026-01')).toHaveLength(0);
   });
 
+  it('does not exclude a saving category\'s deposit when the account being viewed is itself a savings account', () => {
+    const u = makeUser();
+    const acct = makeAccount(u, 'Emergency fund', '#000000', 'savings');
+    const savings = makeCategory(u, 'Savings', 'saving', acct);
+    addTx(u, { date: '2026-01-01', amount: 50, category_id: savings, account_id: acct });
+
+    const rows = monthlyCategoryTotals(u, '2026-01', '2026-01', acct);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: savings, kind: 'income', total: 50 });
+  });
+
   it('buckets by the transaction\'s own sign, not its category\'s kind, so a refund or correction still shows', () => {
     const u = makeUser();
     const salary = makeCategory(u, 'Salary', 'income');

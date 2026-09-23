@@ -59,8 +59,8 @@ export function load({ locals, url }) {
   if (from > to) [from, to] = [to, from];
 
   // rows are already bucketed into 'income'/'expense' by sign — see
-  // monthlyCategoryTotals, which also folds a saving-kind deposit into
-  // 'expense' (it left the account that month) and drops a withdrawal
+  // monthlyCategoryTotals for the one exception, a savings-transfer
+  // category's own quirk when accountId isn't itself a savings account
   const rows = monthlyCategoryTotals(userId, from, to, accountId);
   const income = seriesFor(rows, 'income');
   const expense = seriesFor(rows, 'expense');
