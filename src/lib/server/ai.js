@@ -399,30 +399,56 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 11;
+export const SUMMARY_VERSION = 12;
 
-const SUMMARY_SYSTEM =
+// shared tail, common to every account kind's summary prompt
+const SUMMARY_RULES =
+  'Use only the figures you are given: never calculate, estimate or invent a ' +
+  'number, and never name a category that is not in the list. Write no more ' +
+  'than 55 words, as two or three sentences, each naming a concrete category ' +
+  'or figure — no vague filler like "spending was mixed" or "a few ' +
+  'categories changed". Plain, warm, second-person English. No headings, ' +
+  'bullet points, markdown, preamble, sign-off or disclaimers. Never use ' +
+  'statistics jargon like "median", "average", "mean" or "baseline" — say ' +
+  '"usual" instead, exactly as the facts below describe it, since the ' +
+  'reader isn\'t a statistician. Never end with advice, a suggestion or a ' +
+  'recommendation of any kind, generic or specific ("track your spending", ' +
+  '"keep an eye on X", "consider…") — describe what happened and stop ' +
+  'there. If nothing in the category detail stands out, say so plainly ' +
+  'rather than manufacturing a problem.';
+
+const SUMMARY_SYSTEM_STANDARD =
   'You write a very short money summary covering the period described. The ' +
   'reader already sees the totals — came in, spent, saved — in cards right ' +
   'above this text, so never restate those totals or open with how the ' +
   'period "went" overall; that would just repeat the cards. Instead mine the ' +
   'category-level detail for the two or three most useful, specific things ' +
   'worth pointing out: which categories drove any change vs usual, a run of ' +
-  'months moving the same direction, or one category offsetting another. Use ' +
-  'only the figures you are given: ' +
-  'never calculate, estimate or invent a number, and never name a category ' +
-  'that is not in the list. Write no more than 55 words, as two or three ' +
-  'sentences, each naming a concrete category or figure — no vague filler ' +
-  'like "spending was mixed" or "a few categories changed". Plain, warm, ' +
-  'second-person English ("you spent…"). No headings, bullet points, ' +
-  'markdown, preamble, sign-off or disclaimers. Never use statistics jargon ' +
-  'like "median", "average", "mean" or "baseline" — say "usual" instead, ' +
-  'exactly as the facts below describe it, since the reader isn\'t a ' +
-  'statistician. Never end with advice, a ' +
-  'suggestion or a recommendation of any kind, generic or specific ("track ' +
-  'your spending", "keep an eye on X", "consider…") — describe what happened ' +
-  'and stop there. If nothing in the category detail stands out, say so ' +
-  'plainly rather than manufacturing a problem.';
+  'months moving the same direction, or one category offsetting another. ' +
+  'Talk about it the normal way money is talked about ("you spent…", "you ' +
+  'earned…"). ' +
+  SUMMARY_RULES;
+
+// this account is a dedicated savings account (see isSavingsAccount() in
+// queries.js) — its transactions ARE the saving activity, not everyday
+// spending or income, so the summary needs its own vocabulary entirely
+const SUMMARY_SYSTEM_SAVINGS =
+  'You write a very short summary covering the period described, for a ' +
+  "dedicated SAVINGS account — every transaction on it is money moving into " +
+  'or out of savings, never everyday spending or income. The reader already ' +
+  'sees "Came in" (paid into savings) and "Went out" (withdrawn from ' +
+  'savings) in cards right above this text, so never restate those totals ' +
+  'or open with how the period "went" overall. Instead mine the ' +
+  'category-level detail for the two or three most useful, specific things ' +
+  'worth pointing out: what drove a deposit or a withdrawal, a run of ' +
+  'months moving the same direction, or one contribution offsetting a ' +
+  'withdrawal. Never call money going in "income" or "earnings" and never ' +
+  'call money going out "spending" or "expenses" — describe it as paying ' +
+  'into, putting aside, adding to, withdrawing from, or dipping into ' +
+  'savings instead. ' +
+  SUMMARY_RULES;
+
+const summarySystem = (isSavingsAccount) => (isSavingsAccount ? SUMMARY_SYSTEM_SAVINGS : SUMMARY_SYSTEM_STANDARD);
 
 /**
  * The exact text sent to the AI for a period summary: every figure already
@@ -432,8 +458,12 @@ const SUMMARY_SYSTEM =
  *
  * @param {ReturnType<import('./queries.js').periodInsights>} insights
  * @param {string} currency
+ * @param {{ isSavingsAccount?: boolean }} [opts] pass `isSavingsAccount: true` when this
+ *   period is scoped to a dedicated savings account (see isSavingsAccount() in queries.js) —
+ *   `earned`/`spent` there are deposits/withdrawals, not income/spending, and `saved` is
+ *   always 0 since it isn't tracked separately for that account.
  */
-export function buildPeriodFacts(insights, currency) {
+export function buildPeriodFacts(insights, currency, { isSavingsAccount = false } = {}) {
   const money = (n) => formatMoney(n, currency);
   const b = insights.baseline;
   const lines = [];
@@ -456,18 +486,24 @@ export function buildPeriodFacts(insights, currency) {
   const cmp = (actual, usual) =>
     usual == null ? '' : ` (usual ${money(usual)} — ${money(Math.abs(actual - usual))} ${actual >= usual ? 'more' : 'less'})`;
 
-  lines.push(`Came in: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(insights.avg.earned, b?.earned));
-  lines.push(`Spent: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(insights.avg.spent, b?.spent));
-  if (insights.saved > 0) {
-    lines.push(`Saved: ${money(insights.saved)}` + (insights.single ? '' : ` in total, ${money(insights.avg.saved)}${per}`) + cmp(insights.avg.saved, b?.saved));
-  } else if (insights.saved < 0) {
-    lines.push(`Taken back out of savings: ${money(-insights.saved)}`);
-  }
-  if (insights.saved) {
-    lines.push(
-      'Money moved into savings is excluded from the "Spent" figure. Do not describe ' +
-        'it as spending.'
-    );
+  if (isSavingsAccount) {
+    lines.push('This account is a dedicated savings account — every figure below is savings activity, not everyday income or spending.');
+    lines.push(`Paid into savings: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(insights.avg.earned, b?.earned));
+    lines.push(`Withdrawn from savings: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(insights.avg.spent, b?.spent));
+  } else {
+    lines.push(`Came in: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(insights.avg.earned, b?.earned));
+    lines.push(`Spent: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(insights.avg.spent, b?.spent));
+    if (insights.saved > 0) {
+      lines.push(`Saved: ${money(insights.saved)}` + (insights.single ? '' : ` in total, ${money(insights.avg.saved)}${per}`) + cmp(insights.avg.saved, b?.saved));
+    } else if (insights.saved < 0) {
+      lines.push(`Taken back out of savings: ${money(-insights.saved)}`);
+    }
+    if (insights.saved) {
+      lines.push(
+        'Money moved into savings is excluded from the "Spent" figure. Do not describe ' +
+          'it as spending.'
+      );
+    }
   }
   lines.push(
     b
@@ -476,7 +512,7 @@ export function buildPeriodFacts(insights, currency) {
   );
 
   if (insights.movers.length) {
-    lines.push('', 'Biggest changes vs usual:');
+    lines.push('', isSavingsAccount ? 'Biggest movers vs usual:' : 'Biggest changes vs usual:');
     for (const m of insights.movers) {
       lines.push(
         `- ${m.name}: ${money(m.spent)} (usual ${money(m.usual)} — ` +
@@ -492,12 +528,13 @@ export function buildPeriodFacts(insights, currency) {
  * Turn the numbers from `periodInsights` into a plain-English read of the period.
  * @param {ReturnType<import('./queries.js').periodInsights>} insights
  * @param {string} currency
+ * @param {{ isSavingsAccount?: boolean }} [opts] see buildPeriodFacts()
  */
-export async function summarisePeriod(insights, currency) {
+export async function summarisePeriod(insights, currency, opts = {}) {
   const model = getModel();
   const { text, usage } = await callText({
-    system: SUMMARY_SYSTEM,
-    userText: buildPeriodFacts(insights, currency),
+    system: summarySystem(opts.isSavingsAccount),
+    userText: buildPeriodFacts(insights, currency, opts),
     maxTokens: 200,
     model
   });

@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import { createHash } from 'node:crypto';
 import { aiEnabled } from '$lib/server/ai-settings.js';
-import { periodInsights, getInsight, setInsight, getUserAiCategorise } from '$lib/server/queries.js';
+import { periodInsights, getInsight, setInsight, getUserAiCategorise, isSavingsAccount } from '$lib/server/queries.js';
 import { summarisePeriod, SUMMARY_VERSION } from '$lib/server/ai.js';
 
 const YM = /^\d{4}-\d{2}$/;
@@ -37,11 +37,14 @@ export async function POST({ request, locals }) {
   const insights = periodInsights(locals.user.id, from, to, accountId);
   if (!insights.earned && !insights.spent && !insights.saved) return json({ summary: null });
 
+  const savings = isSavingsAccount(locals.user.id, accountId);
+
   const fingerprint = createHash('sha1')
     .update(
       JSON.stringify([
         // the prompt version is in here so a reworded summary regenerates
         SUMMARY_VERSION,
+        savings,
         Math.round(insights.earned),
         Math.round(insights.spent),
         Math.round(insights.saved),
@@ -56,7 +59,7 @@ export async function POST({ request, locals }) {
   if (cached) return json({ summary: cached, cached: true });
 
   try {
-    const r = await summarisePeriod(insights, locals.user.currency);
+    const r = await summarisePeriod(insights, locals.user.currency, { isSavingsAccount: savings });
     if (!r.text) return json({ summary: null });
     setInsight(locals.user.id, scope, fingerprint, r.text);
     return json({ summary: r.text, cached: false, costUsd: r.costUsd });

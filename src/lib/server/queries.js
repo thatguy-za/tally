@@ -331,7 +331,7 @@ const notSpendingSql = (onSavingsAccount) =>
 const isSavingSql = (onSavingsAccount) => (onSavingsAccount ? '0' : `COALESCE(c.kind, 'expense') = 'saving'`);
 
 /** Whether the account being viewed is a dedicated savings account, or the combined/unassigned view. */
-function isSavingsAccount(userId, accountId) {
+export function isSavingsAccount(userId, accountId) {
   if (!accountId || accountId === 'none') return false;
   return db.prepare('SELECT kind FROM accounts WHERE id = ? AND user_id = ?').get(accountId, userId)?.kind === 'savings';
 }
