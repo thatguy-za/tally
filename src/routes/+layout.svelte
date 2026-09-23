@@ -53,7 +53,17 @@
   <div class="shell flex min-h-full flex-col">
     <header class="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--paper)]/85 backdrop-blur-md">
       <div class="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
-        <a href="/insights" class="flex shrink-0 items-center gap-2.5">
+        <button
+          type="button"
+          class="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-sm)] text-[var(--ink-soft)] transition-colors hover:bg-[var(--paper-sunk)] sm:hidden"
+          aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={mobileNavOpen}
+          onclick={() => (mobileNavOpen = !mobileNavOpen)}
+        >
+          <Icon name={mobileNavOpen ? 'x' : 'menu'} size={19} />
+        </button>
+
+        <a href="/insights" class="hidden shrink-0 items-center gap-2.5 sm:flex">
           <span class="grid h-8 w-8 place-items-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-contrast)]">
             <Icon name="wallet" size={17} stroke={2} />
           </span>
@@ -79,20 +89,12 @@
         <div class="flex-1 sm:hidden"></div>
 
         {#if data.accounts}
-          <AccountSwitcher accounts={data.accounts} accountId={data.accountId} />
+          <div class="hidden sm:block">
+            <AccountSwitcher accounts={data.accounts} accountId={data.accountId} />
+          </div>
         {/if}
 
         <UserMenu user={data.user} />
-
-        <button
-          type="button"
-          class="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--radius-sm)] text-[var(--ink-soft)] transition-colors hover:bg-[var(--paper-sunk)] sm:hidden"
-          aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
-          aria-expanded={mobileNavOpen}
-          onclick={() => (mobileNavOpen = !mobileNavOpen)}
-        >
-          <Icon name={mobileNavOpen ? 'x' : 'menu'} size={19} />
-        </button>
       </div>
 
       {#if mobileNavOpen}
@@ -109,6 +111,15 @@
               {item.label}
             </a>
           {/each}
+          {#if data.accounts}
+            <div class="my-1 border-t border-[var(--border)]"></div>
+            <AccountSwitcher
+              accounts={data.accounts}
+              accountId={data.accountId}
+              variant="inline"
+              onSwitched={() => (mobileNavOpen = false)}
+            />
+          {/if}
         </nav>
       {/if}
     </header>
