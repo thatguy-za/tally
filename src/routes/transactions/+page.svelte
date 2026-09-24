@@ -12,6 +12,8 @@
   import CategorySelect from '$lib/components/CategorySelect.svelte';
   import { toast } from '$lib/toast.svelte.js';
   import { guessDomain } from '$lib/logo.js';
+  import { formatMonth } from '$lib/currency.js';
+  import { formatMoney } from '$lib/privacy.svelte.js';
   let { data, form } = $props();
 
   let showAddImport = $state($page.url.searchParams.has('new'));
@@ -67,14 +69,56 @@
   function toggleAll() {
     selected = allChecked ? new Set() : new Set(visibleRows.map((t) => t.id));
   }
-  function setParam(key, value) {
+  function setParams(updates) {
     const url = new URL($page.url);
-    if (value) url.searchParams.set(key, value);
-    else url.searchParams.delete(key);
+    for (const [key, value] of Object.entries(updates)) {
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    }
     goto(url, { keepFocus: true, noScroll: true });
+  }
+  function setParam(key, value) {
+    setParams({ [key]: value });
   }
 
   let activeFilterCount = $derived(Object.entries(data.filters).filter(([, v]) => v).length);
+
+  // one removable chip per active filter (not `search` — its own box is
+  // always visible, so a chip for it would just be a second way to see the
+  // same thing), each carrying exactly the params clearing it needs to reset
+  let filterChips = $derived.by(() => {
+    const f = data.filters;
+    const chips = [];
+    if (f.month) chips.push({ key: 'month', label: formatMonth(f.month), clear: { month: '' } });
+    if (f.dateFrom || f.dateTo) {
+      chips.push({ key: 'range', label: `${f.dateFrom || '…'} → ${f.dateTo || '…'}`, clear: { from: '', to: '' } });
+    }
+    if (f.category) {
+      const label = f.category === 'none' ? 'Uncategorised' : data.categories.find((c) => String(c.id) === f.category)?.name;
+      if (label) chips.push({ key: 'category', label, clear: { category: '' } });
+    }
+    if (f.direction) {
+      chips.push({ key: 'direction', label: f.direction === 'in' ? 'Incoming' : 'Outgoing', clear: { dir: '' } });
+    }
+    if (f.amountMin || f.amountMax) {
+      const min = f.amountMin ? formatMoney(Number(f.amountMin), data.currency) : null;
+      const max = f.amountMax ? formatMoney(Number(f.amountMax), data.currency) : null;
+      const label = min && max ? `${min}–${max}` : min ? `From ${min}` : `Up to ${max}`;
+      chips.push({ key: 'amount', label, clear: { min: '', max: '' } });
+    }
+    return chips;
+  });
+
+  // the mobile filter sheet's two disclosures default open when the filter
+  // they hold is already active, so reopening the sheet doesn't hide it
+  let dateRangeOpen = $state(false);
+  let amountRangeOpen = $state(false);
+  $effect(() => {
+    if (showFilters) {
+      dateRangeOpen = !!(data.filters.dateFrom || data.filters.dateTo);
+      amountRangeOpen = !!(data.filters.amountMin || data.filters.amountMax);
+    }
+  });
 
   const catColor = (id) =>
     data.categories.find((c) => String(c.id) === String(id))?.color || 'var(--border-strong)';
@@ -141,10 +185,16 @@
     <p class="kicker mb-2">Activity</p>
     <h1 class="text-3xl" style="font-family:var(--font-display)">Transactions</h1>
   </div>
-  <div class="flex flex-wrap gap-2">
+  <div class="flex flex-wrap items-center gap-2">
     <button class="btn btn-ghost" onclick={() => (showFilters = !showFilters)}>
       <Icon name="filter" size={14} /> Filters{activeFilterCount ? ` · ${activeFilterCount}` : ''}
     </button>
+    {#each filterChips as chip (chip.key)}
+      <button type="button" class="chip flex items-center gap-1.5 text-[12px]" onclick={() => setParams(chip.clear)}>
+        {chip.label}
+        <Icon name="x" size={11} />
+      </button>
+    {/each}
     <button class="btn btn-primary" onclick={() => (showAddImport = !showAddImport)}>
       <Icon name="plus" size={14} /> Add/Import
     </button>
@@ -152,7 +202,8 @@
 </div>
 
 {#if showFilters}
-  <div transition:slide class="card mb-4 grid gap-3 sm:grid-cols-4">
+  <!-- desktop: an inline panel, all fields always visible -->
+  <div transition:slide class="card mb-4 hidden gap-3 sm:grid sm:grid-cols-4">
     <div>
       <label class="label" for="f-month">Month</label>
       <select class="input" id="f-month" value={data.filters.month}
@@ -201,6 +252,105 @@
     </div>
     <div class="flex items-end">
       <a class="btn btn-ghost w-full" href="/transactions">Clear all</a>
+    </div>
+  </div>
+
+  <!-- mobile: a bottom sheet, with rarely-needed fields tucked behind disclosures -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="fixed inset-0 z-30 bg-black/40 sm:hidden" onclick={() => (showFilters = false)}></div>
+  <div transition:fly={{ y: 40, duration: 160 }}
+    class="fixed inset-x-0 bottom-0 z-40 max-h-[80vh] overflow-y-auto rounded-t-[var(--radius)] border-t border-[var(--border-strong)] bg-[var(--surface-raised)] shadow-[var(--shadow-lg)] sm:hidden">
+    <div class="flex justify-center pb-1 pt-2.5"><div class="h-1 w-9 rounded-full" style="background:var(--border-strong)"></div></div>
+    <div class="flex items-center border-b border-[var(--border)] px-4 pb-3">
+      <h2 class="text-[15px] font-semibold">Filters</h2>
+      <button type="button" class="ml-auto rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]" aria-label="Close" onclick={() => (showFilters = false)}>
+        <Icon name="x" size={16} />
+      </button>
+    </div>
+
+    <div class="flex flex-col gap-3 px-4 py-3.5">
+      <div>
+        <label class="label" for="fm-month">Month</label>
+        <select class="input" id="fm-month" value={data.filters.month}
+          onchange={(e) => setParam('month', e.currentTarget.value)}>
+          <option value="">Any</option>
+          {#each data.months as m}<option value={m}>{m}</option>{/each}
+        </select>
+      </div>
+
+      <div>
+        <button type="button" class="flex w-full items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2.5 text-left text-[13px]"
+          onclick={() => (dateRangeOpen = !dateRangeOpen)}>
+          <span class="text-[var(--ink-soft)]">Custom date range</span>
+          <Icon name="arrowRight" size={12} class="text-[var(--ink-faint)] transition-transform {dateRangeOpen ? 'rotate-90' : ''}" />
+        </button>
+        {#if dateRangeOpen}
+          <div transition:slide class="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label class="label" for="fm-from">From</label>
+              <input class="input" id="fm-from" type="date" value={data.filters.dateFrom}
+                onchange={(e) => setParam('from', e.currentTarget.value)} />
+            </div>
+            <div>
+              <label class="label" for="fm-to">To</label>
+              <input class="input" id="fm-to" type="date" value={data.filters.dateTo}
+                onchange={(e) => setParam('to', e.currentTarget.value)} />
+            </div>
+          </div>
+        {/if}
+      </div>
+
+      <div>
+        <label class="label" for="fm-cat">Category</label>
+        <select class="input" id="fm-cat" value={data.filters.category}
+          onchange={(e) => setParam('category', e.currentTarget.value)}>
+          <option value="">Any</option>
+          <option value="none">Uncategorised</option>
+          {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
+        </select>
+      </div>
+
+      <div>
+        <span class="label">Direction</span>
+        <div class="flex overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border)]">
+          {#each [['', 'Any'], ['in', 'Incoming'], ['out', 'Outgoing']] as [value, label]}
+            <button type="button"
+              class="flex-1 py-2 text-[13px] transition-colors {data.filters.direction === value ? 'font-semibold' : 'text-[var(--ink-faint)]'}"
+              style={data.filters.direction === value ? 'background:var(--accent);color:var(--accent-contrast)' : ''}
+              onclick={() => setParam('dir', value)}>
+              {label}
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <div>
+        <button type="button" class="flex w-full items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2.5 text-left text-[13px]"
+          onclick={() => (amountRangeOpen = !amountRangeOpen)}>
+          <span class="text-[var(--ink-soft)]">Amount range</span>
+          <Icon name="arrowRight" size={12} class="text-[var(--ink-faint)] transition-transform {amountRangeOpen ? 'rotate-90' : ''}" />
+        </button>
+        {#if amountRangeOpen}
+          <div transition:slide class="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label class="label" for="fm-min">Min amount</label>
+              <input class="input" id="fm-min" inputmode="decimal" value={data.filters.amountMin}
+                onchange={(e) => setParam('min', e.currentTarget.value)} />
+            </div>
+            <div>
+              <label class="label" for="fm-max">Max amount</label>
+              <input class="input" id="fm-max" inputmode="decimal" value={data.filters.amountMax}
+                onchange={(e) => setParam('max', e.currentTarget.value)} />
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+
+    <div class="flex gap-2.5 border-t border-[var(--border)] px-4 py-3.5">
+      <a class="btn btn-ghost flex-1 justify-center" href="/transactions">Clear all</a>
+      <button type="button" class="btn btn-primary flex-[2] justify-center" onclick={() => (showFilters = false)}>Done</button>
     </div>
   </div>
 {/if}
