@@ -1,7 +1,15 @@
 import { json, error } from '@sveltejs/kit';
 import { createHash } from 'node:crypto';
 import { aiEnabled } from '$lib/server/ai-settings.js';
-import { periodInsights, getInsight, setInsight, getUserAiCategorise, isSavingsAccount } from '$lib/server/queries.js';
+import {
+  periodInsights,
+  getInsight,
+  setInsight,
+  getUserAiCategorise,
+  isSavingsAccount,
+  listAccounts,
+  savingsMilestoneCrossed
+} from '$lib/server/queries.js';
 import { summarisePeriod, SUMMARY_VERSION } from '$lib/server/ai.js';
 
 const YM = /^\d{4}-\d{2}$/;
@@ -38,6 +46,10 @@ export async function POST({ request, locals }) {
   if (!insights.earned && !insights.spent && !insights.saved) return json({ summary: null });
 
   const savings = isSavingsAccount(locals.user.id, accountId);
+  // an account name only worth mentioning if it's one the user actually
+  // chose — "Main account" et al are the seeded default, not real context
+  const accountName = accountId ? listAccounts(locals.user.id).find((a) => a.id === accountId)?.name ?? null : null;
+  const milestone = savingsMilestoneCrossed(locals.user.id, accountId, from, to);
 
   const fingerprint = createHash('sha1')
     .update(
@@ -48,8 +60,14 @@ export async function POST({ request, locals }) {
         Math.round(insights.earned),
         Math.round(insights.spent),
         Math.round(insights.saved),
-        insights.movers.map((m) => [m.id, Math.round(m.spent), Math.round(m.usual)]),
-        insights.topCategories.map((c) => [c.id, Math.round(c.total)])
+        insights.movers.map((m) => [m.id, Math.round(m.spent), Math.round(m.usual), m.streakMonths || 0]),
+        insights.topCategories.map((c) => [c.id, Math.round(c.total)]),
+        milestone?.amount || 0,
+        // personalisation context isn't reflected in any figure above, so a
+        // renamed account or username would otherwise keep serving a stale
+        // cached summary written before the rename
+        locals.user.username,
+        accountName
       ])
     )
     .digest('hex');
@@ -60,7 +78,12 @@ export async function POST({ request, locals }) {
   if (cached) return json({ summary: cached, cached: true });
 
   try {
-    const r = await summarisePeriod(insights, locals.user.currency, { isSavingsAccount: savings });
+    const r = await summarisePeriod(insights, locals.user.currency, {
+      isSavingsAccount: savings,
+      username: locals.user.username,
+      accountName,
+      milestone
+    });
     if (!r.text) return json({ summary: null });
     setInsight(locals.user.id, scope, fingerprint, r.text);
     return json({ summary: r.text, cached: false, costUsd: r.costUsd });

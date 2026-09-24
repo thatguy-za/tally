@@ -821,6 +821,25 @@ export function periodInsights(userId, from, to, accountId = null) {
         .slice(0, 5)
     : [];
 
+  // a genuine streak is worth a mention, so check just the biggest mover:
+  // how many consecutive months, most recent first including this period,
+  // sat on the same side of its "usual" — skipped for a usual of ~0, which
+  // just means the category has no real history to have a streak against
+  if (movers.length && movers[0].usual > 0.5) {
+    const top = movers[0];
+    const cat = byCat.get(top.id);
+    // a month exactly at "usual" breaks the streak rather than joining
+    // either side — it's genuinely neither above nor below
+    const side = (v) => (v > top.usual ? 'above' : v < top.usual ? 'below' : null);
+    const currentSide = side(top.spent);
+    let streak = 1; // the current period itself
+    for (const ym of [...beforeYms].sort().reverse()) {
+      if (side(cat.beforeByMonth.get(ym) || 0) !== currentSide) break;
+      streak++;
+    }
+    if (streak >= 3) top.streakMonths = streak;
+  }
+
   // the period's biggest categories by total spend, with no "usual" to
   // compare against — computed regardless of `comparable`, so there is
   // always something concrete to describe even on the very first period
@@ -954,6 +973,25 @@ export function savingsSummary(userId, window = 12, accountId = null) {
     months: rows.length,
     configured: !!configured
   };
+}
+
+const SAVINGS_MILESTONES = [500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000];
+
+/**
+ * The biggest round-number milestone their all-time running savings total
+ * crossed during `from`..`to` — a nice thing to mention, worked out from the
+ * same cumulative series savingsSummary() already builds. Returns null when
+ * no milestone was crossed (most periods).
+ */
+export function savingsMilestoneCrossed(userId, accountId, from, to) {
+  const life = savingsSummary(userId, Infinity, accountId).series;
+  if (!life.length) return null;
+  const before = life.filter((p) => p.ym < from);
+  const upTo = life.filter((p) => p.ym <= to);
+  const beforeTotal = before.length ? before[before.length - 1].total : 0;
+  const afterTotal = upTo.length ? upTo[upTo.length - 1].total : 0;
+  const crossed = SAVINGS_MILESTONES.filter((m) => beforeTotal < m && afterTotal >= m);
+  return crossed.length ? { amount: crossed[crossed.length - 1], total: afterTotal } : null;
 }
 
 /** Cached AI summary for a report scope, or null when the numbers have moved on. */

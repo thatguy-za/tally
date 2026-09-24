@@ -399,7 +399,7 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 17;
+export const SUMMARY_VERSION = 18;
 
 /**
  * Tori's personality, shared by every place she writes — the chat and the
@@ -428,7 +428,8 @@ const SUMMARY_RULES =
   'month-by-month breakdown, so never attribute a figure to a specific ' +
   'month or claim something "spiked in March" or "has been climbing since ' +
   'June" — that level of detail was not given to you and would be ' +
-  'invented. Write no more than 55 words, as two or three sentences, each ' +
+  'invented. Never use an em dash (—); use a comma, a period, or just a ' +
+  'plain word instead. Write no more than 55 words, as two or three sentences, each ' +
   'naming a concrete category or figure — no vague filler like "spending ' +
   'was mixed" or "a few categories changed". Write it the way you would ' +
   'actually say it out loud ' +
@@ -499,15 +500,39 @@ const summarySystem = (isSavingsAccount) => (isSavingsAccount ? SUMMARY_SYSTEM_S
  *
  * @param {ReturnType<import('./queries.js').periodInsights>} insights
  * @param {string} currency
- * @param {{ isSavingsAccount?: boolean }} [opts] pass `isSavingsAccount: true` when this
- *   period is scoped to a dedicated savings account (see isSavingsAccount() in queries.js) —
- *   `earned`/`spent` there are deposits/withdrawals, not income/spending, and `saved` is
- *   always 0 since it isn't tracked separately for that account.
+ * @param {{ isSavingsAccount?: boolean, username?: string|null, accountName?: string|null, milestone?: {amount:number,total:number}|null }} [opts]
+ *   `isSavingsAccount: true` when this period is scoped to a dedicated savings account (see
+ *   isSavingsAccount() in queries.js) — `earned`/`spent` there are deposits/withdrawals, not
+ *   everyday income or spending, and `saved` is always 0 since it isn't tracked separately for
+ *   that account. `username`/`accountName`/`milestone` are optional personalisation context —
+ *   each is only worth passing when it's genuinely usable (see the guards where they're read).
  */
-export function buildPeriodFacts(insights, currency, { isSavingsAccount = false } = {}) {
+export function buildPeriodFacts(
+  insights,
+  currency,
+  { isSavingsAccount = false, username = null, accountName = null, milestone = null } = {}
+) {
   const money = (n) => formatMoney(n, currency);
   const b = insights.baseline;
   const lines = [];
+
+  // a first name is a nice, cheap way to make this feel written for them —
+  // but `username` can be anything up to an email address (see Settings),
+  // so only pass it through when it actually reads like a first name
+  if (/^[A-Za-z][A-Za-z'-]{1,24}$/.test(username || '')) {
+    lines.push(
+      `Reader's first name: ${username}. You may open with it or work it in once if it lands ` +
+        'naturally — never more than once, and it is completely fine to skip it rather than force it.'
+    );
+  }
+  // "Main account" etc. is the seeded default name, not something the user
+  // chose — only real context if they actually renamed it to something
+  if (accountName && !/^(main account|checking|savings|account)$/i.test(accountName.trim())) {
+    lines.push(
+      `This is their "${accountName}" account. Let what that name implies about the money's ` +
+        "purpose flavour the note where it genuinely fits — never force a mention if it doesn't."
+    );
+  }
 
   const label = insights.single
     ? formatMonth(insights.from)
@@ -581,6 +606,14 @@ export function buildPeriodFacts(insights, currency, { isSavingsAccount = false 
           `${money(Math.abs(m.delta))} ${m.delta > 0 ? 'more' : 'less'})`
       );
     }
+    const top = insights.movers[0];
+    if (top.streakMonths) {
+      lines.push(
+        `${top.name} has been ${top.delta >= 0 ? 'above' : 'below'} its usual for ` +
+          `${top.streakMonths} months running, including this one — a genuine streak, worth a ` +
+          "mention if it fits naturally (don't force it)."
+      );
+    }
   } else if (insights.topCategories.length) {
     // no baseline to compare against (first period on record, or too early
     // to trust one) — these are simply the biggest categories for the
@@ -589,6 +622,15 @@ export function buildPeriodFacts(insights, currency, { isSavingsAccount = false 
     for (const c of insights.topCategories) {
       lines.push(`- ${c.name}: ${money(c.total)}`);
     }
+  }
+
+  if (milestone) {
+    lines.push(
+      '',
+      `Their all-time total ever put into savings passed ${money(milestone.amount)} during this ` +
+        `period (now ${money(milestone.total)} in total) — a genuine milestone, worth a mention ` +
+        "if it fits naturally (don't force it)."
+    );
   }
 
   return lines.join('\n');

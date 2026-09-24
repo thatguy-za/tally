@@ -27,6 +27,7 @@ import {
   periodInsights,
   monthlyCategoryTotals,
   savingsSummary,
+  savingsMilestoneCrossed,
   getLogoDomains
 } from './queries.js';
 
@@ -661,6 +662,55 @@ describe('periodInsights', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("flags the biggest mover's streak when it has sat on the same side of usual for 3+ months running", () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    // four months at ~100 establish "usual"; three more well above it in a row
+    for (const ym of ['2025-01', '2025-02', '2025-03', '2025-04']) {
+      addTx(u, { date: `${ym}-05`, amount: -100, category_id: groceries });
+    }
+    for (const ym of ['2025-05', '2025-06', '2025-07']) {
+      addTx(u, { date: `${ym}-05`, amount: -300, category_id: groceries });
+    }
+
+    const ins = periodInsights(u, '2025-07', '2025-07');
+    const mover = ins.movers.find((m) => m.id === groceries);
+    expect(mover.delta).toBeGreaterThan(0);
+    expect(mover.streakMonths).toBe(3); // May, June, July
+  });
+
+  it("does not report a streak when the mover's history is too short or inconsistent", () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    addTx(u, { date: '2025-01-05', amount: -100, category_id: groceries });
+    addTx(u, { date: '2025-02-05', amount: -300, category_id: groceries }); // only one prior month
+
+    const ins = periodInsights(u, '2025-02', '2025-02');
+    const mover = ins.movers.find((m) => m.id === groceries);
+    expect(mover.streakMonths).toBeUndefined();
+  });
+});
+
+describe('savingsMilestoneCrossed', () => {
+  it('reports the biggest round-number milestone crossed during the period', () => {
+    const u = makeUser();
+    const savings = makeCategory(u, 'Savings', 'saving');
+    addTx(u, { date: '2025-01-15', amount: -400, category_id: savings }); // total 400, before the period
+    addTx(u, { date: '2025-02-15', amount: -700, category_id: savings }); // total 1100, crosses 500 and 1000
+
+    const milestone = savingsMilestoneCrossed(u, null, '2025-02', '2025-02');
+    expect(milestone).toEqual({ amount: 1000, total: 1100 });
+  });
+
+  it('reports null when no milestone was crossed in the period', () => {
+    const u = makeUser();
+    const savings = makeCategory(u, 'Savings', 'saving');
+    addTx(u, { date: '2025-01-15', amount: -600, category_id: savings }); // already past 500
+    addTx(u, { date: '2025-02-15', amount: -10, category_id: savings }); // barely moves the total
+
+    expect(savingsMilestoneCrossed(u, null, '2025-02', '2025-02')).toBeNull();
   });
 });
 
