@@ -325,8 +325,15 @@
               </td>
             </tr>
           {:else}
-            <tr class="group border-b border-[var(--border)] last:border-0 transition-colors hover:bg-[var(--paper-sunk)]/60"
-              style={selected.has(t.id) ? 'background:var(--accent-wash)' : ''}>
+            <tr class="group cursor-pointer border-b border-[var(--border)] last:border-0 transition-colors hover:bg-[var(--paper-sunk)]/60"
+              style={selected.has(t.id) ? 'background:var(--accent-wash)' : ''}
+              onclick={(e) => {
+                // let a real control inside the row (the checkbox itself,
+                // the category picker, edit/delete/save-as-rule, the merchant
+                // logo editor) handle its own click instead of also toggling
+                if (e.target.closest('button, a, input, select')) return;
+                toggle(t.id);
+              }}>
               <td class="py-2.5 pl-4">
                 <input type="checkbox" checked={selected.has(t.id)} onchange={() => toggle(t.id)} />
               </td>
