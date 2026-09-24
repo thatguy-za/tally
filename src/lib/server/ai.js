@@ -399,7 +399,7 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 13;
+export const SUMMARY_VERSION = 14;
 
 /**
  * Tori's personality, shared by every place she writes — the chat and the
@@ -507,16 +507,21 @@ export function buildPeriodFacts(insights, currency, { isSavingsAccount = false 
   const per = insights.single ? '' : ' in a typical month';
   const cmp = (actual, usual) =>
     usual == null ? '' : ` (usual ${money(usual)} — ${money(Math.abs(actual - usual))} ${actual >= usual ? 'more' : 'less'})`;
+  // for a single (possibly partial) month, compare the actual figure so far
+  // against a baseline already scaled down to the same share — never the
+  // full-month-projected `avg`, which would inflate "more than usual" by
+  // however much of the month is still left to go
+  const basis = (key) => (insights.single ? insights[key] : insights.avg[key]);
 
   if (isSavingsAccount) {
     lines.push('This account is a dedicated savings account — every figure below is savings activity, not everyday income or spending.');
-    lines.push(`Paid into savings: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(insights.avg.earned, b?.earned));
-    lines.push(`Withdrawn from savings: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(insights.avg.spent, b?.spent));
+    lines.push(`Paid into savings: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(basis('earned'), b?.earned));
+    lines.push(`Withdrawn from savings: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(basis('spent'), b?.spent));
   } else {
-    lines.push(`Came in: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(insights.avg.earned, b?.earned));
-    lines.push(`Spent: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(insights.avg.spent, b?.spent));
+    lines.push(`Came in: ${money(insights.earned)}` + (insights.single ? '' : ` in total, ${money(insights.avg.earned)}${per}`) + cmp(basis('earned'), b?.earned));
+    lines.push(`Spent: ${money(insights.spent)}` + (insights.single ? '' : ` in total, ${money(insights.avg.spent)}${per}`) + cmp(basis('spent'), b?.spent));
     if (insights.saved > 0) {
-      lines.push(`Saved: ${money(insights.saved)}` + (insights.single ? '' : ` in total, ${money(insights.avg.saved)}${per}`) + cmp(insights.avg.saved, b?.saved));
+      lines.push(`Saved: ${money(insights.saved)}` + (insights.single ? '' : ` in total, ${money(insights.avg.saved)}${per}`) + cmp(basis('saved'), b?.saved));
     } else if (insights.saved < 0) {
       lines.push(`Taken back out of savings: ${money(-insights.saved)}`);
     }
@@ -534,7 +539,16 @@ export function buildPeriodFacts(insights, currency, { isSavingsAccount = false 
   );
 
   if (insights.movers.length) {
-    lines.push('', isSavingsAccount ? 'Biggest movers vs usual:' : 'Biggest changes vs usual:');
+    const moversLabel = isSavingsAccount ? 'Biggest movers vs usual' : 'Biggest changes vs usual';
+    // spell out what basis these per-category figures are on, so the model
+    // never states a partial-month actual or a typical-month median as if
+    // it were the category's total for the whole period
+    const moversNote = insights.single
+      ? insights.partial
+        ? ' (actuals so far this month, not projected to a full month)'
+        : ''
+      : ' (each a typical month for that category, i.e. the median month, not a period total)';
+    lines.push('', `${moversLabel}${moversNote}:`);
     for (const m of insights.movers) {
       lines.push(
         `- ${m.name}: ${money(m.spent)} (usual ${money(m.usual)} — ` +

@@ -807,8 +807,11 @@ export function periodInsights(userId, from, to, accountId = null) {
   const movers = comparable
     ? [...byCat.values()]
         .map((e) => {
+          // actual so far, never projected up to a full month — `usual` below
+          // is already scaled down to the same partial share, so the two
+          // stay on the same basis instead of the delta being inflated
           const spent = single
-            ? (e.periodByMonth.get(from) || 0) / n
+            ? e.periodByMonth.get(from) || 0
             : median(completeYms.map((ym) => e.periodByMonth.get(ym) || 0));
           const usual = median(beforeYms.map((ym) => e.beforeByMonth.get(ym) || 0)) * share;
           return { id: e.id, name: e.name, color: e.color, spent, usual, delta: spent - usual };

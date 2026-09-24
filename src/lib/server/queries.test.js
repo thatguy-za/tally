@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { db } from './db.js';
 import {
   listCategories,
@@ -624,6 +624,26 @@ describe('periodInsights', () => {
 
     expect(periodInsights(u, '2025-05', '2025-05', acct).spent).toBe(40);
     expect(periodInsights(u, '2025-05', '2025-05').spent).toBe(50);
+  });
+
+  it("reports a mover's actual spend so far on a partial month, never projected up to a full month", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 0, 10)); // Jan 10 2026 — 10 of 31 days elapsed
+    try {
+      const u = makeUser();
+      const groceries = makeCategory(u, 'Groceries', 'expense');
+      addTx(u, { date: '2025-12-05', amount: -100, category_id: groceries }); // one month of history
+      addTx(u, { date: '2026-01-05', amount: -20, category_id: groceries }); // actual so far this month
+
+      const ins = periodInsights(u, '2026-01', '2026-01');
+      expect(ins.partial).toBe(true);
+      const mover = ins.movers.find((m) => m.id === groceries);
+      // €20 actual — dividing by the ~32% of the month elapsed would wrongly
+      // inflate this to ~€62, overstating what was actually spent
+      expect(mover.spent).toBe(20);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
