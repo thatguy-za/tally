@@ -399,7 +399,7 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 18;
+export const SUMMARY_VERSION = 19;
 
 /**
  * Tori's personality, shared by every place she writes — the chat and the
@@ -601,19 +601,23 @@ export function buildPeriodFacts(
       : ' (each a typical month for that category, i.e. the median month, not a period total)';
     lines.push('', `${moversLabel}${moversNote}:`);
     for (const m of insights.movers) {
+      // each mover is tagged as a trend (a real streak behind it) or a
+      // one-off (none) — see the instruction below for how to use this
+      const pattern = m.streakMonths
+        ? `an established trend, ${m.streakMonths} months running including this one`
+        : 'a one-off this period, no streak behind it';
       lines.push(
         `- ${m.name}: ${money(m.spent)} (usual ${money(m.usual)} — ` +
-          `${money(Math.abs(m.delta))} ${m.delta > 0 ? 'more' : 'less'})`
+          `${money(Math.abs(m.delta))} ${m.delta > 0 ? 'more' : 'less'}) [${pattern}]`
       );
     }
-    const top = insights.movers[0];
-    if (top.streakMonths) {
-      lines.push(
-        `${top.name} has been ${top.delta >= 0 ? 'above' : 'below'} its usual for ` +
-          `${top.streakMonths} months running, including this one — a genuine streak, worth a ` +
-          "mention if it fits naturally (don't force it)."
-      );
-    }
+    lines.push(
+      'The bracketed tag after each mover says whether it is backed by a real streak or is a ' +
+        'one-off. Reflect that distinction in your wording: call a trend a trend (e.g. "keeps ' +
+        'running higher", "third month in a row"), and call a one-off exactly that (e.g. "a ' +
+        'one-off", "a one-time thing", "unusual this month") — never describe a one-off mover ' +
+        'as if it were an ongoing pattern, and never call an established trend a one-off.'
+    );
   } else if (insights.topCategories.length) {
     // no baseline to compare against (first period on record, or too early
     // to trust one) — these are simply the biggest categories for the

@@ -681,6 +681,34 @@ describe('periodInsights', () => {
     expect(mover.streakMonths).toBe(3); // May, June, July
   });
 
+  it('distinguishes a real streak from a one-off, even when the one-off is the biggest mover', () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    const shopping = makeCategory(u, 'Shopping', 'expense');
+    // Groceries: steady at 100 for 4 months, then a genuine 3-month run at 200
+    for (const ym of ['2025-01', '2025-02', '2025-03', '2025-04']) {
+      addTx(u, { date: `${ym}-05`, amount: -100, category_id: groceries });
+    }
+    for (const ym of ['2025-05', '2025-06', '2025-07']) {
+      addTx(u, { date: `${ym}-05`, amount: -200, category_id: groceries });
+    }
+    // Shopping: steady at 50 for 6 months, then a single one-off spike in July
+    for (const ym of ['2025-01', '2025-02', '2025-03', '2025-04', '2025-05', '2025-06']) {
+      addTx(u, { date: `${ym}-10`, amount: -50, category_id: shopping });
+    }
+    addTx(u, { date: '2025-07-10', amount: -900, category_id: shopping });
+
+    const ins = periodInsights(u, '2025-07', '2025-07');
+    const groceriesMover = ins.movers.find((m) => m.id === groceries);
+    const shoppingMover = ins.movers.find((m) => m.id === shopping);
+
+    // Shopping's delta (850) dwarfs Groceries' (100), so it sorts first —
+    // but it's a genuine one-off, unlike Groceries' real 3-month run
+    expect(ins.movers[0].id).toBe(shopping);
+    expect(shoppingMover.streakMonths).toBeUndefined();
+    expect(groceriesMover.streakMonths).toBe(3);
+  });
+
   it("does not report a streak when the mover's history is too short or inconsistent", () => {
     const u = makeUser();
     const groceries = makeCategory(u, 'Groceries', 'expense');

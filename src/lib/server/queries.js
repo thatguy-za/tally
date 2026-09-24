@@ -804,6 +804,26 @@ export function periodInsights(userId, from, to, accountId = null) {
     else if (r.ym < from) e.beforeByMonth.set(r.ym, r.total);
   }
 
+  /**
+   * How many consecutive months, most recent first and including the
+   * period's own figure, sat on the same side of `usual` as `spent` does —
+   * the difference between an established trend and a one-off blip. `null`
+   * for a `usual` of ~0, which just means no real history to stack against.
+   */
+  function streakFor(e, spent, usual) {
+    if (usual <= 0.5) return null;
+    // a month exactly at "usual" breaks the streak rather than joining
+    // either side — it's genuinely neither above nor below
+    const side = (v) => (v > usual ? 'above' : v < usual ? 'below' : null);
+    const currentSide = side(spent);
+    let streak = 1; // the current period itself
+    for (const ym of [...beforeYms].sort().reverse()) {
+      if (side(e.beforeByMonth.get(ym) || 0) !== currentSide) break;
+      streak++;
+    }
+    return streak >= 3 ? streak : null;
+  }
+
   const movers = comparable
     ? [...byCat.values()]
         .map((e) => {
@@ -814,31 +834,21 @@ export function periodInsights(userId, from, to, accountId = null) {
             ? e.periodByMonth.get(from) || 0
             : median(completeYms.map((ym) => e.periodByMonth.get(ym) || 0));
           const usual = median(beforeYms.map((ym) => e.beforeByMonth.get(ym) || 0)) * share;
-          return { id: e.id, name: e.name, color: e.color, spent, usual, delta: spent - usual };
+          const streakMonths = streakFor(e, spent, usual);
+          return {
+            id: e.id,
+            name: e.name,
+            color: e.color,
+            spent,
+            usual,
+            delta: spent - usual,
+            ...(streakMonths ? { streakMonths } : {})
+          };
         })
         .filter((e) => Math.abs(e.delta) >= 1 && (e.spent >= 1 || e.usual >= 1))
         .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
         .slice(0, 5)
     : [];
-
-  // a genuine streak is worth a mention, so check just the biggest mover:
-  // how many consecutive months, most recent first including this period,
-  // sat on the same side of its "usual" — skipped for a usual of ~0, which
-  // just means the category has no real history to have a streak against
-  if (movers.length && movers[0].usual > 0.5) {
-    const top = movers[0];
-    const cat = byCat.get(top.id);
-    // a month exactly at "usual" breaks the streak rather than joining
-    // either side — it's genuinely neither above nor below
-    const side = (v) => (v > top.usual ? 'above' : v < top.usual ? 'below' : null);
-    const currentSide = side(top.spent);
-    let streak = 1; // the current period itself
-    for (const ym of [...beforeYms].sort().reverse()) {
-      if (side(cat.beforeByMonth.get(ym) || 0) !== currentSide) break;
-      streak++;
-    }
-    if (streak >= 3) top.streakMonths = streak;
-  }
 
   // the period's biggest categories by total spend, with no "usual" to
   // compare against — computed regardless of `comparable`, so there is
