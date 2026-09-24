@@ -23,8 +23,10 @@ function shiftMonth(ym, n) {
 
 /**
  * Rank a kind's categories by their total over the period, keep the biggest
- * and fold the rest into one "Other" slot. Order is fixed for the whole
- * period, so a category keeps its place in the stack month to month.
+ * and fold the rest into one "Other" slot — carrying the folded-away
+ * categories in `.folded` so the chart can still expand and pick any of them
+ * individually. Order is fixed for the whole period, so a category keeps its
+ * place in the stack month to month.
  */
 function seriesFor(rows, kind) {
   const totals = new Map();
@@ -35,11 +37,11 @@ function seriesFor(rows, kind) {
     totals.set(r.id, e);
   }
   const ranked = [...totals.values()].sort((a, b) => b.total - a.total);
-  const kept = ranked.slice(0, MAX_SERIES);
-  const folded = ranked.slice(MAX_SERIES);
-  if (folded.length) kept.push({ id: 'other', name: `Other (${folded.length})`, color: null, total: 0 });
-  const slot = new Map(ranked.map((c, i) => [c.id, i < MAX_SERIES ? c.id : 'other']));
-  return { series: kept.map(({ id, name, color }) => ({ id, name, color })), slot };
+  const pick = ({ id, name, color }) => ({ id, name, color });
+  const kept = ranked.slice(0, MAX_SERIES).map(pick);
+  const folded = ranked.slice(MAX_SERIES).map(pick);
+  if (folded.length) kept.push({ id: 'other', name: `Other (${folded.length})`, color: null, folded });
+  return kept;
 }
 
 /** @type {import('./$types').PageServerLoad} */
@@ -75,7 +77,9 @@ export function load(event) {
   });
 
   // rows are already bucketed into 'income'/'expense' by sign — see
-  // monthlyCategoryTotals
+  // monthlyCategoryTotals. `values` keeps each category's own id (never
+  // folded) so the chart can still pick an "Other" member individually —
+  // seriesFor()'s `.folded` list is what decides the default grouping.
   const rows = monthlyCategoryTotals(userId, from, to, accountId);
   const income = seriesFor(rows, 'income');
   const expense = seriesFor(rows, 'expense');
@@ -83,8 +87,7 @@ export function load(event) {
   for (const ym of monthRange(from, to)) values[ym] = { income: {}, expense: {} };
   for (const r of rows) {
     const bucket = values[r.ym][r.kind];
-    const key = (r.kind === 'income' ? income : expense).slot.get(r.id);
-    bucket[key] = (bucket[key] || 0) + r.total;
+    bucket[r.id] = (bucket[r.id] || 0) + r.total;
   }
 
   return {
@@ -95,8 +98,8 @@ export function load(event) {
     insights: periodInsights(userId, from, to, accountId),
     chart: {
       months: monthRange(from, to),
-      income: income.series,
-      expense: expense.series,
+      income,
+      expense,
       values
     },
     savings: savingsSummary(userId, { from, to }, accountId),

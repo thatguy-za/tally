@@ -8,17 +8,18 @@
    * (largest category at the bottom), so a category holds its place and colour
    * from month to month instead of reshuffling by size.
    *
-   * Clicking a category in the legend isolates it (every other category,
-   * income and spending alike, hides), so it reads like "show me just this
-   * one"; clicking another then reveals that one too, and so on until every
-   * category is back or the "N hidden" chip is used to clear them all at
-   * once. Clicking the "Income"/"Spending" heading hides or shows every
-   * category in that side together.
+   * Clicking a category in the legend shows just that one on the graph;
+   * clicking it again (or the "×" on the chip above the chart) goes back to
+   * every category. Only one category can be picked at a time — no
+   * additive hide/show bookkeeping. The last entry in each list may be an
+   * "Other (N)" bucket carrying its folded-away members in `.folded`; its
+   * own chevron expands that list so any of them can be picked individually
+   * too, same as any other category.
    *
    * @type {{
    *   months: string[],
-   *   income: { id: string|number, name: string, color: string|null }[],
-   *   expense: { id: string|number, name: string, color: string|null }[],
+   *   income: { id: string|number, name: string, color: string|null, folded?: {id:string|number,name:string,color:string|null}[] }[],
+   *   expense: { id: string|number, name: string, color: string|null, folded?: {id:string|number,name:string,color:string|null}[] }[],
    *   values: Record<string, { income: Record<string, number>, expense: Record<string, number> }>,
    *   currency: string,
    *   title?: string,
@@ -46,46 +47,31 @@
     privacy.hideNumbers ? '••' : v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v));
   const fill = (c) => c || 'var(--border-strong)';
 
-  const sumSeries = (bucket, series) => series.reduce((s, c) => s + (bucket[c.id] || 0), 0);
+  // an "Other" entry stands in for its folded members' combined total,
+  // which isn't a real key in `values` — everything else reads its own id
+  const valueOf = (item, bucket) =>
+    item.folded ? item.folded.reduce((s, f) => s + (bucket[f.id] || 0), 0) : bucket[item.id] || 0;
+  const sumSeries = (bucket, series) => series.reduce((s, c) => s + valueOf(c, bucket), 0);
 
-  // ---- click a legend entry to isolate just that category across every
-  // month AND across both Income and Spending (everything else hides); click
-  // another to bring it back too, and so on until every category is visible
-  // again or the "N hidden" chip clears them all at once. Click the section
-  // heading to hide or show every category in it at once ----
-  let hidden = $state(new Set());
-  const hideKey = (id, source) => `${source}:${id}`;
-  const isHidden = (id, source) => hidden.has(hideKey(id, source));
-  function toggleHidden(seg, source) {
-    const next = new Set(hidden);
-    const key = hideKey(seg.id, source);
-    if (hidden.size === 0) {
-      // nothing hidden yet anywhere — isolate the clicked category across both sides
-      for (const [series, src] of [[income, 'income'], [expense, 'expense']]) {
-        for (const c of series) {
-          if (src === source && c.id === seg.id) continue;
-          next.add(hideKey(c.id, src));
-        }
-      }
-    } else if (next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
-    hidden = next;
+  // ---- pick one category to show on the graph; picking another switches to
+  // it, and picking the same one again (or the chip's "×") goes back to
+  // every category. "Other"'s own chevron expands its folded members so any
+  // of them can be picked individually too ----
+  let selected = $state(null); // { source: 'income'|'expense', item: {id,name,color} } | null
+  const isSelected = (item, source) => selected?.source === source && selected?.item.id === item.id;
+  function pick(item, source) {
+    selected = isSelected(item, source) ? null : { source, item };
   }
-  function toggleSection(series, source) {
-    const allHidden = series.every((c) => isHidden(c.id, source));
-    const next = new Set(hidden);
-    for (const c of series) {
-      const key = hideKey(c.id, source);
-      if (allHidden) next.delete(key);
-      else next.add(key);
-    }
-    hidden = next;
+  let expandedOther = $state(new Set());
+  function toggleOtherExpanded(source) {
+    const next = new Set(expandedOther);
+    if (next.has(source)) next.delete(source);
+    else next.add(source);
+    expandedOther = next;
   }
-  let activeIncome = $derived(income.filter((c) => !isHidden(c.id, 'income')));
-  let activeExpense = $derived(expense.filter((c) => !isHidden(c.id, 'expense')));
+
+  let activeIncome = $derived(selected ? (selected.source === 'income' ? [selected.item] : []) : income);
+  let activeExpense = $derived(selected ? (selected.source === 'expense' ? [selected.item] : []) : expense);
 
   // ---- vertical zoom: a multiplier on top of the auto-fit ceiling ----
   const ZOOM_MIN = 0.25;
@@ -135,8 +121,8 @@
   function stack(x, series, bucket) {
     let acc = 0;
     const segs = series
-      .filter((s) => bucket[s.id] > 0)
-      .map((s) => ({ ...s, v: bucket[s.id] }));
+      .map((s) => ({ ...s, v: valueOf(s, bucket) }))
+      .filter((s) => s.v > 0);
     const total = segs.reduce((s, d) => s + d.v, 0);
     const out = segs.map((d, i) => {
       const top = y(acc + d.v);
@@ -189,9 +175,9 @@
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       {#if title}<h2 class="text-lg">{title}</h2>{/if}
       <div class="ml-auto flex items-center gap-2">
-        {#if hidden.size}
-          <button type="button" class="chip flex items-center gap-1.5 text-[12px]" onclick={() => (hidden = new Set())}>
-            {hidden.size} hidden
+        {#if selected}
+          <button type="button" class="chip flex items-center gap-1.5 text-[12px]" onclick={() => (selected = null)}>
+            {selected.item.name}
             <Icon name="x" size={11} />
           </button>
         {/if}
@@ -259,16 +245,44 @@
     {#each [['Income', income, 'income'], ['Spending', expense, 'expense']] as [groupTitle, series, source]}
       {#if series.length}
         <div>
-          <button type="button" class="kicker mb-1.5 block hover:text-[var(--ink)]"
-            onclick={() => toggleSection(series, source)}>{groupTitle}</button>
+          <p class="kicker mb-1.5">{groupTitle}</p>
           {#each series as s (s.id)}
-            {@const isHiddenItem = isHidden(s.id, source)}
-            <button type="button"
-              class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {isHiddenItem ? 'opacity-40' : ''}"
-              onclick={() => toggleHidden(s, source)}>
-              <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
-              <span class="truncate {isHiddenItem ? 'line-through' : ''}">{s.name}</span>
-            </button>
+            {@const dimmed = selected && !isSelected(s, source)}
+            {#if s.folded}
+              <div class="flex items-center gap-0.5">
+                <button type="button"
+                  class="flex w-full min-w-0 flex-1 items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''}"
+                  onclick={() => pick(s, source)}>
+                  <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
+                  <span class="truncate">{s.name}</span>
+                </button>
+                <button type="button" class="shrink-0 rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"
+                  aria-label={expandedOther.has(source) ? `Collapse ${s.name}` : `Expand ${s.name}`}
+                  onclick={() => toggleOtherExpanded(source)}>
+                  <Icon name="arrowRight" size={11} class="transition-transform {expandedOther.has(source) ? 'rotate-90' : ''}" />
+                </button>
+              </div>
+              {#if expandedOther.has(source)}
+                <div class="ml-3 mt-0.5 space-y-0.5 border-l border-[var(--border)] py-0.5 pl-2.5">
+                  {#each s.folded as f (f.id)}
+                    {@const fDimmed = selected && !isSelected(f, source)}
+                    <button type="button"
+                      class="flex w-full items-center gap-2 rounded py-[3px] text-left text-[11.5px] transition-opacity hover:opacity-100 {fDimmed ? 'opacity-40' : ''}"
+                      onclick={() => pick(f, source)}>
+                      <span class="h-2 w-2 shrink-0 rounded-[3px]" style="background:{fill(f.color)}"></span>
+                      <span class="truncate">{f.name}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            {:else}
+              <button type="button"
+                class="flex w-full items-center gap-2 rounded py-[3px] text-left transition-opacity hover:opacity-100 {dimmed ? 'opacity-40' : ''}"
+                onclick={() => pick(s, source)}>
+                <span class="h-2.5 w-2.5 shrink-0 rounded-[3px]" style="background:{fill(s.color)}"></span>
+                <span class="truncate">{s.name}</span>
+              </button>
+            {/if}
           {/each}
         </div>
       {/if}

@@ -98,10 +98,14 @@
   let singleMonth = $derived(data.from === data.to);
   let canGoNext = $derived(data.from < currentMonth());
   let showMovers = $derived(!!ins && ins.reason !== 'empty' && ins.movers.length > 0);
+  // an "Other" entry stands in for its folded members' combined total,
+  // which isn't a real key in data.chart.values — see StackedMonths' valueOf
+  const categoryValue = (c, bucket) =>
+    c.folded ? c.folded.reduce((s, f) => s + Math.abs(bucket?.[f.id] || 0), 0) : Math.abs(bucket?.[c.id] || 0);
   let spendingSegments = $derived(
     singleMonth
       ? data.chart.expense
-          .map((c) => ({ id: c.id, name: c.name, color: c.color, value: Math.abs(data.chart.values[data.from]?.expense[c.id] || 0) }))
+          .map((c) => ({ id: c.id, name: c.name, color: c.color, value: categoryValue(c, data.chart.values[data.from]?.expense) }))
           .filter((s) => s.value > 0)
       : []
   );
