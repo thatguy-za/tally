@@ -821,6 +821,21 @@ export function periodInsights(userId, from, to, accountId = null) {
         .slice(0, 5)
     : [];
 
+  // the period's biggest categories by total spend, with no "usual" to
+  // compare against — computed regardless of `comparable`, so there is
+  // always something concrete to describe even on the very first period
+  // ever recorded (no earlier months) or one too fresh to trust a baseline
+  const topCategories = [...byCat.values()]
+    .map((e) => ({
+      id: e.id,
+      name: e.name,
+      color: e.color,
+      total: [...e.periodByMonth.values()].reduce((s, v) => s + v, 0)
+    }))
+    .filter((e) => e.total >= 1)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+
   return {
     from,
     to,
@@ -837,7 +852,8 @@ export function periodInsights(userId, from, to, accountId = null) {
     rate: earned > 0 ? Math.round(((earned - spent) / earned) * 100) : null,
     avg,
     baseline,
-    movers
+    movers,
+    topCategories
   };
 }
 

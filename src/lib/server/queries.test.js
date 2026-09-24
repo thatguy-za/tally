@@ -559,6 +559,23 @@ describe('periodInsights', () => {
     expect(ins.baseline).toBeNull();
   });
 
+  it('still reports the biggest categories when there is no earlier history to compare against', () => {
+    const u = makeUser();
+    const rent = makeCategory(u, 'Rent', 'expense');
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    addTx(u, { date: '2025-01-01', amount: -1000, category_id: rent });
+    addTx(u, { date: '2025-02-01', amount: -1000, category_id: rent });
+    addTx(u, { date: '2025-01-05', amount: -200, category_id: groceries });
+    addTx(u, { date: '2025-02-05', amount: -150, category_id: groceries });
+
+    const ins = periodInsights(u, '2025-01', '2025-02');
+    expect(ins.comparable).toBe(false);
+    expect(ins.movers).toEqual([]);
+    expect(ins.topCategories.map((c) => c.name)).toEqual(['Rent', 'Groceries']);
+    expect(ins.topCategories.find((c) => c.name === 'Rent').total).toBe(2000);
+    expect(ins.topCategories.find((c) => c.name === 'Groceries').total).toBe(350);
+  });
+
   it('reports "empty" when the period has no data of any kind', () => {
     const u = makeUser();
     const ins = periodInsights(u, '2025-01', '2025-01');

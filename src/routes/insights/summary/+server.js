@@ -48,7 +48,8 @@ export async function POST({ request, locals }) {
         Math.round(insights.earned),
         Math.round(insights.spent),
         Math.round(insights.saved),
-        insights.movers.map((m) => [m.id, Math.round(m.spent), Math.round(m.usual)])
+        insights.movers.map((m) => [m.id, Math.round(m.spent), Math.round(m.usual)]),
+        insights.topCategories.map((c) => [c.id, Math.round(c.total)])
       ])
     )
     .digest('hex');

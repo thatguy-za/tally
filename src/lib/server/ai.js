@@ -399,7 +399,7 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 16;
+export const SUMMARY_VERSION = 17;
 
 /**
  * Tori's personality, shared by every place she writes — the chat and the
@@ -449,7 +449,12 @@ const SUMMARY_RULES =
   'recommendation of any kind, generic or specific ("track your spending", ' +
   '"keep an eye on X", "consider…") — describe what happened and stop ' +
   'there. If nothing in the category detail stands out, say so plainly ' +
-  'rather than manufacturing a problem.';
+  'rather than manufacturing a problem. When there is no "usual" to compare ' +
+  'against, work with what the period itself shows instead of commenting ' +
+  'on the lack of history — never say there isn\'t enough data yet, that a ' +
+  'clearer picture will emerge later, or to check back after a year or two; ' +
+  'the reader wants to know what happened in the period they are already ' +
+  'looking at, not when to come back.';
 
 const SUMMARY_SYSTEM_STANDARD =
   TORI_PERSONA + ' ' +
@@ -546,11 +551,18 @@ export function buildPeriodFacts(insights, currency, { isSavingsAccount = false 
       );
     }
   }
-  lines.push(
-    b
-      ? `"Usual" means this person's own typical month across the ${b.months} month${b.months === 1 ? '' : 's'} before this period (the middle value across those months, not a plain average, so one unusually big or quiet month doesn't skew it — but say "usual", never "median", to the reader).`
-      : 'There is nothing before this period to compare against.'
-  );
+  if (b) {
+    lines.push(
+      `"Usual" means this person's own typical month across the ${b.months} month${b.months === 1 ? '' : 's'} before this period (the middle value across those months, not a plain average, so one unusually big or quiet month doesn't skew it — but say "usual", never "median", to the reader).`
+    );
+  } else {
+    lines.push(
+      'There is nothing before this period to compare against, so there is no "usual" for ' +
+        'anything below — do not mention that, ask the reader to wait, or say a clearer ' +
+        'picture will emerge later; just describe what these categories show for this period ' +
+        'using the figures given.'
+    );
+  }
 
   if (insights.movers.length) {
     const moversLabel = isSavingsAccount ? 'Biggest movers vs usual' : 'Biggest changes vs usual';
@@ -568,6 +580,14 @@ export function buildPeriodFacts(insights, currency, { isSavingsAccount = false 
         `- ${m.name}: ${money(m.spent)} (usual ${money(m.usual)} — ` +
           `${money(Math.abs(m.delta))} ${m.delta > 0 ? 'more' : 'less'})`
       );
+    }
+  } else if (insights.topCategories.length) {
+    // no baseline to compare against (first period on record, or too early
+    // to trust one) — these are simply the biggest categories for the
+    // period itself, nothing to weigh them against
+    lines.push('', `Biggest categories this period (period totals, no "usual" to compare against):`);
+    for (const c of insights.topCategories) {
+      lines.push(`- ${c.name}: ${money(c.total)}`);
     }
   }
 
