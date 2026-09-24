@@ -399,7 +399,7 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
-export const SUMMARY_VERSION = 14;
+export const SUMMARY_VERSION = 15;
 
 /**
  * Tori's personality, shared by every place she writes — the chat and the
@@ -420,10 +420,18 @@ const TORI_PERSONA =
 // shared tail, common to every account kind's summary prompt
 const SUMMARY_RULES =
   'Use only the figures you are given: never calculate, estimate or invent a ' +
-  'number, and never name a category that is not in the list. Write no more ' +
-  'than 55 words, as two or three sentences, each naming a concrete category ' +
-  'or figure — no vague filler like "spending was mixed" or "a few ' +
-  'categories changed". Write it the way you would actually say it out loud ' +
+  'number, and never name a category that is not in the list. Every number ' +
+  'you write must be one that appears below, essentially verbatim (rounding ' +
+  'for readability is fine) — never a number you inferred, guessed, or ' +
+  'recalled from a different period. You are only given each category\'s ' +
+  'overall figure for the period and its usual comparison, never a ' +
+  'month-by-month breakdown, so never attribute a figure to a specific ' +
+  'month or claim something "spiked in March" or "has been climbing since ' +
+  'June" — that level of detail was not given to you and would be ' +
+  'invented. Write no more than 55 words, as two or three sentences, each ' +
+  'naming a concrete category or figure — no vague filler like "spending ' +
+  'was mixed" or "a few categories changed". Write it the way you would ' +
+  'actually say it out loud ' +
   'to this person, not like a report — vary your opening line rather than ' +
   'always leading with a total or the same phrase every time, and let a ' +
   'real reaction come through when a figure genuinely stands out, without ' +
@@ -445,9 +453,9 @@ const SUMMARY_SYSTEM_STANDARD =
   'never restate those totals or open with how the period "went" overall; ' +
   'that would just repeat the cards. Instead mine the category-level ' +
   'detail for the two or three most useful, specific things worth pointing ' +
-  'out: which categories drove any change vs usual, a run of months moving ' +
-  'the same direction, or one category offsetting another. Talk about it ' +
-  'the normal way money is talked about ("you spent…", "you earned…"). ' +
+  'out: which categories drove any change vs usual, or one category ' +
+  'offsetting another. Talk about it the normal way money is talked about ' +
+  '("you spent…", "you earned…"). ' +
   SUMMARY_RULES;
 
 // this account is a dedicated savings account (see isSavingsAccount() in
@@ -463,8 +471,8 @@ const SUMMARY_SYSTEM_SAVINGS =
   'above this text, so never restate those totals or open with how the ' +
   'period "went" overall. Instead mine the category-level detail for the ' +
   'two or three most useful, specific things worth pointing out: what ' +
-  'drove a deposit or a withdrawal, a run of months moving the same ' +
-  'direction, or one contribution offsetting a withdrawal. Never call ' +
+  'drove a deposit or a withdrawal, or one contribution offsetting a ' +
+  'withdrawal. Never call ' +
   'money going in "income" or "earnings" and never call money going out ' +
   '"spending" or "expenses" — describe it as paying into, putting aside, ' +
   'adding to, withdrawing from, or dipping into savings instead. ' +
