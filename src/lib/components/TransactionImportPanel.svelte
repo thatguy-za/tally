@@ -6,8 +6,8 @@
   import CategorySelect from './CategorySelect.svelte';
   import { parseCsv, parseAmount, parseDate, guessMapping, dupeKey, DATE_FORMATS } from '$lib/csv.js';
 
-  /** @type {{ data: any, onClose: () => void }} */
-  let { data, onClose } = $props();
+  /** @type {{ data: any, onClose: () => void, compact?: boolean }} */
+  let { data, onClose, compact = $bindable(true) } = $props();
 
   // local copy of the action result — kept outside the page's own `form` prop
   // so "Import another" can clear it and start over without a navigation
@@ -157,7 +157,21 @@
     outgoing: rows.filter((r) => r.included && Number.isFinite(r.amount) && r.amount < 0).reduce((s, r) => s - r.amount, 0)
   });
 
-  let shown = $derived(rows.length > 400 ? rows.slice(0, 400) : rows);
+  // clicking a status chip below narrows the table to just those rows,
+  // instead of acting on them — errors are already excluded by default (see
+  // `included` above), so there was nothing left for that click to *do*
+  // except show you which rows they are
+  let rowFilter = $state(null); // 'error' | 'byRule' | 'ai' | null
+  function toggleFilter(key) {
+    rowFilter = rowFilter === key ? null : key;
+  }
+  let filteredRows = $derived(
+    rowFilter === 'error' ? rows.filter((r) => r.error)
+    : rowFilter === 'byRule' ? rows.filter((r) => r.byRule)
+    : rowFilter === 'ai' ? rows.filter((r) => aiSuggested.has(r.i))
+    : rows
+  );
+  let shown = $derived(filteredRows.length > 400 ? filteredRows.slice(0, 400) : filteredRows);
   let allChecked = $derived(rows.length > 0 && rows.every((r) => r.included));
   function toggleAll() {
     const to = allChecked;
@@ -168,13 +182,6 @@
   function excludeWhere(pred) {
     const next = new Map(edits);
     for (const r of rows) if (pred(r)) next.set(r.i, { ...(next.get(r.i) || {}), excluded: true });
-    edits = next;
-  }
-  let bulkCat = $state('__none');
-  function applyBulkCat() {
-    const v = bulkCat === '__none' ? '' : bulkCat;
-    const next = new Map(edits);
-    for (const r of rows) if (r.included) next.set(r.i, { ...(next.get(r.i) || {}), category: v });
     edits = next;
   }
 
@@ -198,6 +205,9 @@
   let phase = $derived(form?.imported !== undefined ? 'done' : form?.analyzed ? 'review' : 'upload');
   const STEPS = ['Upload', 'Review & approve', 'Done'];
   let stepIdx = $derived({ upload: 0, review: 1, done: 2 }[phase]);
+  $effect(() => {
+    compact = phase === 'upload';
+  });
 
   // ---- done: offer up anything still uncategorised, celebrate once clear ----
   // a row is hidden the moment its category is chosen (not after the server
@@ -454,12 +464,6 @@
       </ul>
     {/if}
 
-    {#if data.aiAvailable}
-      <p class="mt-3 flex items-center gap-1.5 text-xs text-[var(--ink-faint)]">
-        <Icon name="sparkle" size={12} class="text-[var(--accent)]" />
-        Your rules run first; the AI categorises whatever they miss.
-      </p>
-    {/if}
 
     <div class="mt-4 flex gap-2">
       <button class="btn btn-primary" disabled={!selectedFiles.length}>Continue</button>
@@ -471,73 +475,50 @@
   <form method="POST" action="/transactions/import?/import" use:enhance={submitImport}>
     <input type="hidden" name="payload" value={payload} />
 
-    <!-- status strip -->
+    <!-- status strip — click a coloured chip to see just those rows -->
     <div class="card mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
       <span><b class="tnum">{stats.included}</b> of {stats.total} will import</span>
       {#if stats.errors}
-        <button type="button" class="rounded px-1.5 py-0.5" style="background:var(--negative-wash);color:var(--negative)"
-          onclick={() => excludeWhere((r) => r.error)}>exclude {stats.errors} with errors</button>
+        <button type="button" class="rounded px-1.5 py-0.5 {rowFilter === 'error' ? 'font-semibold underline' : ''}"
+          style="background:var(--negative-wash);color:var(--negative)"
+          onclick={() => toggleFilter('error')}>
+          Excluding {stats.errors} transaction{stats.errors === 1 ? '' : 's'} with error
+        </button>
       {/if}
       {#if stats.dupes}
         <button type="button" class="rounded px-1.5 py-0.5" style="background:var(--warning-wash);color:var(--warning)"
           onclick={() => excludeWhere((r) => r.duplicate)}>exclude {stats.dupes} duplicate{stats.dupes === 1 ? '' : 's'}</button>
       {/if}
       {#if stats.byRule}
-        <span class="rounded px-1.5 py-0.5" style="background:var(--accent-wash);color:var(--accent-strong)"
-          title="Matched by your auto-categorisation rules — skipped by AI">
-          {stats.byRule} by rule{stats.byRule === 1 ? '' : 's'}
+        <button type="button" class="rounded px-1.5 py-0.5 {rowFilter === 'byRule' ? 'font-semibold underline' : ''}"
+          style="background:var(--accent-wash);color:var(--accent-strong)"
+          title="Matched by your auto-categorisation rules — skipped by AI"
+          onclick={() => toggleFilter('byRule')}>
+          {stats.byRule} transaction{stats.byRule === 1 ? '' : 's'} categorised by user rules
+        </button>
+      {/if}
+      {#if data.aiAvailable && aiState.ran && aiState.count}
+        {@const costTxt = aiState.cost ? ` · ${aiState.cost < 0.01 ? '<$0.01' : '~$' + aiState.cost.toFixed(2)}` : ''}
+        <button type="button" class="flex items-center gap-1 rounded px-1.5 py-0.5 {rowFilter === 'ai' ? 'font-semibold underline' : ''}"
+          style="background:var(--accent-wash);color:var(--accent-strong)"
+          onclick={() => toggleFilter('ai')}>
+          <Icon name="sparkle" size={11} />
+          The AI categorised {aiState.count} of {aiState.total} row(s){costTxt}
+        </button>
+      {/if}
+      {#if data.aiAvailable && aiState.running}
+        <span class="flex items-center gap-1.5 text-[var(--ink-faint)]">
+          <Icon name="sparkle" size={12} class="text-[var(--accent)]" />
+          AI categorising… <b class="tnum">{aiPct}%</b>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={cancelAiSuggest}>Cancel</button>
         </span>
       {/if}
       <span class="tnum ml-auto text-[var(--ink-faint)]">+{stats.incoming.toFixed(2)} / −{stats.outgoing.toFixed(2)}</span>
     </div>
 
-    {#if data.aiAvailable}
-      {@const costTxt = aiState.cost ? ` · ${aiState.cost < 0.01 ? '<$0.01' : '~$' + aiState.cost.toFixed(2)}` : ''}
-      <div class="card mb-3 text-[13px]">
-        <div class="flex flex-wrap items-center gap-2">
-          <Icon name="sparkle" size={14} class="text-[var(--accent)]" />
-          {#if aiState.running}
-            <span>The AI is categorising… <b class="tnum">{aiPct}%</b>
-              <span class="text-[var(--ink-faint)]">({aiState.done}/{aiState.total})</span></span>
-          {:else if aiState.cancelled}
-            <span class="text-[var(--ink-faint)]">
-              Cancelled{#if aiState.count} — {aiState.count} row(s) were done first{/if}.
-            </span>
-          {:else if aiState.error}
-            <span style="color:var(--negative)">
-              Couldn't finish — {aiState.error}{#if aiState.count} {aiState.count} row(s) were done first.{/if}
-            </span>
-          {:else if aiState.ran && aiState.total === 0}
-            <span>Every row was already categorised by your rules — nothing sent to the AI.</span>
-          {:else if aiState.ran && aiState.count}
-            <span>The AI categorised {aiState.count} of {aiState.total} row(s){costTxt}. Check the ✨ picks.</span>
-          {:else if aiState.ran}
-            <span>The AI didn't find confident matches — set the categories below.</span>
-          {/if}
-          {#if aiState.running}
-            <button type="button" class="btn btn-ghost btn-sm ml-auto" onclick={cancelAiSuggest}>Cancel</button>
-          {:else}
-            <button type="button" class="btn btn-ghost btn-sm ml-auto" onclick={runAiSuggest}>
-              {aiState.ran ? 'Re-run' : 'Categorise'}
-            </button>
-          {/if}
-        </div>
-        {#if aiState.running || (aiState.total && aiState.done < aiState.total && !aiState.error)}
-          <div class="mt-2 h-1 overflow-hidden rounded-full" style="background:var(--paper-sunk)">
-            <div class="h-full rounded-full transition-[width] duration-300"
-              style="width:{aiPct}%;background:var(--accent)"></div>
-          </div>
-        {/if}
-      </div>
-    {/if}
-
     <!-- thin format line -->
     <div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-[var(--ink-faint)]">
       <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={hasHeader} /> First row is a header</label>
-      <label class="flex items-center gap-1.5">
-        Ignore <input class="tnum w-12 rounded border border-[var(--border)] bg-transparent px-1 py-0.5 text-center"
-          type="number" min="0" max="20" bind:value={skipRows} /> rows at top
-      </label>
       <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={invert} /> Flip signs</label>
     </div>
 
@@ -651,7 +632,11 @@
           </tbody>
         </table>
       </div>
-      {#if rows.length > shown.length}
+      {#if rowFilter}
+        <p class="border-t border-[var(--border)] px-4 py-2 text-xs text-[var(--ink-faint)]">
+          Showing {filteredRows.length} of {rows.length} rows matching this filter.
+        </p>
+      {:else if rows.length > shown.length}
         <p class="border-t border-[var(--border)] px-4 py-2 text-xs text-[var(--ink-faint)]">
           Showing the first {shown.length} of {rows.length} rows. All {stats.included} valid rows will still be imported.
         </p>
@@ -663,18 +648,8 @@
         Import {stats.included} row{stats.included === 1 ? '' : 's'}
       </button>
       <button type="button" class="btn btn-ghost" onclick={onClose}>Cancel</button>
-      <span class="flex items-center gap-1.5">
-        <select class="input !py-1 text-xs" bind:value={bulkCat}>
-          <option value="__none">Set all to…</option>
-          <option value="">Uncategorised</option>
-          {#each data.categories as c}<option value={String(c.id)}>{c.name}</option>{/each}
-        </select>
-        <button type="button" class="btn btn-ghost btn-sm" onclick={applyBulkCat} disabled={bulkCat === '__none'}>Apply</button>
-      </span>
       <span class="ml-auto flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-faint)]">
         <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={skipDuplicates} /> Skip duplicates</label>
-        <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={runRules} /> Run rules</label>
-        <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={createCategories} /> Create categories</label>
       </span>
     </div>
   </form>
