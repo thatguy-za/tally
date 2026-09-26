@@ -8,8 +8,8 @@
    *
    * Whichever side is smaller gets a synthetic node making up the
    * difference, so the diagram always balances: income over spending shows
-   * a "Saved" node on the right; spending over income shows a "From
-   * savings" node on the left (the shortfall had to come from somewhere).
+   * a "Surplus" node on the right; spending over income shows a "Deficit"
+   * node on the left (the shortfall had to come from somewhere).
    *
    * @type {{
    *   income: { id: string|number, name: string, color: string|null, value: number }[],
@@ -75,12 +75,12 @@
   // added, so one scale (value → px) works for the whole diagram
   let leftRaw = $derived(
     saved < -0.5
-      ? [...income, { id: '__from_savings', name: 'From savings', color: 'var(--negative)', value: -saved, synthetic: true }]
+      ? [...income, { id: '__from_savings', name: 'Deficit', color: 'var(--negative)', value: -saved, synthetic: true }]
       : income
   );
   let rightRaw = $derived(
     saved > 0.5
-      ? [...expense, { id: '__saved', name: 'Saved', color: 'var(--positive)', value: saved, synthetic: true }]
+      ? [...expense, { id: '__saved', name: 'Surplus', color: 'var(--positive)', value: saved, synthetic: true }]
       : expense
   );
   let hubTotal = $derived(Math.max(incomeTotal, expenseTotal, 1));
