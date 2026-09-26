@@ -46,6 +46,9 @@
   const W1 = 640;
   let NODE_W = $derived(lerp(W, W0, W1, 10, 14));
   const GAP = 10;
+  // below this the bar's too thin for even a single truncated line — hide the
+  // label rather than crowd it against its neighbours
+  const LABEL_MIN_H = 8;
   let LABEL_GUTTER = $derived(lerp(W, W0, W1, 40, 132));
   let nameFont = $derived(lerp(W, W0, W1, 10, 11.5));
   let amountFont = $derived(lerp(W, W0, W1, 9, 10.5));
@@ -207,7 +210,7 @@
           style="cursor:{onNodeClick && !n.synthetic ? 'pointer' : 'default'}"
           role="presentation" onmousemove={(e) => show(e, n)} onmouseleave={() => (tip = null)}
           onclick={() => click(n, 'income')} />
-        {#if n.h >= 13}
+        {#if n.h >= LABEL_MIN_H}
           {@const lines = wrapLines(n.name, maxLineChars, n.h >= 30 ? 2 : 1)}
           <text x={n.x - labelGap} text-anchor="end" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">
             {#each lines as line, i}
@@ -224,7 +227,7 @@
           style="cursor:{onNodeClick && !n.synthetic ? 'pointer' : 'default'}"
           role="presentation" onmousemove={(e) => show(e, n)} onmouseleave={() => (tip = null)}
           onclick={() => click(n, 'expense')} />
-        {#if n.h >= 13}
+        {#if n.h >= LABEL_MIN_H}
           {@const lines = wrapLines(n.name, maxLineChars, n.h >= 30 ? 2 : 1)}
           <text x={n.x + NODE_W + labelGap} text-anchor="start" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">
             {#each lines as line, i}
