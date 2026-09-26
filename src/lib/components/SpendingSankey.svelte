@@ -133,7 +133,7 @@
   }
 </script>
 
-<div class="min-w-0 flex-1">
+<div class="min-w-0 flex-1 px-2 py-5 sm:px-6">
   {#if title}<h2 class="mb-4 text-lg">{title}</h2>{/if}
   <div class="relative" bind:this={wrap} bind:clientWidth={cw}>
     <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"

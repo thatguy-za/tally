@@ -383,7 +383,7 @@
 </div>
 {/if}
 
-<div class="card mb-4">
+<div class="card mb-4 {singleMonth && (spendingSegments.length || incomeSegments.length) ? 'card-flush' : ''}">
   {@render spendingChart()}
 </div>
 
