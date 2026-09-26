@@ -7,6 +7,7 @@
   import { invalidateAll } from '$app/navigation';
   import StackedMonths from '$lib/components/StackedMonths.svelte';
   import SpendingDoughnut from '$lib/components/SpendingDoughnut.svelte';
+  import SpendingSankey from '$lib/components/SpendingSankey.svelte';
   import PeriodPicker from '$lib/components/PeriodPicker.svelte';
   import CategoryTransactionsModal from '$lib/components/CategoryTransactionsModal.svelte';
   import SavingsChart from '$lib/components/SavingsChart.svelte';
@@ -106,6 +107,13 @@
     singleMonth
       ? data.chart.expense
           .map((c) => ({ id: c.id, name: c.name, color: c.color, value: categoryValue(c, data.chart.values[data.from]?.expense) }))
+          .filter((s) => s.value > 0)
+      : []
+  );
+  let incomeSegments = $derived(
+    singleMonth
+      ? data.chart.income
+          .map((c) => ({ id: c.id, name: c.name, color: c.color, value: categoryValue(c, data.chart.values[data.from]?.income) }))
           .filter((s) => s.value > 0)
       : []
   );
@@ -289,9 +297,9 @@
 
 {#snippet spendingChart()}
   {#if singleMonth}
-    {#if spendingSegments.length}
-      <SpendingDoughnut title="Your spending for this month" segments={spendingSegments} currency={data.currency}
-        onSegmentClick={(seg) => openCategoryModal(seg, data.from)} />
+    {#if spendingSegments.length || incomeSegments.length}
+      <SpendingSankey title="Where your money went this month" income={incomeSegments} expense={spendingSegments} currency={data.currency}
+        onNodeClick={(seg, source) => openCategoryModal(seg, data.from, source)} />
     {:else}
       <h2 class="mb-4 text-lg">Your spending for this month</h2>
       <EmptyState icon="reports" title="Nothing in this period yet"
