@@ -49,9 +49,9 @@
   let LABEL_GUTTER = $derived(lerp(W, W0, W1, 40, 132));
   let nameFont = $derived(lerp(W, W0, W1, 10, 11.5));
   let amountFont = $derived(lerp(W, W0, W1, 9, 10.5));
-  // once the gutter's back to its full size there's ample blank space beyond
-  // it for text to spill into unclipped, so stop truncating entirely
-  let maxChars = $derived(LABEL_GUTTER >= 120 ? Infinity : Math.max(5, Math.round((LABEL_GUTTER - 12) / 5.6)));
+  // characters that fit on one line within the gutter, at the current name
+  // font size — used to wrap (not just truncate) long category names
+  let maxLineChars = $derived(Math.max(6, Math.round((LABEL_GUTTER - 10) / (nameFont * 0.56))));
   let plotH = $derived(H - PAD.t - PAD.b);
   let labelGap = $derived(lerp(W, W0, W1, 5, 8));
 
@@ -138,13 +138,32 @@
     }))
   );
 
-  // SVG text never wraps — a long category name would blow straight through
-  // the narrow gutter, so clip it there the way a truncated label would in
-  // any other cramped UI
-  function labelText(name) {
-    return Number.isFinite(maxChars) && name.length > maxChars
-      ? `${name.slice(0, Math.max(1, maxChars - 1))}…`
-      : name;
+  // SVG text never wraps on its own — a long category name would either
+  // blow straight through the gutter (getting clipped at the SVG's edge) or
+  // just look truncated, so wrap it onto up to `maxLines` lines ourselves,
+  // word by word, ellipsizing only what still doesn't fit
+  function wrapLines(name, maxLen, maxLines) {
+    const words = name.split(' ');
+    const lines = [];
+    let cur = '';
+    let i = 0;
+    while (i < words.length && lines.length < maxLines) {
+      const candidate = cur ? `${cur} ${words[i]}` : words[i];
+      if (candidate.length <= maxLen || !cur) {
+        cur = candidate;
+        i++;
+      } else {
+        lines.push(cur);
+        cur = '';
+      }
+    }
+    if (cur) lines.push(cur);
+    if (i < words.length) {
+      let last = lines[lines.length - 1] || '';
+      while (last.length > 1 && `${last}…`.length > maxLen) last = last.slice(0, -1);
+      lines[lines.length - 1] = `${last.replace(/\s+$/, '')}…`;
+    }
+    return lines.length ? lines : [name];
   }
 
   let tip = $state(null);
@@ -189,7 +208,12 @@
           role="presentation" onmousemove={(e) => show(e, n)} onmouseleave={() => (tip = null)}
           onclick={() => click(n, 'income')} />
         {#if n.h >= 13}
-          <text x={n.x - labelGap} y={n.y + n.h / 2 - 3} text-anchor="end" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">{labelText(n.name)}</text>
+          {@const lines = wrapLines(n.name, maxLineChars, n.h >= 30 ? 2 : 1)}
+          <text x={n.x - labelGap} text-anchor="end" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">
+            {#each lines as line, i}
+              <tspan x={n.x - labelGap} y={n.y + n.h / 2 - 3 - (lines.length - 1 - i) * (nameFont + 3)}>{line}</tspan>
+            {/each}
+          </text>
           <text x={n.x - labelGap} y={n.y + n.h / 2 + 10} text-anchor="end" font-size={amountFont} fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
         {/if}
       {/each}
@@ -201,7 +225,12 @@
           role="presentation" onmousemove={(e) => show(e, n)} onmouseleave={() => (tip = null)}
           onclick={() => click(n, 'expense')} />
         {#if n.h >= 13}
-          <text x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 - 3} text-anchor="start" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">{labelText(n.name)}</text>
+          {@const lines = wrapLines(n.name, maxLineChars, n.h >= 30 ? 2 : 1)}
+          <text x={n.x + NODE_W + labelGap} text-anchor="start" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">
+            {#each lines as line, i}
+              <tspan x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 - 3 - (lines.length - 1 - i) * (nameFont + 3)}>{line}</tspan>
+            {/each}
+          </text>
           <text x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 + 10} text-anchor="start" font-size={amountFont} fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
         {/if}
       {/each}
