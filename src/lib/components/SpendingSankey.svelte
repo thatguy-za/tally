@@ -35,7 +35,9 @@
   // never wider than the real container — a forced minimum here would
   // overflow it on a narrow phone instead of shrinking to fit
   let W = $derived(cw || 720);
-  const H = 380;
+  // taller than the old 380 — now that most categories show a label, they
+  // need more room between them so neighbouring labels don't run together
+  const H = 460;
   const PAD = { t: 16, r: 4, b: 16, l: 4 };
   // a narrow screen has no room for a fixed 132px of label text on each
   // side — shrink the gutter (and truncate names within it) so the bars and
@@ -45,7 +47,7 @@
   const W0 = 320;
   const W1 = 640;
   let NODE_W = $derived(lerp(W, W0, W1, 10, 14));
-  const GAP = 10;
+  const GAP = 14;
   // below this the bar's too thin for even a single truncated line — hide the
   // label rather than crowd it against its neighbours
   const LABEL_MIN_H = 8;
