@@ -21,6 +21,16 @@
    */
   let { income, expense, currency, title = '', onNodeClick } = $props();
 
+  // linear interpolation of x within [x0,x1] onto [y0,y1], clamped at the ends
+  // — used everywhere below so every size scales smoothly with width instead
+  // of snapping between two fixed states at one breakpoint
+  const lerp = (x, x0, x1, y0, y1) => {
+    if (x <= x0) return y0;
+    if (x >= x1) return y1;
+    return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
+  };
+
+  let outerW = $state(0);
   let cw = $state(0);
   // never wider than the real container — a forced minimum here would
   // overflow it on a narrow phone instead of shrinking to fit
@@ -28,13 +38,27 @@
   const H = 380;
   const PAD = { t: 16, r: 4, b: 16, l: 4 };
   // a narrow screen has no room for a fixed 132px of label text on each
-  // side — shrink the gutter (and the type inside it) so the diagram itself
-  // still gets most of the width, same idea as StackedMonths' showLabels
-  let narrow = $derived(W < 420);
-  let NODE_W = $derived(narrow ? 10 : 14);
+  // side — shrink the gutter (and truncate names within it) so the bars and
+  // ribbons still get most of the width, without losing the labels entirely.
+  // Everything below ramps continuously across this width range rather than
+  // jumping at a single breakpoint.
+  const W0 = 320;
+  const W1 = 640;
+  let NODE_W = $derived(lerp(W, W0, W1, 10, 14));
   const GAP = 10;
-  let LABEL_GUTTER = $derived(narrow ? 72 : 132);
+  let LABEL_GUTTER = $derived(lerp(W, W0, W1, 40, 132));
+  let nameFont = $derived(lerp(W, W0, W1, 10, 11.5));
+  let amountFont = $derived(lerp(W, W0, W1, 9, 10.5));
+  // once the gutter's back to its full size there's ample blank space beyond
+  // it for text to spill into unclipped, so stop truncating entirely
+  let maxChars = $derived(LABEL_GUTTER >= 120 ? Infinity : Math.max(5, Math.round((LABEL_GUTTER - 12) / 5.6)));
   let plotH = $derived(H - PAD.t - PAD.b);
+  let labelGap = $derived(lerp(W, W0, W1, 5, 8));
+
+  // the card's own side padding, scaled the same way — near-zero on a phone
+  // so the chart bleeds to the card edge, full padding once there's room
+  let titlePad = $derived(lerp(outerW || W1, W0, W1, 14, 24));
+  let chartPad = $derived(lerp(outerW || W1, W0, W1, 2, 24));
 
   const money = (v) => formatMoney(v, currency);
   const fill = (c) => c || 'var(--border-strong)';
@@ -115,10 +139,12 @@
   );
 
   // SVG text never wraps — a long category name would blow straight through
-  // the narrow gutter's 72px, so clip it there the way a truncated label
-  // would in any other cramped UI
+  // the narrow gutter, so clip it there the way a truncated label would in
+  // any other cramped UI
   function labelText(name) {
-    return narrow && name.length > 11 ? `${name.slice(0, 10)}…` : name;
+    return Number.isFinite(maxChars) && name.length > maxChars
+      ? `${name.slice(0, Math.max(1, maxChars - 1))}…`
+      : name;
   }
 
   let tip = $state(null);
@@ -133,9 +159,12 @@
   }
 </script>
 
-<div class="min-w-0 flex-1 px-2 py-5 sm:px-6">
-  {#if title}<h2 class="mb-4 text-lg">{title}</h2>{/if}
-  <div class="relative" bind:this={wrap} bind:clientWidth={cw}>
+<div class="min-w-0 flex-1 py-5" bind:clientWidth={outerW}>
+  <!-- the heading wants normal breathing room even on a phone; only the
+       chart itself needs to shave its own padding down to almost nothing —
+       both scale continuously with the measured card width above -->
+  {#if title}<h2 class="mb-4 text-lg" style="padding-inline:{titlePad}px">{title}</h2>{/if}
+  <div class="relative" style="padding-inline:{chartPad}px" bind:this={wrap} bind:clientWidth={cw}>
     <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"
       aria-label="Money in and out this month">
       {#each leftLinks as l}
@@ -160,10 +189,8 @@
           role="presentation" onmousemove={(e) => show(e, n)} onmouseleave={() => (tip = null)}
           onclick={() => click(n, 'income')} />
         {#if n.h >= 13}
-          <text x={n.x - (narrow ? 5 : 8)} y={n.y + n.h / 2 + (narrow ? 3 : -3)} text-anchor="end" font-size={narrow ? 10 : 11.5} font-weight="600" fill="var(--ink-soft)">{labelText(n.name)}</text>
-          {#if !narrow}
-            <text x={n.x - 8} y={n.y + n.h / 2 + 10} text-anchor="end" font-size="10.5" fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
-          {/if}
+          <text x={n.x - labelGap} y={n.y + n.h / 2 - 3} text-anchor="end" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">{labelText(n.name)}</text>
+          <text x={n.x - labelGap} y={n.y + n.h / 2 + 10} text-anchor="end" font-size={amountFont} fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
         {/if}
       {/each}
 
@@ -174,10 +201,8 @@
           role="presentation" onmousemove={(e) => show(e, n)} onmouseleave={() => (tip = null)}
           onclick={() => click(n, 'expense')} />
         {#if n.h >= 13}
-          <text x={n.x + NODE_W + (narrow ? 5 : 8)} y={n.y + n.h / 2 + (narrow ? 3 : -3)} text-anchor="start" font-size={narrow ? 10 : 11.5} font-weight="600" fill="var(--ink-soft)">{labelText(n.name)}</text>
-          {#if !narrow}
-            <text x={n.x + NODE_W + 8} y={n.y + n.h / 2 + 10} text-anchor="start" font-size="10.5" fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
-          {/if}
+          <text x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 - 3} text-anchor="start" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">{labelText(n.name)}</text>
+          <text x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 + 10} text-anchor="start" font-size={amountFont} fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
         {/if}
       {/each}
     </svg>
