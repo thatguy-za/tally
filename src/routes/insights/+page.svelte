@@ -388,17 +388,12 @@
 </div>
 
 {#if ins && ins.reason !== 'empty'}
-  <!-- only worth saying for a single month; a range that covers all your data has nothing to compare to and that is obvious -->
-  {#if ins.single && !showMovers && !ins.comparable}
+  <!-- only worth saying for a single month; a range that covers all your data has nothing to compare to and that is obvious.
+       The "no-history" case (this is the only month of data at all) isn't worth a nudge — it's obvious and resolves itself. -->
+  {#if ins.single && !showMovers && !ins.comparable && ins.reason !== 'no-history'}
     <div class="nudge mb-4">
       <Icon name="sparkle" size={16} class="text-[var(--accent)]" />
-      <span>
-        {#if ins.reason === 'no-history'}
-          Once you have a second month of data, Tally will show how this month compares to your usual.
-        {:else}
-          {formatMonth(ins.from)} has only just started — comparisons appear once the month is properly under way.
-        {/if}
-      </span>
+      <span>{formatMonth(ins.from)} has only just started — comparisons appear once the month is properly under way.</span>
     </div>
   {/if}
 {/if}
