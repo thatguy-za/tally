@@ -35,10 +35,13 @@
   // never wider than the real container — a forced minimum here would
   // overflow it on a narrow phone instead of shrinking to fit
   let W = $derived(cw || 720);
-  // taller than the old 380 — now that most categories show a label, they
-  // need more room between them so neighbouring labels don't run together
-  const H = 460;
   const PAD = { t: 16, r: 4, b: 16, l: 4 };
+  // every category always shows a label now, so a node's height can't just
+  // track its value — a tiny category would crush its name and amount
+  // against its neighbours. Give every node at least this much room, and
+  // let the chart grow taller (below) rather than let labels collide.
+  const MIN_NODE_H = 26;
+  const BASE_PLOT_H = 428; // the old fixed height, still the minimum aim
   // a narrow screen has no room for a fixed 132px of label text on each
   // side — shrink the gutter (and truncate names within it) so the bars and
   // ribbons still get most of the width, without losing the labels entirely.
@@ -48,16 +51,12 @@
   const W1 = 640;
   let NODE_W = $derived(lerp(W, W0, W1, 10, 14));
   const GAP = 14;
-  // below this the bar's too thin for even a single truncated line — hide the
-  // label rather than crowd it against its neighbours
-  const LABEL_MIN_H = 8;
   let LABEL_GUTTER = $derived(lerp(W, W0, W1, 40, 132));
   let nameFont = $derived(lerp(W, W0, W1, 10, 11.5));
   let amountFont = $derived(lerp(W, W0, W1, 9, 10.5));
   // characters that fit on one line within the gutter, at the current name
   // font size — used to wrap (not just truncate) long category names
   let maxLineChars = $derived(Math.max(6, Math.round((LABEL_GUTTER - 10) / (nameFont * 0.56))));
-  let plotH = $derived(H - PAD.t - PAD.b);
   let labelGap = $derived(lerp(W, W0, W1, 5, 8));
 
   // the card's own side padding, scaled the same way — near-zero on a phone
@@ -86,27 +85,42 @@
   );
   let hubTotal = $derived(Math.max(incomeTotal, expenseTotal, 1));
 
-  // compressed so the busier column's inter-node gaps still fit in plotH —
-  // the hub (one node, no gaps) then falls a little short of the full
-  // height, which reads fine since it's the plain pass-through bar
+  // compressed so the busier column's inter-node gaps still fit in the base
+  // plot height — the hub (one node, no gaps) then falls a little short of
+  // the full height, which reads fine since it's the plain pass-through bar
   let maxCount = $derived(Math.max(leftRaw.length, rightRaw.length, 1));
-  let scale = $derived((plotH - GAP * (maxCount - 1)) / hubTotal);
+  let scale = $derived((BASE_PLOT_H - GAP * (maxCount - 1)) / hubTotal);
 
-  function place(nodes, x) {
+  // a category's true (value-proportional) height, and its on-screen height
+  // floored at MIN_NODE_H so its label always has room — the chart's own
+  // height (below) grows to fit whichever column that floor pushes past the
+  // base height. The two can now differ, so each ribbon tapers between its
+  // true thickness at the hub and its (possibly inflated) thickness at the
+  // category bar, rather than assuming a uniform width.
+  let leftTrueH = $derived(leftRaw.map((n) => n.value * scale));
+  let rightTrueH = $derived(rightRaw.map((n) => n.value * scale));
+  let leftHeights = $derived(leftTrueH.map((h) => Math.max(MIN_NODE_H, h)));
+  let rightHeights = $derived(rightTrueH.map((h) => Math.max(MIN_NODE_H, h)));
+  let leftStack = $derived(leftHeights.reduce((s, h) => s + h, 0) + GAP * Math.max(0, leftHeights.length - 1));
+  let rightStack = $derived(rightHeights.reduce((s, h) => s + h, 0) + GAP * Math.max(0, rightHeights.length - 1));
+  let plotH = $derived(Math.max(BASE_PLOT_H, leftStack, rightStack));
+  let H = $derived(plotH + PAD.t + PAD.b);
+
+  function place(nodes, x, heights) {
     let y = PAD.t;
-    return nodes.map((n) => {
-      const h = Math.max(2, n.value * scale);
+    return nodes.map((n, i) => {
+      const h = heights[i];
       const seg = { ...n, x, y, h };
       y += h + GAP;
       return seg;
     });
   }
-  /** Tight-packed slice of `nodes` against one edge of the hub, in the same order as their own column. */
-  function stackTight(nodes, top) {
+  /** Tight-packed slice of `nodes`' true heights against one edge of the hub, in the same order as their own column. */
+  function stackTight(heights, top) {
     let y = top;
-    return nodes.map((n) => {
+    return heights.map((h) => {
       const hubY = y;
-      y += n.h;
+      y += h;
       return hubY;
     });
   }
@@ -115,29 +129,29 @@
   let xHub = $derived(W / 2 - NODE_W / 2);
   let xRight = $derived(W - PAD.r - LABEL_GUTTER - NODE_W);
 
-  let leftNodes = $derived(place(leftRaw, xLeft));
-  let rightNodes = $derived(place(rightRaw, xRight));
+  let leftNodes = $derived(place(leftRaw, xLeft, leftHeights));
+  let rightNodes = $derived(place(rightRaw, xRight, rightHeights));
   let hubTop = $derived(PAD.t);
   let hubH = $derived(hubTotal * scale);
 
-  let leftHubY = $derived(stackTight(leftNodes, hubTop));
-  let rightHubY = $derived(stackTight(rightNodes, hubTop));
+  let leftHubY = $derived(stackTight(leftTrueH, hubTop));
+  let rightHubY = $derived(stackTight(rightTrueH, hubTop));
 
-  function ribbon(x0, y0, x1, y1, h) {
+  function ribbon(x0, y0, x1, y1, h0, h1) {
     const xm = (x0 + x1) / 2;
-    return `M${x0},${y0} C${xm},${y0} ${xm},${y1} ${x1},${y1} L${x1},${y1 + h} C${xm},${y1 + h} ${xm},${y0 + h} ${x0},${y0 + h} Z`;
+    return `M${x0},${y0} C${xm},${y0} ${xm},${y1} ${x1},${y1} L${x1},${y1 + h1} C${xm},${y1 + h1} ${xm},${y0 + h0} ${x0},${y0 + h0} Z`;
   }
 
   let leftLinks = $derived(
     leftNodes.map((n, i) => ({
-      path: ribbon(n.x + NODE_W, n.y, xHub, leftHubY[i], n.h),
+      path: ribbon(n.x + NODE_W, n.y, xHub, leftHubY[i], n.h, leftTrueH[i]),
       color: n.color,
       node: n
     }))
   );
   let rightLinks = $derived(
     rightNodes.map((n, i) => ({
-      path: ribbon(xHub + NODE_W, rightHubY[i], n.x, n.y, n.h),
+      path: ribbon(xHub + NODE_W, rightHubY[i], n.x, n.y, rightTrueH[i], n.h),
       color: n.color,
       node: n
     }))
@@ -212,15 +226,13 @@
           style="cursor:{onNodeClick && !n.synthetic ? 'pointer' : 'default'}"
           role="presentation" onmousemove={(e) => show(e, n)} onmouseleave={() => (tip = null)}
           onclick={() => click(n, 'income')} />
-        {#if n.h >= LABEL_MIN_H}
-          {@const lines = wrapLines(n.name, maxLineChars, n.h >= 30 ? 2 : 1)}
-          <text x={n.x - labelGap} text-anchor="end" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">
-            {#each lines as line, i}
-              <tspan x={n.x - labelGap} y={n.y + n.h / 2 - 3 - (lines.length - 1 - i) * (nameFont + 3)}>{line}</tspan>
-            {/each}
-          </text>
-          <text x={n.x - labelGap} y={n.y + n.h / 2 + 10} text-anchor="end" font-size={amountFont} fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
-        {/if}
+        {@const lines = wrapLines(n.name, maxLineChars, n.h >= 30 ? 2 : 1)}
+        <text x={n.x - labelGap} text-anchor="end" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">
+          {#each lines as line, i}
+            <tspan x={n.x - labelGap} y={n.y + n.h / 2 - 3 - (lines.length - 1 - i) * (nameFont + 3)}>{line}</tspan>
+          {/each}
+        </text>
+        <text x={n.x - labelGap} y={n.y + n.h / 2 + 10} text-anchor="end" font-size={amountFont} fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
       {/each}
 
       {#each rightNodes as n}
@@ -229,15 +241,13 @@
           style="cursor:{onNodeClick && !n.synthetic ? 'pointer' : 'default'}"
           role="presentation" onmousemove={(e) => show(e, n)} onmouseleave={() => (tip = null)}
           onclick={() => click(n, 'expense')} />
-        {#if n.h >= LABEL_MIN_H}
-          {@const lines = wrapLines(n.name, maxLineChars, n.h >= 30 ? 2 : 1)}
-          <text x={n.x + NODE_W + labelGap} text-anchor="start" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">
-            {#each lines as line, i}
-              <tspan x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 - 3 - (lines.length - 1 - i) * (nameFont + 3)}>{line}</tspan>
-            {/each}
-          </text>
-          <text x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 + 10} text-anchor="start" font-size={amountFont} fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
-        {/if}
+        {@const lines = wrapLines(n.name, maxLineChars, n.h >= 30 ? 2 : 1)}
+        <text x={n.x + NODE_W + labelGap} text-anchor="start" font-size={nameFont} font-weight="600" fill="var(--ink-soft)">
+          {#each lines as line, i}
+            <tspan x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 - 3 - (lines.length - 1 - i) * (nameFont + 3)}>{line}</tspan>
+          {/each}
+        </text>
+        <text x={n.x + NODE_W + labelGap} y={n.y + n.h / 2 + 10} text-anchor="start" font-size={amountFont} fill="var(--ink-faint)" class="tnum">{money(n.value)}</text>
       {/each}
     </svg>
 
