@@ -1009,8 +1009,12 @@ const CHAT_SYSTEM = (currency, today) =>
   'reuse a number from earlier in the conversation without re-checking it. Use list_categories ' +
   'to resolve a category name to its id, category_totals for spending/income by category, ' +
   'search_transactions for specific line items, period_summary for how a period compares to ' +
-  'usual, and budget_status for target-vs-actual in a month. If a question needs a date range ' +
-  'and none is given, assume the current month unless context suggests otherwise. When a ' +
+  'usual, and budget_status for target-vs-actual in a month. Transactions can carry a short ' +
+  'free-text note as well as a description — search_transactions\'s search argument checks ' +
+  'both. If a question needs a date range and none is given, assume the current month unless ' +
+  'context suggests otherwise — but that default is for spending/period questions specifically; ' +
+  'a lookup by name, description or note (e.g. "find the transaction where I wrote...") is not ' +
+  'time-scoped, so pass null for from/to there instead of silently limiting it to this month. When a ' +
   'comparison across categories or months would be clearer as a chart, call show_chart with ' +
   'the numbers you already looked up (it does not fetch anything itself) — still give your ' +
   'normal text answer too, don\'t reply with only a chart. Keep answers short and concrete — a ' +
