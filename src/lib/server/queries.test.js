@@ -28,7 +28,8 @@ import {
   monthlyCategoryTotals,
   savingsSummary,
   savingsMilestoneCrossed,
-  getLogoDomains
+  getLogoDomains,
+  listTransactions
 } from './queries.js';
 
 /**
@@ -809,6 +810,60 @@ describe('monthlyCategoryTotals', () => {
     const expenseRow = rows.find((r) => r.kind === 'expense');
     expect(incomeRow).toMatchObject({ id: -1, name: 'Uncategorised', total: 200 });
     expect(expenseRow).toMatchObject({ id: -1, name: 'Uncategorised', total: 30 });
+  });
+});
+
+describe('listTransactions "other" bucket', () => {
+  it('includes uncategorised transactions, matching what monthlyCategoryTotals folds into Other', () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    const rent = makeCategory(u, 'Rent', 'expense');
+    addTx(u, { date: '2026-01-01', amount: -100, category_id: groceries });
+    addTx(u, { date: '2026-01-02', amount: -20, category_id: null }); // uncategorised expense
+    addTx(u, { date: '2026-01-03', amount: 50, category_id: null }); // uncategorised income — wrong side, must not show
+
+    const rows = listTransactions(u, {
+      month: '2026-01',
+      categoryId: 'other',
+      categoryKinds: ['expense', 'saving'],
+      excludeCategoryIds: [rent], // rent is individually shown, groceries and uncategorised fold into Other
+      kind: 'expense'
+    });
+
+    expect(rows.map((r) => r.amount).sort()).toEqual([-100, -20]);
+  });
+
+  it('excludes uncategorised transactions when the Uncategorised bucket (-1) is itself individually shown', () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    addTx(u, { date: '2026-01-01', amount: -100, category_id: groceries });
+    addTx(u, { date: '2026-01-02', amount: -20, category_id: null });
+
+    const rows = listTransactions(u, {
+      month: '2026-01',
+      categoryId: 'other',
+      categoryKinds: ['expense', 'saving'],
+      excludeCategoryIds: [-1],
+      kind: 'expense'
+    });
+
+    expect(rows.map((r) => r.amount)).toEqual([-100]);
+  });
+});
+
+describe('listTransactions categoryId -1 (Uncategorised shown on its own)', () => {
+  it('returns uncategorised transactions on the requested side, by sign', () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    addTx(u, { date: '2026-01-01', amount: -100, category_id: groceries });
+    addTx(u, { date: '2026-01-02', amount: -20, category_id: null }); // uncategorised expense
+    addTx(u, { date: '2026-01-03', amount: 50, category_id: null }); // uncategorised income
+
+    const expenseRows = listTransactions(u, { month: '2026-01', categoryId: -1, kind: 'expense' });
+    expect(expenseRows.map((r) => r.amount)).toEqual([-20]);
+
+    const incomeRows = listTransactions(u, { month: '2026-01', categoryId: -1, kind: 'income' });
+    expect(incomeRows.map((r) => r.amount)).toEqual([50]);
   });
 });
 

@@ -133,18 +133,37 @@ export function listTransactions(userId, f = {}) {
   // dismissed-uncategorised rows opted out of ever needing a category, so
   // they don't belong in a "what still needs categorising" filtered view
   if (f.categoryId === 'none') where.push('t.category_id IS NULL AND t.dismissed_uncategorised = 0');
-  else if (f.categoryId === 'other') {
+  else if (f.categoryId === -1) {
+    // the chart's own "Uncategorised" bucket (see monthlyCategoryTotals),
+    // shown as its own segment instead of folded into Other — every
+    // uncategorised transaction of the requested side, dismissed or not,
+    // matching what the chart counted under this id
+    where.push(`t.category_id IS NULL AND ${f.kind === 'income' ? 't.amount > 0' : 't.amount <= 0'}`);
+  } else if (f.categoryId === 'other') {
     // the chart's folded "Other" bucket: every categorised transaction of the
-    // given kind(s) that isn't one of the individually-shown categories
-    where.push('t.category_id IS NOT NULL');
+    // given kind(s) that isn't one of the individually-shown categories, plus
+    // uncategorised transactions — monthlyCategoryTotals folds those in too,
+    // under a synthetic id (-1), classified by sign since they have no
+    // category kind of their own. Excluded when -1 is itself one of the
+    // individually-shown "categories" (an Uncategorised bucket kept on its
+    // own instead of folded away).
+    const excludeIds = f.excludeCategoryIds || [];
+    const catIdExcl = excludeIds.filter((id) => id !== -1);
+    let categorised = 't.category_id IS NOT NULL';
+    if (catIdExcl.length) {
+      categorised += ` AND t.category_id NOT IN (${catIdExcl.map((_, i) => `@excl${i}`).join(',')})`;
+      catIdExcl.forEach((id, i) => { params[`excl${i}`] = id; });
+    }
     if (f.categoryKinds?.length) {
-      where.push(`c.kind IN (${f.categoryKinds.map((_, i) => `@kind${i}`).join(',')})`);
+      categorised += ` AND c.kind IN (${f.categoryKinds.map((_, i) => `@kind${i}`).join(',')})`;
       f.categoryKinds.forEach((k, i) => { params[`kind${i}`] = k; });
     }
-    if (f.excludeCategoryIds?.length) {
-      where.push(`t.category_id NOT IN (${f.excludeCategoryIds.map((_, i) => `@excl${i}`).join(',')})`);
-      f.excludeCategoryIds.forEach((id, i) => { params[`excl${i}`] = id; });
+    const clauses = [`(${categorised})`];
+    if (!excludeIds.includes(-1)) {
+      const sign = f.kind === 'income' ? 't.amount > 0' : 't.amount <= 0';
+      clauses.push(`(t.category_id IS NULL AND ${sign})`);
     }
+    where.push(`(${clauses.join(' OR ')})`);
   } else if (f.categoryId) { where.push('t.category_id = @categoryId'); params.categoryId = f.categoryId; }
   if (f.accountId === 'none') where.push('t.account_id IS NULL');
   else if (f.accountId) { where.push('t.account_id = @accountId'); params.accountId = f.accountId; }

@@ -16,15 +16,20 @@
   let { data } = $props();
 
   let categoryModal = $state(null);
-  function openCategoryModal(seg, ym, source = 'expense') {
+  // `toMonth` is only passed by the flow chart over a range — a bar-chart
+  // segment always belongs to exactly one month
+  function openCategoryModal(seg, ym, source = 'expense', toMonth) {
     if (seg.id === 'other') {
       const excludeIds = (source === 'income' ? data.chart.income : data.chart.expense)
         .filter((c) => c.id !== 'other')
         .map((c) => c.id);
-      categoryModal = { categoryId: 'other', categoryName: seg.name, color: seg.color, month: ym, kind: source, excludeIds };
+      categoryModal = { categoryId: 'other', categoryName: seg.name, color: seg.color, month: ym, toMonth, kind: source, excludeIds };
       return;
     }
-    categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym };
+    // seg.id === -1 is the chart's own "Uncategorised" bucket, shown as its
+    // own segment instead of folded into Other — it needs `kind` too, since
+    // an uncategorised transaction has no category of its own to classify it
+    categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym, toMonth, kind: seg.id === -1 ? source : undefined };
   }
 
   /** Every saving-category transaction for one month, from a savings-chart bar. */
@@ -117,6 +122,38 @@
           .filter((s) => s.value > 0)
       : []
   );
+
+  // period totals for the multi-month flow chart — one figure per category,
+  // summed across every month in the selected range
+  const periodValue = (c, side) =>
+    data.chart.months.reduce((sum, ym) => sum + categoryValue(c, data.chart.values[ym]?.[side]), 0);
+  let periodSpendingSegments = $derived(
+    data.chart.expense.map((c) => ({ id: c.id, name: c.name, color: c.color, value: periodValue(c, 'expense') })).filter((s) => s.value > 0)
+  );
+  let periodIncomeSegments = $derived(
+    data.chart.income.map((c) => ({ id: c.id, name: c.name, color: c.color, value: periodValue(c, 'income') })).filter((s) => s.value > 0)
+  );
+
+  // Which chart a multi-month period draws — a single month is always the
+  // flow chart, so the toggle only appears (and only matters) for a range.
+  // The choice is remembered per browser, not per period.
+  let chartView = $state('bar'); // 'bar' | 'flow'
+  $effect(() => {
+    try {
+      const v = localStorage.getItem('insightsChartView');
+      if (v === 'bar' || v === 'flow') chartView = v;
+    } catch {
+      /* ignore */
+    }
+  });
+  function setChartView(v) {
+    chartView = v;
+    try {
+      localStorage.setItem('insightsChartView', v);
+    } catch {
+      /* ignore */
+    }
+  }
 
   const money = (n) => formatMoney(n, data.currency);
   const shortMonth = (ym) => {
@@ -306,14 +343,31 @@
         hint="Add a transaction or import a statement to see it here." cta={{ href: '/transactions', label: 'Go to transactions' }} />
     {/if}
   {:else if data.chart.income.length || data.chart.expense.length}
-    <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
-      expense={data.chart.expense} values={data.chart.values} currency={data.currency}
-      onSegmentClick={openCategoryModal} onMonthClick={openMonthModal} />
+    {#if chartView === 'flow'}
+      <SpendingSankey title="Money in and out over this period" income={periodIncomeSegments} expense={periodSpendingSegments}
+        currency={data.currency} actions={chartViewToggle}
+        onNodeClick={(seg, source) => openCategoryModal(seg, data.from, source, data.to)} />
+    {:else}
+      <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
+        expense={data.chart.expense} values={data.chart.values} currency={data.currency}
+        onSegmentClick={openCategoryModal} onMonthClick={openMonthModal} actions={chartViewToggle} />
+    {/if}
   {:else}
     <h2 class="mb-4 text-lg">Your spending by month</h2>
     <EmptyState icon="reports" title="Nothing in this period yet"
       hint="Add a transaction or import a statement to see it here." cta={{ href: '/transactions', label: 'Go to transactions' }} />
   {/if}
+{/snippet}
+
+{#snippet chartViewToggle()}
+  <div class="flex items-center gap-0.5 rounded-[var(--radius-xs)] border border-[var(--border)] p-0.5 text-[11px]">
+    <button type="button"
+      class="rounded-[6px] px-2 py-1 transition-colors {chartView === 'bar' ? 'bg-[var(--paper-sunk)] text-[var(--ink)]' : 'text-[var(--ink-faint)] hover:text-[var(--ink)]'}"
+      onclick={() => setChartView('bar')}>Bars</button>
+    <button type="button"
+      class="rounded-[6px] px-2 py-1 transition-colors {chartView === 'flow' ? 'bg-[var(--paper-sunk)] text-[var(--ink)]' : 'text-[var(--ink-faint)] hover:text-[var(--ink)]'}"
+      onclick={() => setChartView('flow')}>Flow</button>
+  </div>
 {/snippet}
 
 {#snippet whatChanged()}
@@ -499,6 +553,7 @@
     categoryName={categoryModal.categoryName}
     color={categoryModal.color}
     month={categoryModal.month}
+    toMonth={categoryModal.toMonth}
     kind={categoryModal.kind}
     excludeIds={categoryModal.excludeIds}
     currency={data.currency}

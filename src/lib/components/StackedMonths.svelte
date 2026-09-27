@@ -23,12 +23,13 @@
    *   values: Record<string, { income: Record<string, number>, expense: Record<string, number> }>,
    *   currency: string,
    *   title?: string,
+   *   actions?: import('svelte').Snippet,
    *   onSegmentClick?: (seg: object, ym: string, source: 'income'|'expense') => void,
    *   onMonthClick?: (ym: string) => void
    * }}
    */
   // the title renders inside the plot column so the legend can use the card's full height
-  let { months, income, expense, values, currency, title = '', onSegmentClick, onMonthClick } = $props();
+  let { months, income, expense, values, currency, title = '', actions, onSegmentClick, onMonthClick } = $props();
 
   // drawn at the wrapper's real width so text stays legible on a phone
   // instead of the whole picture scaling down
@@ -175,6 +176,7 @@
     <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
       {#if title}<h2 class="text-lg">{title}</h2>{/if}
       <div class="ml-auto flex items-center gap-2">
+        {#if actions}{@render actions()}{/if}
         {#if selected}
           <button type="button" class="chip flex items-center gap-1.5 text-[12px]" onclick={() => (selected = null)}>
             {selected.item.name}

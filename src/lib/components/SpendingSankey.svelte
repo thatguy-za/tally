@@ -16,10 +16,11 @@
    *   expense: { id: string|number, name: string, color: string|null, value: number }[],
    *   currency: string,
    *   title?: string,
+   *   actions?: import('svelte').Snippet,
    *   onNodeClick?: (node: object, source: 'income'|'expense') => void
    * }}
    */
-  let { income, expense, currency, title = '', onNodeClick } = $props();
+  let { income, expense, currency, title = '', actions, onNodeClick } = $props();
 
   // linear interpolation of x within [x0,x1] onto [y0,y1], clamped at the ends
   // — used everywhere below so every size scales smoothly with width instead
@@ -201,7 +202,12 @@
   <!-- the heading wants normal breathing room even on a phone; only the
        chart itself needs to shave its own padding down to almost nothing —
        both scale continuously with the measured card width above -->
-  {#if title}<h2 class="mb-4 text-lg" style="padding-inline:{titlePad}px">{title}</h2>{/if}
+  {#if title || actions}
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2" style="padding-inline:{titlePad}px">
+      {#if title}<h2 class="text-lg">{title}</h2>{/if}
+      {#if actions}<div class="ml-auto">{@render actions()}</div>{/if}
+    </div>
+  {/if}
   <div class="relative" style="padding-inline:{chartPad}px" bind:this={wrap} bind:clientWidth={cw}>
     <svg viewBox="0 0 {W} {H}" width={W} height={H} class="block max-w-full" role="img"
       aria-label="Money in and out this month">

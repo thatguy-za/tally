@@ -3,36 +3,54 @@ import { listTransactions } from '$lib/server/queries.js';
 
 const YM = /^\d{4}-\d{2}$/;
 
-/** Backs the "click a chart segment" popup: every transaction in one category, for one month. */
+/**
+ * Backs the "click a chart segment" popup: every transaction in one category,
+ * over one month (`month`) or a run of them (`from`/`to`, as the period flow
+ * chart needs). `-31` is a safe upper bound because dates are ISO strings and
+ * compared lexically, so it catches every day of the closing month.
+ */
+function period(url) {
+  const month = url.searchParams.get('month') || '';
+  if (YM.test(month)) return { month };
+  const from = url.searchParams.get('from') || '';
+  const to = url.searchParams.get('to') || '';
+  if (!YM.test(from) || !YM.test(to) || from > to) throw error(400, 'Invalid period.');
+  return { dateFrom: `${from}-01`, dateTo: `${to}-31` };
+}
+
 export function GET({ url, locals }) {
   if (!locals.user) throw error(401);
 
-  const month = url.searchParams.get('month') || '';
-  if (!YM.test(month)) throw error(400, 'Invalid month.');
-
+  const span = period(url);
   const categoryParam = url.searchParams.get('category') || '';
 
   if (categoryParam === 'other') {
     const kind = url.searchParams.get('kind') || 'expense';
     const categoryKinds = kind === 'expense' ? ['expense', 'saving'] : [kind];
+    // -1 is the sentinel for the "Uncategorised" bucket — kept alongside real
+    // category ids so it can also be excluded when shown on its own
     const excludeCategoryIds = (url.searchParams.get('exclude') || '')
       .split(',')
       .map(Number)
-      .filter((n) => Number.isInteger(n) && n > 0);
+      .filter((n) => Number.isInteger(n) && n !== 0);
     const transactions = listTransactions(locals.user.id, {
-      month,
+      ...span,
       categoryId: 'other',
       categoryKinds,
       excludeCategoryIds,
+      kind,
       accountId: locals.accountId
     });
     return json({ transactions });
   }
 
   const categoryId = categoryParam === 'none' ? 'none' : Number(categoryParam);
-  if (categoryParam !== 'none' && (!Number.isInteger(categoryId) || categoryId <= 0))
+  // -1 is the chart's own "Uncategorised" bucket (see monthlyCategoryTotals),
+  // shown as its own segment rather than folded into Other
+  if (categoryParam !== 'none' && (!Number.isInteger(categoryId) || (categoryId <= 0 && categoryId !== -1)))
     throw error(400, 'Invalid category.');
 
-  const transactions = listTransactions(locals.user.id, { month, categoryId, accountId: locals.accountId });
+  const kind = categoryId === -1 ? url.searchParams.get('kind') || 'expense' : undefined;
+  const transactions = listTransactions(locals.user.id, { ...span, categoryId, kind, accountId: locals.accountId });
   return json({ transactions });
 }

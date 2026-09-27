@@ -6,15 +6,18 @@
   import { parseAmount } from '$lib/csv.js';
 
   /**
-   * Every transaction in one category, for one month — opened by clicking a
-   * segment on either spending chart on Insights. Rows are editable in place
-   * so a mis-categorised or wrong-amount transaction can be fixed without
-   * leaving the chart.
+   * Every transaction in one category, for one month — or, when `toMonth` is
+   * given and differs from `month`, for the whole run of months between them,
+   * which is what the period flow chart needs. Opened by clicking a segment
+   * on either spending chart on Insights. Rows are editable in place so a
+   * mis-categorised or wrong-amount transaction can be fixed without leaving
+   * the chart.
    * @type {{
    *   categoryId: number|'none'|'other',
    *   categoryName: string,
    *   color: string,
    *   month: string,
+   *   toMonth?: string,
    *   kind?: 'income'|'expense',
    *   excludeIds?: number[],
    *   currency: string,
@@ -23,7 +26,10 @@
    *   onChanged?: () => void
    * }}
    */
-  let { categoryId, categoryName, color, month, kind, excludeIds = [], currency, categories, onClose, onChanged } = $props();
+  let { categoryId, categoryName, color, month, toMonth, kind, excludeIds = [], currency, categories, onClose, onChanged } = $props();
+
+  let isRange = $derived(!!toMonth && toMonth !== month);
+  let periodLabel = $derived(isRange ? `${formatMonth(month)} – ${formatMonth(toMonth)}` : formatMonth(month));
 
   let rows = $state([]);
   let loading = $state(true);
@@ -33,10 +39,14 @@
     loading = true;
     loadError = '';
     try {
-      const params = new URLSearchParams({ category: String(categoryId), month });
+      const params = new URLSearchParams(
+        isRange ? { category: String(categoryId), from: month, to: toMonth } : { category: String(categoryId), month }
+      );
       if (categoryId === 'other') {
         params.set('kind', kind || 'expense');
         params.set('exclude', excludeIds.join(','));
+      } else if (categoryId === -1 && kind) {
+        params.set('kind', kind);
       }
       const res = await fetch(`/insights/category-transactions?${params}`);
       if (!res.ok) throw new Error();
@@ -103,7 +113,7 @@
       <div>
         <p class="kicker mb-1 flex items-center gap-1.5">
           <span class="h-2.5 w-2.5 rounded-full" style="background:{color || 'var(--border-strong)'}"></span>
-          {formatMonth(month)}
+          {periodLabel}
         </p>
         <h2 class="text-xl" style="font-family:var(--font-display)">{categoryName}</h2>
       </div>
@@ -125,7 +135,7 @@
     {:else if loadError}
       <p class="py-8 text-center text-sm" style="color:var(--negative)">{loadError}</p>
     {:else if !rows.length}
-      <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Nothing left in this category for {formatMonth(month)}.</p>
+      <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Nothing left in this category for {periodLabel}.</p>
     {:else}
       <div class="card card-flush">
         <div class="overflow-x-auto">
