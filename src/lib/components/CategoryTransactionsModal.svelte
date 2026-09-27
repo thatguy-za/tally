@@ -153,10 +153,17 @@
                   <td class="py-1 pr-2">
                     <input class="cell tnum w-[92px] text-right" inputmode="decimal"
                       style={r.amount > 0 ? 'color:var(--positive)' : ''}
-                      value={Math.abs(r.amount)}
+                      value={r.amount}
                       onchange={(e) => {
-                        const v = parseAmount(e.currentTarget.value);
-                        if (v != null) updateRow(r, { amount: v * (r.amount >= 0 ? 1 : -1) });
+                        const raw = e.currentTarget.value;
+                        const v = parseAmount(raw);
+                        if (v == null) return;
+                        // The field shows the signed amount, but a bare number
+                        // keeps the direction it already had — retyping 80 over
+                        // a −80 shouldn't quietly turn a spend into income. An
+                        // explicit − or + is taken at its word.
+                        const signed = /^\s*[-+]/.test(raw) ? v : Math.abs(v) * (r.amount >= 0 ? 1 : -1);
+                        updateRow(r, { amount: signed });
                       }} />
                   </td>
                   <td class="py-1 pr-2">
