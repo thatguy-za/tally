@@ -414,8 +414,8 @@
           <th class="w-10 py-2.5 pl-4"><input type="checkbox" checked={allChecked} onchange={toggleAll} /></th>
           {@render sortable('date', 'Date', 'th py-2.5')}
           {@render sortable('description', 'Description', 'th py-2.5')}
-          {@render sortable('category', 'Category', 'th py-2.5')}
-          <th class="th py-2.5">Notes</th>
+          {@render sortable('category', 'Category', 'th py-2.5 w-[180px]')}
+          <th class="th py-2.5 w-[160px] text-left">Notes</th>
           {@render sortable('amount', 'Amount', 'th py-2.5 pr-4 text-right', true)}
           <th class="w-16"></th>
         </tr>
@@ -425,17 +425,17 @@
           {#if editingId === t.id}
             <tr class="border-b border-[var(--border)]">
               <td colspan="7" class="p-3" style="background:var(--paper-sunk)">
-                <form method="POST" action="?/update" use:enhance class="grid gap-2 sm:grid-cols-6">
+                <form method="POST" action="?/update" use:enhance class="flex flex-nowrap items-center gap-2">
                   <input type="hidden" name="id" value={t.id} />
-                  <input class="input" name="date" type="date" value={t.date} required />
-                  <input class="input sm:col-span-2" name="description" value={t.description} />
-                  <input class="input" name="amount" value={Math.abs(t.amount)} inputmode="decimal" required />
-                  <select class="input" name="direction" value={t.amount >= 0 ? 'in' : 'out'}>
+                  <input class="input w-[142px] shrink-0" name="date" type="date" value={t.date} required />
+                  <input class="input min-w-0 flex-1" name="description" value={t.description} />
+                  <input class="input min-w-0 flex-1" name="notes" value={t.notes || ''} placeholder="Notes" maxlength="280" />
+                  <input class="input w-[92px] shrink-0" name="amount" value={Math.abs(t.amount)} inputmode="decimal" required />
+                  <select class="input w-[104px] shrink-0" name="direction" value={t.amount >= 0 ? 'in' : 'out'}>
                     <option value="out">Outgoing</option>
                     <option value="in">Incoming</option>
                   </select>
-                  <input class="input sm:col-span-2" name="notes" value={t.notes || ''} placeholder="Notes" maxlength="280" />
-                  <div class="flex gap-2 sm:col-span-6">
+                  <div class="flex shrink-0 gap-2">
                     <button class="btn btn-primary btn-sm">Save</button>
                     <button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingId = null)}>Cancel</button>
                   </div>
