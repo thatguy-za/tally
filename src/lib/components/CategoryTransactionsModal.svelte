@@ -69,8 +69,8 @@
     body.set('id', String(row.id));
     body.set('date', merged.date);
     body.set('description', merged.description || '');
-    body.set('amount', String(Math.abs(merged.amount)));
-    body.set('direction', merged.amount >= 0 ? 'in' : 'out');
+    body.set('notes', merged.notes || '');
+    body.set('amount', String(merged.amount));
     await fetch('/transactions?/update', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
     onChanged?.();
   }
@@ -146,6 +146,7 @@
                 <th class="th px-2 py-2">Description</th>
                 <th class="th px-2 py-2 text-right">Amount</th>
                 <th class="th px-2 py-2">Category</th>
+                <th class="th px-2 py-2 text-left">Notes</th>
                 <th class="w-9"></th>
               </tr>
             </thead>
@@ -180,6 +181,10 @@
                     <CategorySelect {categories} value={String(r.category_id ?? '')}
                       onChange={(v) => setCategory(r, v)}
                       onCreated={() => onChanged?.()} />
+                  </td>
+                  <td class="py-1 pr-2">
+                    <input class="cell min-w-[110px]" value={r.notes || ''} placeholder="—" maxlength="280"
+                      onchange={(e) => updateRow(r, { notes: e.currentTarget.value })} />
                   </td>
                   <td class="py-1 pr-3 text-right">
                     <button type="button" class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"
