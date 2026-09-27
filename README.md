@@ -75,7 +75,9 @@ npm install && cp .env.example .env && npm run dev   # local dev
 npm test                                             # tests (uses a throwaway database)
 ```
 
-Docker images are published to GitHub Container Registry on every push to `main`.
+Docker images are published to GitHub Container Registry once per release, when a `v*`
+tag is pushed — that build is also what moves the `latest` tag. Pull requests build the
+image as a check without pushing it, and `workflow_dispatch` lets you run a build by hand.
 
 | Variable | Default | Purpose |
 |---|---|---|
