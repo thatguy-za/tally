@@ -151,7 +151,7 @@ export function parseDate(raw, order = 'dmy') {
 /**
  * Guess which column index maps to each field from header names.
  * @param {string[]} headers
- * @returns {{date:string, description:string, amount:string, debit:string, credit:string, category:string}}
+ * @returns {{date:string, description:string, amount:string, debit:string, credit:string, category:string, notes:string}}
  */
 export function guessMapping(headers) {
   const lower = headers.map((h) => String(h).toLowerCase().trim());
@@ -172,7 +172,10 @@ export function guessMapping(headers) {
     amount: find(['amount', 'value', 'bedrag', 'montant', 'betrag']),
     debit: find(['debit', 'withdrawal', 'paid out', 'money out', 'uit', ' af', 'outgoing']),
     credit: find(['credit', 'deposit', 'paid in', 'money in', 'bij', 'incoming']),
-    category: find(['category', 'categorie', 'kategorie', 'type'])
+    category: find(['category', 'categorie', 'kategorie', 'type']),
+    // deliberately not auto-guessed: every candidate word above already
+    // belongs to description, so guessing here would just steal its column
+    notes: ''
   };
 }
 

@@ -20,7 +20,8 @@ export function buildBackupZip(userId) {
     description: t.description,
     amount: t.amount,
     category_name: t.category_name || '',
-    dismissed_uncategorised: t.dismissed_uncategorised ? 1 : 0
+    dismissed_uncategorised: t.dismissed_uncategorised ? 1 : 0,
+    notes: t.notes || ''
   }));
 
   const categories = db
@@ -52,7 +53,7 @@ export function buildBackupZip(userId) {
     .all(userId);
 
   return createZip([
-    { name: 'transactions.csv', data: toCsv(transactions, ['account_name', 'date', 'description', 'amount', 'category_name', 'dismissed_uncategorised']) },
+    { name: 'transactions.csv', data: toCsv(transactions, ['account_name', 'date', 'description', 'amount', 'category_name', 'dismissed_uncategorised', 'notes']) },
     { name: 'categories.csv', data: toCsv(categories, ['account_name', 'name', 'kind', 'color']) },
     { name: 'rules.csv', data: toCsv(rules, ['account_name', 'match_text', 'category_name', 'priority']) },
     { name: 'budgets.csv', data: toCsv(budgets, ['account_name', 'category_name', 'amount']) }
@@ -153,7 +154,7 @@ export function restoreBackup(userId, zipBuffer) {
     }
 
     const insertTx = db.prepare(
-      'INSERT INTO transactions (user_id, date, description, amount, category_id, account_id, dismissed_uncategorised) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO transactions (user_id, date, description, amount, category_id, account_id, dismissed_uncategorised, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
     let txCount = 0;
     for (const r of transactions) {
@@ -168,7 +169,8 @@ export function restoreBackup(userId, zipBuffer) {
         amount,
         catId,
         acctId,
-        r.dismissed_uncategorised === '1' || r.dismissed_uncategorised === 'true' ? 1 : 0
+        r.dismissed_uncategorised === '1' || r.dismissed_uncategorised === 'true' ? 1 : 0,
+        r.notes || ''
       );
       txCount++;
     }

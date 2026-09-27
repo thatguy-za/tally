@@ -88,6 +88,7 @@ export const actions = {
     const f = await request.formData();
     const date = String(f.get('date') || '');
     const description = String(f.get('description') || '').trim();
+    const notes = String(f.get('notes') || '').trim().slice(0, 280);
     const amount = num(f.get('amount'));
     const direction = String(f.get('direction') || 'out');
     if (!date || amount == null) return fail(400, { error: 'Date and a valid amount are required.' });
@@ -96,7 +97,7 @@ export const actions = {
     if (!categoryId) categoryId = categoriseByRules(locals.user.id, locals.accountId, description);
     // always the currently active account — there's no cross-account view to
     // choose from, you're always "in" one account's context
-    addTransaction(locals.user.id, { date, description, amount: signed, category_id: categoryId, account_id: locals.accountId });
+    addTransaction(locals.user.id, { date, description, amount: signed, notes, category_id: categoryId, account_id: locals.accountId });
     return { added: true };
   },
 
@@ -118,9 +119,10 @@ export const actions = {
       const amount = Number(r.amount);
       if (!date || !Number.isFinite(amount)) continue;
       const description = String(r.description || '').trim();
+      const notes = String(r.notes || '').trim().slice(0, 280);
       let categoryId = r.category_id ? Number(r.category_id) : null;
       if (!categoryId) categoryId = categoriseByRules(locals.user.id, accountId, description);
-      addTransaction(locals.user.id, { date, description, amount, category_id: categoryId, account_id: accountId });
+      addTransaction(locals.user.id, { date, description, amount, notes, category_id: categoryId, account_id: accountId });
       added++;
     }
     if (!added) return fail(400, { error: 'None of the rows had a valid date and amount.' });
@@ -141,12 +143,14 @@ export const actions = {
     const id = Number(f.get('id'));
     const date = String(f.get('date') || '');
     const description = String(f.get('description') || '').trim();
+    const notes = String(f.get('notes') || '').trim().slice(0, 280);
     const magnitude = num(f.get('amount'));
     const direction = String(f.get('direction') || 'out');
     if (!id || !date || magnitude == null) return fail(400, { error: 'Invalid values.' });
     updateTransaction(locals.user.id, locals.accountId, id, {
       date,
       description,
+      notes,
       amount: magnitude * (direction === 'in' ? 1 : -1)
     });
     return { updated: true };

@@ -92,6 +92,7 @@ db.exec(`
     -- set when the user has said this one doesn't need a category, so it
     -- stops appearing in the "N to categorise" nudge and the "none" filter
     dismissed_uncategorised INTEGER NOT NULL DEFAULT 0,
+    notes       TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -185,6 +186,9 @@ if (!txCols.includes("account_id")) {
 }
 if (!txCols.includes("dismissed_uncategorised")) {
   db.exec("ALTER TABLE transactions ADD COLUMN dismissed_uncategorised INTEGER NOT NULL DEFAULT 0");
+}
+if (!txCols.includes("notes")) {
+  db.exec("ALTER TABLE transactions ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 }
 // created here rather than in the initial schema block above, since that
 // block's CREATE TABLE is a no-op on an existing database and the ALTER

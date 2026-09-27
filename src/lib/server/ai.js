@@ -213,7 +213,7 @@ const SYSTEM =
 /**
  * Core loop: ask the configured AI provider to categorise `items` against `categories`.
  * @param {{name:string,kind:string}[]} categories
- * @param {{ref:string,date:string,amount:number,description:string}[]} items
+ * @param {{ref:string,date:string,amount:number,description:string,notes?:string}[]} items
  * @returns {Promise<{ byRef: Map<string,string>, usage:{input:number,output:number} }>}
  * `byRef` maps ref -> a category name that exists in `categories` (validated).
  */
@@ -226,14 +226,17 @@ async function runCategorisation(categories, items) {
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE);
     const txList = batch
-      .map((t) => `${t.ref}\t${t.date}\t${Number(t.amount).toFixed(2)}\t${t.description || '(no description)'}`)
+      .map((t) => {
+        const note = String(t.notes || '').trim();
+        return `${t.ref}\t${t.date}\t${Number(t.amount).toFixed(2)}\t${t.description || '(no description)'}${note ? `\t(note: ${note})` : ''}`;
+      })
       .join('\n');
 
     const { input, usage: u } = await callTool({
       system: SYSTEM,
       userText:
         `Categories:\n${catList}\n\n` +
-        `Transactions (ref, date, amount, description):\n${txList}\n\n` +
+        `Transactions (ref, date, amount, description, optional note):\n${txList}\n\n` +
         `Assign a category number to every ref above.`,
       toolName: 'submit_categorisation'
     });
@@ -336,7 +339,7 @@ export async function suggestNewCategories(userId, accountId) {
 /**
  * Suggest categories for parsed-but-not-yet-imported CSV rows.
  * @param {number} userId
- * @param {{ref:string,date:string,amount:number,description:string}[]} rows
+ * @param {{ref:string,date:string,amount:number,description:string,notes?:string}[]} rows
  * @returns {Promise<{ suggestions: Record<string,string>, considered:number, usage:object, costUsd:number }>}
  */
 export async function suggestCategoriesForRows(userId, accountId, rows) {
@@ -347,7 +350,8 @@ export async function suggestCategoriesForRows(userId, accountId, rows) {
       ref: String(r.ref),
       date: String(r.date || ''),
       amount: Number(r.amount) || 0,
-      description: String(r.description || '')
+      description: String(r.description || ''),
+      notes: String(r.notes || '')
     }));
   const empty = { suggestions: {}, considered: 0, usage: { input: 0, output: 0 }, costUsd: 0 };
   if (!items.length) return empty;
@@ -380,7 +384,7 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
   const rows = listTransactions(userId, { categoryId: 'none', accountId }).slice(0, MAX_PER_RUN);
   if (!rows.length) return empty;
 
-  const items = rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, description: r.description }));
+  const items = rows.map((r) => ({ ref: String(r.id), date: r.date, amount: r.amount, description: r.description, notes: r.notes }));
   const { byRef, usage } = await runCategorisation(categories, items);
   const byName = new Map(categories.map((c) => [c.name, c.id]));
 
@@ -753,7 +757,7 @@ const CHAT_TOOLS = [
         from: { type: ['string', 'null'], description: 'YYYY-MM-DD lower bound, inclusive, or null' },
         to: { type: ['string', 'null'], description: 'YYYY-MM-DD upper bound, inclusive, or null' },
         category_id: { type: ['integer', 'null'], description: 'Restrict to one category id, or null' },
-        search: { type: ['string', 'null'], description: 'Case-insensitive substring of the description, or null' },
+        search: { type: ['string', 'null'], description: 'Case-insensitive substring of the description or notes, or null' },
         direction: { type: ['string', 'null'], description: '"in" for money received, "out" for money spent, or null for both' },
         limit: { type: 'integer', description: 'Max rows to return, 1-30' }
       }
@@ -870,7 +874,8 @@ function executeChatTool(userId, accountId, name, input, charts) {
         date: r.date,
         description: r.description,
         amount: r.amount,
-        category: r.category_name || null
+        category: r.category_name || null,
+        notes: r.notes || null
       }));
     }
 

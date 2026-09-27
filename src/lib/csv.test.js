@@ -157,7 +157,8 @@ describe('guessMapping', () => {
       amount: '2',
       debit: '',
       credit: '',
-      category: '3'
+      category: '3',
+      notes: ''
     });
   });
 

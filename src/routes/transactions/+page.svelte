@@ -360,7 +360,7 @@
     <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-faint)]">
       <Icon name="search" size={15} />
     </span>
-    <input class="input pl-9" placeholder="Search description…" value={data.filters.search}
+    <input class="input pl-9" placeholder="Search description or notes…" value={data.filters.search}
       onchange={(e) => setParam('q', e.currentTarget.value)} />
   </div>
 </div>
@@ -433,6 +433,7 @@
                     <option value="out">Outgoing</option>
                     <option value="in">Incoming</option>
                   </select>
+                  <input class="input sm:col-span-2" name="notes" value={t.notes || ''} placeholder="Notes" maxlength="280" />
                   <div class="flex gap-2 sm:col-span-6">
                     <button class="btn btn-primary btn-sm">Save</button>
                     <button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingId = null)}>Cancel</button>
@@ -497,7 +498,14 @@
                     onEdit={() => (editingLogoFor = t)}
                   />
                   <div class="min-w-0">
-                    <div class="truncate font-medium">{t.description || '—'}</div>
+                    <div class="flex items-center gap-1.5">
+                      <div class="truncate font-medium">{t.description || '—'}</div>
+                      {#if t.notes}
+                        <span class="tip shrink-0 text-[var(--ink-faint)]" data-tip={t.notes}>
+                          <Icon name="tag" size={12} />
+                        </span>
+                      {/if}
+                    </div>
                   </div>
                 </div>
               </td>

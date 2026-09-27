@@ -11,7 +11,7 @@
   const today = new Date().toISOString().slice(0, 10);
   let nextId = 1;
   function blankRow() {
-    return { id: nextId++, date: today, description: '', amount: '', direction: 'out', category_id: '' };
+    return { id: nextId++, date: today, description: '', amount: '', direction: 'out', category_id: '', notes: '' };
   }
 
   let rows = $state([blankRow()]);
@@ -40,6 +40,7 @@
           date: r.date,
           description: r.description.trim(),
           amount: r.magnitude * (r.direction === 'in' ? 1 : -1),
+          notes: r.notes.trim(),
           category_id: r.category_id ? Number(r.category_id) : null
         }))
     })
@@ -63,6 +64,7 @@
             <th class="th px-2 py-2">Amount <span style="color:var(--negative)">*</span></th>
             <th class="th px-2 py-2">Type</th>
             <th class="th px-2 py-2">Category</th>
+            <th class="th px-2 py-2">Notes</th>
             <th class="w-9"></th>
           </tr>
         </thead>
@@ -90,6 +92,9 @@
                 <CategorySelect categories={data.categories} value={r.category_id}
                   onChange={(v) => (r.category_id = v)}
                   onCreated={() => invalidateAll()} />
+              </td>
+              <td class="py-1 pr-2">
+                <input class="cell min-w-[120px]" placeholder="—" bind:value={r.notes} maxlength="280" />
               </td>
               <td class="py-1 pr-3 text-right">
                 <button type="button" class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"

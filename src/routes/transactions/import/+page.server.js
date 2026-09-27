@@ -100,6 +100,7 @@ export const actions = {
         date,
         description: String(r.description || '').trim().slice(0, 200),
         amount,
+        notes: String(r.notes || '').trim().slice(0, 280),
         category_id: resolveCategory(r),
         account_id: accountId
       });

@@ -167,7 +167,10 @@ export function listTransactions(userId, f = {}) {
   } else if (f.categoryId) { where.push('t.category_id = @categoryId'); params.categoryId = f.categoryId; }
   if (f.accountId === 'none') where.push('t.account_id IS NULL');
   else if (f.accountId) { where.push('t.account_id = @accountId'); params.accountId = f.accountId; }
-  if (f.search) { where.push('lower(t.description) LIKE @search'); params.search = `%${String(f.search).toLowerCase()}%`; }
+  if (f.search) {
+    where.push('(lower(t.description) LIKE @search OR lower(t.notes) LIKE @search)');
+    params.search = `%${String(f.search).toLowerCase()}%`;
+  }
   if (f.amountMin != null) { where.push('abs(t.amount) >= @amountMin'); params.amountMin = f.amountMin; }
   if (f.amountMax != null) { where.push('abs(t.amount) <= @amountMax'); params.amountMax = f.amountMax; }
   if (f.direction === 'in') where.push('t.amount >= 0');
@@ -186,13 +189,13 @@ export function listTransactions(userId, f = {}) {
     .all(params);
 }
 
-export function addTransaction(userId, { date, description, amount, category_id, account_id }) {
+export function addTransaction(userId, { date, description, amount, category_id, account_id, notes }) {
   return db
     .prepare(
-      `INSERT INTO transactions (user_id, date, description, amount, category_id, account_id)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO transactions (user_id, date, description, amount, category_id, account_id, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(userId, date, description || '', amount, category_id || null, account_id || null);
+    .run(userId, date, description || '', amount, category_id || null, account_id || null, notes || '');
 }
 
 const dupeKey = (r) =>
@@ -209,8 +212,8 @@ export function existingDupeKeys(userId) {
 export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
   const seen = skipDuplicates ? existingDupeKeys(userId) : new Set();
   const stmt = db.prepare(
-    `INSERT INTO transactions (user_id, date, description, amount, category_id, account_id)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO transactions (user_id, date, description, amount, category_id, account_id, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
   let inserted = 0;
   let duplicates = 0;
@@ -221,7 +224,7 @@ export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
         if (seen.has(k)) { duplicates++; continue; }
         seen.add(k);
       }
-      stmt.run(userId, r.date, r.description || '', r.amount, r.category_id || null, r.account_id || null);
+      stmt.run(userId, r.date, r.description || '', r.amount, r.category_id || null, r.account_id || null, r.notes || '');
       inserted++;
     }
   });
@@ -235,7 +238,7 @@ export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
 
 /** `accountId` is the account currently active, not a field being changed — a transaction can only ever be touched from the account it's already in. */
 export function updateTransaction(userId, accountId, id, fields) {
-  const allowed = ['date', 'description', 'amount', 'category_id', 'account_id'];
+  const allowed = ['date', 'description', 'amount', 'category_id', 'account_id', 'notes'];
   const sets = [];
   const params = { id, userId, scopeAccountId: accountId };
   for (const k of allowed) {

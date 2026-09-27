@@ -50,7 +50,7 @@
   let skipDuplicates = $state(true);
   let runRules = $state(true);
   let createCategories = $state(true);
-  let mapping = $state({ date: '', description: '', amount: '', debit: '', credit: '', category: '' });
+  let mapping = $state({ date: '', description: '', amount: '', debit: '', credit: '', category: '', notes: '' });
 
   let headerRow = $derived(hasHeader ? (allRows[skipRows] ?? []) : []);
   let bodyRows = $derived(filesParsed.flatMap((rows) => rows.slice(skipRows + (hasHeader ? 1 : 0))));
@@ -80,7 +80,13 @@
       amount = Math.abs(cred) - Math.abs(deb);
     }
     if (amount != null && invert) amount = -amount;
-    return { date, amount, description: cellOf(raw, mapping.description), categoryName: cellOf(raw, mapping.category) };
+    return {
+      date,
+      amount,
+      description: cellOf(raw, mapping.description),
+      categoryName: cellOf(raw, mapping.category),
+      notes: cellOf(raw, mapping.notes)
+    };
   }
 
   let edits = $state(new Map());
@@ -115,6 +121,7 @@
       const date = e.date ?? c.date;
       const amount = e.amount !== undefined ? e.amount : c.amount;
       const description = e.description ?? c.description;
+      const notes = e.notes ?? c.notes;
       const error = !date || amount == null || !Number.isFinite(amount);
       const key = error ? null : dupeKey(date, amount, description);
       const duplicate = key ? existing.has(key) : false;
@@ -131,7 +138,7 @@
         }
       }
       const included = e.excluded !== undefined ? !e.excluded : !(error || duplicate);
-      return { i, date, amount, description, catValue, byRule, error, duplicate, included };
+      return { i, date, amount, description, notes, catValue, byRule, error, duplicate, included };
     })
   );
 
@@ -195,6 +202,7 @@
           date: r.date,
           description: r.description,
           amount: r.amount,
+          notes: r.notes,
           category_id: /^\d+$/.test(String(r.catValue)) ? Number(r.catValue) : null,
           category_name: String(r.catValue).startsWith('new:') ? String(r.catValue).slice(4) : null
         }))
@@ -283,7 +291,7 @@
           headers: { 'content-type': 'application/json' },
           signal: controller.signal,
           body: JSON.stringify({
-            rows: chunk.map((r) => ({ ref: String(r.i), date: r.date, description: r.description, amount: r.amount }))
+            rows: chunk.map((r) => ({ ref: String(r.i), date: r.date, description: r.description, amount: r.amount, notes: r.notes }))
           })
         });
         const j = await res.json().catch(() => ({}));
@@ -533,6 +541,7 @@
               <th class="th px-2 pt-3">Description</th>
               <th class="th px-2 pt-3">Amount</th>
               <th class="th px-2 pt-3">Category</th>
+              <th class="th px-2 pt-3">Notes</th>
             </tr>
             <tr class="border-b border-[var(--border)] text-left align-middle">
               <th class="pb-2 pl-4"></th>
@@ -583,6 +592,12 @@
                   {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
                 </select>
               </th>
+              <th class="px-2 pb-2">
+                <select class="head-sel min-w-[120px]" bind:value={mapping.notes}>
+                  <option value="">— none —</option>
+                  {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+                </select>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -626,6 +641,10 @@
                         triggerClass="cell min-w-[140px]" />
                     </div>
                   {/if}
+                </td>
+                <td class="py-1 pr-2">
+                  <input class="cell min-w-[120px]" value={r.notes} placeholder="—"
+                    onchange={(e) => edit(r.i, { notes: e.currentTarget.value })} />
                 </td>
               </tr>
             {/each}

@@ -40,7 +40,7 @@ describe('backup and restore', () => {
 
     createRule(u, main, 'SPAR', groceries, 5);
     setBudget(u, groceries, 250);
-    addTransaction(u, { date: '2026-01-05', description: 'SPAR run', amount: -42.5, category_id: groceries, account_id: main });
+    addTransaction(u, { date: '2026-01-05', description: 'SPAR run', amount: -42.5, category_id: groceries, account_id: main, notes: 'split with Sam' });
     addTransaction(u, { date: '2026-01-10', description: 'Payday', amount: 2000, category_id: salary, account_id: main });
     addTransaction(u, { date: '2026-01-15', description: 'Transfer to savings', amount: -300, category_id: savingsCat, account_id: savings });
     addTransaction(u, { date: '2026-01-20', description: 'Unsorted', amount: -12, category_id: null, account_id: main });
@@ -81,6 +81,9 @@ describe('backup and restore', () => {
     expect(unsorted.account_id).toBe(newMain);
     const savingsTx = txs.find((t) => t.description === 'Transfer to savings');
     expect(savingsTx.account_id).toBe(newSavings);
+    const sparRun = txs.find((t) => t.description === 'SPAR run');
+    expect(sparRun.notes).toBe('split with Sam');
+    expect(unsorted.notes).toBe('');
   });
 
   it('skips a rule referencing a category that never resolves, without failing the whole restore', () => {

@@ -407,6 +407,57 @@ describe('bulkInsert', () => {
     expect(result.inserted).toBe(1);
     expect(result.duplicates).toBe(0);
   });
+
+  it('stores notes on inserted rows, defaulting to an empty string', () => {
+    const u = makeUser();
+    bulkInsert(u, [
+      { date: '2026-06-01', amount: -10, description: 'Coffee', notes: 'with Sam' },
+      { date: '2026-06-02', amount: -5, description: 'Tea' }
+    ]);
+    const rows = db.prepare('SELECT description, notes FROM transactions WHERE user_id = ? ORDER BY id').all(u);
+    expect(rows).toEqual([
+      { description: 'Coffee', notes: 'with Sam' },
+      { description: 'Tea', notes: '' }
+    ]);
+  });
+});
+
+describe('transaction notes', () => {
+  it('addTransaction stores notes, defaulting to an empty string', () => {
+    const u = makeUser();
+    const withNotes = addTransaction(u, { date: '2026-01-01', description: 'Coffee', amount: -5, notes: 'split with Sam' });
+    const withoutNotes = addTransaction(u, { date: '2026-01-02', description: 'Tea', amount: -3 });
+
+    const rows = db.prepare('SELECT id, notes FROM transactions WHERE id IN (?, ?)').all(
+      withNotes.lastInsertRowid,
+      withoutNotes.lastInsertRowid
+    );
+    expect(rows.find((r) => r.id === Number(withNotes.lastInsertRowid)).notes).toBe('split with Sam');
+    expect(rows.find((r) => r.id === Number(withoutNotes.lastInsertRowid)).notes).toBe('');
+  });
+
+  it('updateTransaction can set notes without touching other fields', () => {
+    const u = makeUser();
+    const id = Number(addTx(u, { date: '2026-01-01', amount: -10, description: 'Coffee' }).lastInsertRowid);
+
+    updateTransaction(u, null, id, { notes: 'expensed' });
+
+    const row = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
+    expect(row.notes).toBe('expensed');
+    expect(row.description).toBe('Coffee'); // untouched
+  });
+
+  it('listTransactions returns notes, and search matches against them', () => {
+    const u = makeUser();
+    addTransaction(u, { date: '2026-01-01', description: 'Restaurant', amount: -40, notes: 'birthday dinner' });
+    addTransaction(u, { date: '2026-01-02', description: 'Groceries', amount: -20 });
+
+    const all = listTransactions(u);
+    expect(all.find((t) => t.description === 'Restaurant').notes).toBe('birthday dinner');
+
+    const bySearch = listTransactions(u, { search: 'birthday' });
+    expect(bySearch.map((t) => t.description)).toEqual(['Restaurant']);
+  });
 });
 
 describe('uncategorisedCount and bulkCategorise', () => {
