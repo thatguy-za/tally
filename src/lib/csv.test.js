@@ -101,13 +101,15 @@ describe('parseAmount', () => {
     expect(parseAmount(null)).toBeNull();
   });
 
-  it('reads a value with no digits at all as 0, not null', () => {
-    // stripping non-numeric characters from e.g. "n/a" leaves an empty
-    // string, and Number('') is 0 — a quirk of the current implementation,
-    // not a design choice, so pinning it here means a change to it is a
-    // deliberate decision rather than an accidental regression
-    expect(parseAmount('n/a')).toBe(0);
-    expect(parseAmount('hello')).toBe(0);
+  it('returns null for a value with no digits at all, instead of silently reading it as 0', () => {
+    // stripping non-numeric characters from e.g. "n/a" used to leave an
+    // empty string, and Number('') is 0 — treating garbage as a real zero
+    // amount instead of flagging it as unparseable (a CSV import row with
+    // "n/a" in its amount column silently became a €0 transaction instead
+    // of the error it should have been)
+    expect(parseAmount('n/a')).toBeNull();
+    expect(parseAmount('hello')).toBeNull();
+    expect(parseAmount('-')).toBeNull();
   });
 });
 

@@ -294,6 +294,11 @@
   }
   .cell.bad { border-color: var(--negative); }
 
+  /* a <input type="date" class="cell"> — the native calendar icon looks out
+     of place among plain text cells; the field is still fully clickable to
+     open the picker without it */
+  input.cell[type="date"]::-webkit-calendar-picker-indicator { display: none; }
+
   /* a <select class="cell"> — kill the native widget so our color always applies
      (a transparent native select renders unreadable text in dark mode) */
   select.cell {

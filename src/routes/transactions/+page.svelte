@@ -3,7 +3,6 @@
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import { fly, slide } from 'svelte/transition';
-  import Money from '$lib/components/Money.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import MerchantLogo from '$lib/components/MerchantLogo.svelte';
@@ -14,11 +13,11 @@
   import { guessDomain } from '$lib/logo.js';
   import { formatMonth } from '$lib/currency.js';
   import { formatMoney } from '$lib/privacy.svelte.js';
+  import { parseAmount } from '$lib/csv.js';
   let { data, form } = $props();
 
   let showAddImport = $state($page.url.searchParams.has('new'));
   let showFilters = $state(false);
-  let editingId = $state(null);
   let rulingId = $state(null);
   let ruleCategoryId = $state('');
   let ruleMatchText = $state('');
@@ -30,6 +29,81 @@
   let pendingCat = $state(new Set());
   let removed = $state(new Set());
   let visibleRows = $derived(data.transactions.filter((t) => !removed.has(t.id)));
+
+  // inline editing for date/description/notes/amount — each field saves
+  // itself the moment it's changed (on blur), like the category picker
+  // already does, instead of collecting edits behind a Save button
+  let edits = $state(new Map()); // id -> {date?, description?, notes?, amount?} — optimistic display only
+  let savingIds = $state(new Set());
+  const original = {
+    date: (t) => t.date,
+    description: (t) => t.description || '',
+    notes: (t) => t.notes || '',
+    amount: (t) => t.amount
+  };
+  function fieldVal(t, key) {
+    const patch = edits.get(t.id);
+    return patch && key in patch ? patch[key] : original[key](t);
+  }
+  function patchField(t, key, value) {
+    const next = new Map(edits);
+    const patch = { ...(next.get(t.id) || {}) };
+    if (value === original[key](t)) delete patch[key];
+    else patch[key] = value;
+    if (Object.keys(patch).length) next.set(t.id, patch);
+    else next.delete(t.id);
+    edits = next;
+  }
+  // returns whether the value ended up saved (or was already current) — a
+  // caller that reverts on failure can't just rely on the reactive `value`
+  // binding, since Svelte only re-syncs an input's DOM value when its own
+  // model of that value changes, and a revert often lands back on the exact
+  // value it had before the user's own typing diverged from it
+  async function commitField(t, key, value) {
+    if (value === original[key](t)) return true;
+    patchField(t, key, value);
+
+    const patch = edits.get(t.id) || {};
+    const dateVal = patch.date ?? t.date;
+    const amountVal = 'amount' in patch ? parseAmount(String(patch.amount)) : t.amount;
+    if (!dateVal) { toast('Date is required', { type: 'info' }); patchField(t, key, original[key](t)); return false; }
+    if (amountVal == null) { toast('Invalid amount', { type: 'info' }); patchField(t, key, original[key](t)); return false; }
+
+    savingIds = new Set(savingIds).add(t.id);
+    const body = new FormData();
+    body.set('id', String(t.id));
+    body.set('date', dateVal);
+    body.set('description', String(patch.description ?? t.description ?? '').trim());
+    body.set('notes', String(patch.notes ?? t.notes ?? '').trim());
+    body.set('amount', String(amountVal));
+    try {
+      const res = await fetch('?/update', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
+      if (!res.ok) throw new Error();
+      const next = new Map(edits);
+      next.delete(t.id);
+      edits = next;
+      await invalidateAll();
+      return true;
+    } catch {
+      toast('Could not update transaction', { type: 'info' });
+      patchField(t, key, original[key](t));
+      return false;
+    } finally {
+      const next = new Set(savingIds);
+      next.delete(t.id);
+      savingIds = next;
+    }
+  }
+  // wires an input's onchange to commitField and forces the DOM back to the
+  // authoritative value when the change is rejected or fails
+  function fieldOnChange(t, key) {
+    return (e) => {
+      const el = e.currentTarget;
+      commitField(t, key, el.value).then((ok) => {
+        if (!ok) el.value = String(fieldVal(t, key));
+      });
+    };
+  }
 
   // client-side column sort (null = keep server order: date desc)
   let sortKey = $state(null);
@@ -167,7 +241,7 @@
     seenForm = form;
     if (form?.added) { showAddImport = false; toast('Transaction added'); }
     if (form?.addedMany) { showAddImport = false; toast(`Added ${form.addedMany} transaction${form.addedMany === 1 ? '' : 's'}`); }
-    if (form?.updated) { editingId = null; toast('Transaction updated'); }
+    if (form?.updated) toast('Transaction updated');
     if (form?.ruleSaved) {
       rulingId = null;
       toast(form.applied ? `Rule saved · ${form.applied} categorised` : 'Auto-categorisation rule saved');
@@ -408,41 +482,30 @@
 <div class="card card-flush">
   {#if data.transactions.length}
     <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+    <table class="w-full table-fixed text-sm" style="min-width:900px">
+      <colgroup>
+        <col style="width:40px" />
+        <col style="width:120px" />
+        <col />
+        <col style="width:205px" />
+        <col style="width:185px" />
+        <col style="width:120px" />
+        <col style="width:66px" />
+      </colgroup>
       <thead>
         <tr class="border-b border-[var(--border)] text-left">
-          <th class="w-10 py-2.5 pl-4"><input type="checkbox" checked={allChecked} onchange={toggleAll} /></th>
+          <th class="py-2.5 pl-4"><input type="checkbox" checked={allChecked} onchange={toggleAll} /></th>
           {@render sortable('date', 'Date', 'th py-2.5')}
           {@render sortable('description', 'Description', 'th py-2.5')}
-          {@render sortable('category', 'Category', 'th py-2.5 w-[180px]')}
-          <th class="th py-2.5 w-[160px] text-left">Notes</th>
+          {@render sortable('category', 'Category', 'th py-2.5')}
+          <th class="th py-2.5 text-left">Notes</th>
           {@render sortable('amount', 'Amount', 'th py-2.5 pr-4 text-right', true)}
-          <th class="w-16"></th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {#each sortedRows as t (t.id)}
-          {#if editingId === t.id}
-            <tr class="border-b border-[var(--border)]">
-              <td colspan="7" class="p-3" style="background:var(--paper-sunk)">
-                <form method="POST" action="?/update" use:enhance class="flex flex-nowrap items-center gap-2">
-                  <input type="hidden" name="id" value={t.id} />
-                  <input class="input w-[142px] shrink-0" name="date" type="date" value={t.date} required />
-                  <input class="input min-w-0 flex-1" name="description" value={t.description} />
-                  <input class="input min-w-0 flex-1" name="notes" value={t.notes || ''} placeholder="Notes" maxlength="280" />
-                  <input class="input w-[92px] shrink-0" name="amount" value={Math.abs(t.amount)} inputmode="decimal" required />
-                  <select class="input w-[104px] shrink-0" name="direction" value={t.amount >= 0 ? 'in' : 'out'}>
-                    <option value="out">Outgoing</option>
-                    <option value="in">Incoming</option>
-                  </select>
-                  <div class="flex shrink-0 gap-2">
-                    <button class="btn btn-primary btn-sm">Save</button>
-                    <button type="button" class="btn btn-ghost btn-sm" onclick={() => (editingId = null)}>Cancel</button>
-                  </div>
-                </form>
-              </td>
-            </tr>
-          {:else if rulingId === t.id}
+          {#if rulingId === t.id}
             <tr class="border-b border-[var(--border)]">
               <td colspan="7" class="p-3" style="background:var(--paper-sunk)">
                 <form method="POST" action="?/saveRule" use:enhance class="grid gap-2 sm:grid-cols-6">
@@ -481,15 +544,19 @@
               style={selected.has(t.id) ? 'background:var(--accent-wash)' : ''}
               onclick={(e) => {
                 // let a real control inside the row (the checkbox itself,
-                // the category picker, edit/delete/save-as-rule, the merchant
-                // logo editor) handle its own click instead of also toggling
+                // the category picker, inline fields, delete/save-as-rule,
+                // the merchant logo editor) handle its own click instead of
+                // also toggling selection
                 if (e.target.closest('button, a, input, select')) return;
                 toggle(t.id);
               }}>
               <td class="py-2.5 pl-4">
                 <input type="checkbox" checked={selected.has(t.id)} onchange={() => toggle(t.id)} />
               </td>
-              <td class="tnum whitespace-nowrap py-2.5 pr-3 text-[var(--ink-faint)]">{t.date}</td>
+              <td class="py-2.5 pr-3">
+                <input class="cell tnum w-[128px] transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" type="date" value={fieldVal(t, 'date')}
+                  onchange={fieldOnChange(t, 'date')} />
+              </td>
               <td class="py-2.5 pr-3">
                 <div class="flex items-center gap-2.5">
                   <MerchantLogo
@@ -498,16 +565,15 @@
                     size={24}
                     onEdit={() => (editingLogoFor = t)}
                   />
-                  <div class="min-w-0">
-                    <div class="truncate font-medium">{t.description || '—'}</div>
-                  </div>
+                  <input class="cell min-w-0 flex-1 truncate font-medium transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" value={fieldVal(t, 'description')}
+                    onchange={fieldOnChange(t, 'description')} />
                 </div>
               </td>
               <td class="py-2.5 pr-3">
                 <div class="flex items-center gap-1.5 transition-opacity {pendingCat.has(t.id) ? 'opacity-50' : ''}">
                   <span class="dot shrink-0 transition-colors" style="background:{catColor(currentCat(t))}"></span>
                   <CategorySelect categories={data.categories} value={currentCat(t)}
-                    triggerClass="cell max-w-[160px] text-[13px]"
+                    triggerClass="cell max-w-[165px] text-[13px]"
                     onChange={(v) => categoriseViaPicker(t, v)}
                     onCreated={() => invalidateAll()} />
                 </div>
@@ -521,20 +587,20 @@
                   </form>
                 {/if}
               </td>
-              <td class="py-2.5 pr-3 text-[13px] text-[var(--ink-faint)]">
-                <div class="max-w-[180px] truncate" title={t.notes || ''}>{t.notes || ''}</div>
+              <td class="py-2.5 pr-3">
+                <input class="cell min-w-0 w-full truncate transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" value={fieldVal(t, 'notes')} placeholder="—" maxlength="280"
+                  onchange={fieldOnChange(t, 'notes')} />
               </td>
               <td class="py-2.5 pr-4 text-right">
-                <Money value={t.amount} currency={data.currency} colour="auto" class="font-medium" />
+                <input class="cell tnum w-full text-right transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" inputmode="decimal" value={fieldVal(t, 'amount')}
+                  style={Number(fieldVal(t, 'amount')) > 0 ? 'color:var(--positive)' : ''}
+                  onchange={fieldOnChange(t, 'amount')} />
               </td>
               <td class="py-2.5 pr-3">
                 <div class="flex justify-end gap-0.5 opacity-70 transition group-hover:opacity-100">
                   <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--accent)]"
                     data-tip="Save as rule" aria-label="Save as auto-categorisation rule"
-                    onclick={() => { rulingId = t.id; editingId = null; ruleCategoryId = String(t.category_id ?? ''); ruleMatchText = t.description; }}><Icon name="repeat" size={14} /></button>
-                  <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"
-                    data-tip="Edit" aria-label="Edit transaction"
-                    onclick={() => { editingId = t.id; rulingId = null; }}><Icon name="edit" size={14} /></button>
+                    onclick={() => { rulingId = t.id; ruleCategoryId = String(t.category_id ?? ''); ruleMatchText = t.description; }}><Icon name="repeat" size={14} /></button>
                   <form method="POST" action="?/delete" use:enhance={() => deleteSubmit(t.id)}>
                     <input type="hidden" name="id" value={t.id} />
                     <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"

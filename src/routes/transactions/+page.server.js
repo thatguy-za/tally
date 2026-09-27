@@ -144,15 +144,9 @@ export const actions = {
     const date = String(f.get('date') || '');
     const description = String(f.get('description') || '').trim();
     const notes = String(f.get('notes') || '').trim().slice(0, 280);
-    const magnitude = num(f.get('amount'));
-    const direction = String(f.get('direction') || 'out');
-    if (!id || !date || magnitude == null) return fail(400, { error: 'Invalid values.' });
-    updateTransaction(locals.user.id, locals.accountId, id, {
-      date,
-      description,
-      notes,
-      amount: magnitude * (direction === 'in' ? 1 : -1)
-    });
+    const amount = parseAmount(String(f.get('amount') ?? ''));
+    if (!id || !date || amount == null) return fail(400, { error: 'Invalid values.' });
+    updateTransaction(locals.user.id, locals.accountId, id, { date, description, notes, amount });
     return { updated: true };
   },
 

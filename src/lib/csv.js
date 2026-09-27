@@ -75,6 +75,10 @@ export function parseAmount(raw) {
   if (/\b(cr|credit)\b/i.test(s)) negative = false;
   s = s.replace(/[^0-9.,\-]/g, '');
   if (s.includes('-')) { negative = true; s = s.replace(/-/g, ''); }
+  // nothing left but punctuation (the original had no digits at all, e.g.
+  // "abc" or "-") — Number('') is 0, which would silently pass as a real
+  // amount, so bail out explicitly instead
+  if (!/\d/.test(s)) return null;
   const lastComma = s.lastIndexOf(',');
   const lastDot = s.lastIndexOf('.');
   if (lastComma > -1 && lastDot > -1) {
