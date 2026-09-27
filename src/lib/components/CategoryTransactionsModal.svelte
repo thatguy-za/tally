@@ -154,15 +154,15 @@
               {#each rows as r (r.id)}
                 <tr class="border-b border-[var(--border)] last:border-0">
                   <td class="py-1 pl-4 pr-2">
-                    <input class="cell tnum w-[128px]" type="date" value={r.date}
+                    <input class="cell tnum w-[92px]" type="date" value={r.date}
                       onchange={(e) => updateRow(r, { date: e.currentTarget.value })} />
                   </td>
                   <td class="py-1 pr-2">
-                    <input class="cell min-w-[150px]" value={r.description}
+                    <input class="cell min-w-[85px] truncate" value={r.description}
                       onchange={(e) => updateRow(r, { description: e.currentTarget.value })} />
                   </td>
                   <td class="py-1 pr-2">
-                    <input class="cell tnum w-[92px] text-right" inputmode="decimal"
+                    <input class="cell tnum w-[78px] text-right" inputmode="decimal"
                       style={r.amount > 0 ? 'color:var(--positive)' : ''}
                       value={r.amount}
                       onchange={(e) => {
@@ -179,11 +179,12 @@
                   </td>
                   <td class="py-1 pr-2">
                     <CategorySelect {categories} value={String(r.category_id ?? '')}
+                      triggerClass="cell min-w-[100px] max-w-[120px] text-[13px]"
                       onChange={(v) => setCategory(r, v)}
                       onCreated={() => onChanged?.()} />
                   </td>
                   <td class="py-1 pr-2">
-                    <input class="cell min-w-[110px]" value={r.notes || ''} placeholder="—" maxlength="280"
+                    <input class="cell min-w-[120px] truncate" value={r.notes || ''} placeholder="—" maxlength="280"
                       onchange={(e) => updateRow(r, { notes: e.currentTarget.value })} />
                   </td>
                   <td class="py-1 pr-3 text-right">
