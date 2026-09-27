@@ -415,6 +415,7 @@
           {@render sortable('date', 'Date', 'th py-2.5')}
           {@render sortable('description', 'Description', 'th py-2.5')}
           {@render sortable('category', 'Category', 'th py-2.5')}
+          <th class="th py-2.5">Notes</th>
           {@render sortable('amount', 'Amount', 'th py-2.5 pr-4 text-right', true)}
           <th class="w-16"></th>
         </tr>
@@ -423,7 +424,7 @@
         {#each sortedRows as t (t.id)}
           {#if editingId === t.id}
             <tr class="border-b border-[var(--border)]">
-              <td colspan="6" class="p-3" style="background:var(--paper-sunk)">
+              <td colspan="7" class="p-3" style="background:var(--paper-sunk)">
                 <form method="POST" action="?/update" use:enhance class="grid gap-2 sm:grid-cols-6">
                   <input type="hidden" name="id" value={t.id} />
                   <input class="input" name="date" type="date" value={t.date} required />
@@ -443,7 +444,7 @@
             </tr>
           {:else if rulingId === t.id}
             <tr class="border-b border-[var(--border)]">
-              <td colspan="6" class="p-3" style="background:var(--paper-sunk)">
+              <td colspan="7" class="p-3" style="background:var(--paper-sunk)">
                 <form method="POST" action="?/saveRule" use:enhance class="grid gap-2 sm:grid-cols-6">
                   <div class="sm:col-span-3">
                     <label class="label" for="rule-match-{t.id}">When description contains</label>
@@ -498,14 +499,7 @@
                     onEdit={() => (editingLogoFor = t)}
                   />
                   <div class="min-w-0">
-                    <div class="flex items-center gap-1.5">
-                      <div class="truncate font-medium">{t.description || '—'}</div>
-                      {#if t.notes}
-                        <span class="tip shrink-0 text-[var(--ink-faint)]" data-tip={t.notes}>
-                          <Icon name="tag" size={12} />
-                        </span>
-                      {/if}
-                    </div>
+                    <div class="truncate font-medium">{t.description || '—'}</div>
                   </div>
                 </div>
               </td>
@@ -526,6 +520,9 @@
                     </button>
                   </form>
                 {/if}
+              </td>
+              <td class="py-2.5 pr-3 text-[13px] text-[var(--ink-faint)]">
+                <div class="max-w-[180px] truncate" title={t.notes || ''}>{t.notes || ''}</div>
               </td>
               <td class="py-2.5 pr-4 text-right">
                 <Money value={t.amount} currency={data.currency} colour="auto" class="font-medium" />
