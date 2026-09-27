@@ -748,7 +748,7 @@ const CHAT_TOOLS = [
   },
   {
     name: 'search_transactions',
-    description: 'List individual transactions matching a filter — for "show me" / "when did I" questions about specific line items.',
+    description: 'List individual transactions matching a filter — for "show me" / "when did I" questions about specific line items, and for a spending/income total by merchant, note or other text that is not an actual category (sum the returned amounts yourself).',
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -1011,9 +1011,13 @@ const CHAT_SYSTEM = (currency, today) =>
   'search_transactions for specific line items, period_summary for how a period compares to ' +
   'usual, and budget_status for target-vs-actual in a month. Transactions can carry a short ' +
   'free-text note as well as a description — search_transactions\'s search argument checks ' +
-  'both. If a question needs a date range and none is given, assume the current month unless ' +
-  'context suggests otherwise — but that default is for spending/period questions specifically; ' +
-  'a lookup by name, description or note (e.g. "find the transaction where I wrote...") is not ' +
+  'both. A spending/income question naming something that is not one of this person\'s actual ' +
+  'categories (confirm against list_categories, don\'t assume) — a merchant, a note, a label ' +
+  'like "car insurance" — has no category_totals answer; call search_transactions with that ' +
+  'text instead and add up the returned amounts yourself rather than concluding it can\'t be ' +
+  'answered. If a question needs a date range and none is given, assume the current month ' +
+  'unless context suggests otherwise — but that default is for spending/period questions ' +
+  'specifically; a lookup by name, description or note with no period mentioned at all is not ' +
   'time-scoped, so pass null for from/to there instead of silently limiting it to this month. When a ' +
   'comparison across categories or months would be clearer as a chart, call show_chart with ' +
   'the numbers you already looked up (it does not fetch anything itself) — still give your ' +
