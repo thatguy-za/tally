@@ -14,10 +14,12 @@ what went out, and what you kept. No subscriptions, no bank logins, no data leav
 - **Sort spending into categories** — Groceries, Rent, Eating out, whatever makes sense to you. Set up simple rules ("anything with *Tesco* in it is Groceries") and Tally sorts new transactions for you.
 - **Set monthly budgets** — a target per category, with a clear view of how much is left. Tally can suggest targets based on what you usually spend.
 - **Track savings** — money you move into savings counts as money kept, not money spent, so your totals tell the truth.
-- **Insights** — one page that answers *where did my money go this month?* Compare any period against your own normal, see which categories shifted the most, and browse a month-by-month picture.
+- **Insights** — one page that answers *where did my money go this month?* A money-flow diagram follows every euro from what came in through to where it went, ending in whatever you had left over. Pick any period to measure it against your own normal, see which categories moved the most, and browse month by month.
 - **Multiple accounts** — a current account and a savings account, say. Transfers between them are never mistaken for income.
 - **Shared, but private** — everyone in the household gets their own login, categories and data. Nobody sees anyone else's numbers.
-- **Ask Tori (optional)** — add a Claude API key and you can ask questions in plain English: *"How much did I spend on groceries this month?"* or *"Am I over budget on anything?"* Tori can also sort imported transactions into your categories and write a short summary of each period. Off unless you switch it on.
+- **Hide your numbers** — one click in the account menu blanks every amount on screen, so you can show someone a chart without showing them your balance. There's a dark mode in the same menu.
+- **Works on your phone** — the whole app adapts to a small screen, and you can add it to your home screen like any other app.
+- **Ask Tori (optional)** — add an API key from Anthropic (Claude) or OpenAI (GPT) and you can ask questions in plain English: *"How much did I spend on groceries this month?"* or *"Am I over budget on anything?"* Tori can also sort imported transactions into your categories and write a short summary of each period. Off unless you switch it on.
 
 <table>
   <tr>
@@ -26,9 +28,13 @@ what went out, and what you kept. No subscriptions, no bank logins, no data leav
   </tr>
   <tr>
     <td align="center"><sub>Check every row of a statement before it's saved — duplicates are spotted, rules fill in categories</sub></td>
-    <td align="center"><sub>Monthly targets, grouped, with what's left at a glance</sub></td>
+    <td align="center"><sub>A monthly target per category, with what's left at a glance</sub></td>
   </tr>
 </table>
+
+![The same page with numbers hidden](docs/screenshots/hide-numbers.png)
+
+<sub>Hide numbers blanks every amount while leaving the layout intact — handy when someone's looking over your shoulder.</sub>
 
 ## Getting started
 
@@ -49,7 +55,7 @@ Want a practice run? Import [`sample-transactions.csv`](static/sample-transactio
 | Setting | What it does |
 |---|---|
 | `ALLOW_REGISTRATION=false` | Stop new people signing up once your household has accounts |
-| `ANTHROPIC_API_KEY` | Switches on Ask Tori and AI sorting (can also be set in Server settings) |
+| `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | Switches on Ask Tori and AI sorting (easier to set in *Server settings*, where you also pick the model) |
 | `ORIGIN` | Only needed if you put Tally behind a reverse proxy — set it to the address you visit, e.g. `https://tally.example.com` |
 
 Forgot a password? Run `node scripts/reset-password.mjs` on the server.
@@ -78,4 +84,5 @@ Docker images are published to GitHub Container Registry on every push to `main`
 | `ALLOW_REGISTRATION` | `true` | Set to `false` to close signup |
 | `ORIGIN` | – | Public URL when behind a reverse proxy (or pass `X-Forwarded-Proto` / `X-Forwarded-Host` with `PROTOCOL_HEADER` / `HOST_HEADER`) |
 | `BODY_SIZE_LIMIT` | `8M` | Max request body, for large CSV imports |
-| `ANTHROPIC_API_KEY` | – | Enables Ask Tori and AI categorisation |
+| `ANTHROPIC_API_KEY` | – | Enables Ask Tori and AI categorisation via Claude |
+| `OPENAI_API_KEY` | – | Same, via GPT — an admin picks the provider and model in *Server settings* |
