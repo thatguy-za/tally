@@ -8,6 +8,10 @@ what went out, and what you kept. No subscriptions, no bank logins, no data leav
 
 ![Insights — where your money went](docs/screenshots/insights.png)
 
+![Twelve months of income and spending, stacked by category](docs/screenshots/twelve-months.png)
+
+<sub>Pick any period — here the last twelve months, with an income bar and a spending bar for each, stacked by category.</sub>
+
 ## What it does
 
 - **Import your bank statement** — upload the CSV file your bank lets you download. Tally works out the columns, spots duplicates, and lets you check everything before it's saved.
