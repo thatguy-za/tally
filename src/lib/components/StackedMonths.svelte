@@ -214,7 +214,7 @@
               onclick={() => onSegmentClick?.(seg, b.ym, source)}></path>
           {/each}
           {#if showTotals && st.total > 0}
-            <text x={x + barW / 2} y={y(st.total) - 7} text-anchor="middle" font-size="10.5"
+            <text x={x + barW / 2} y={y(st.total) - (source === 'income' ? 20 : 7)} text-anchor="middle" font-size="10.5"
               font-weight="600" fill="var(--ink-soft)">{money(st.total)}</text>
           {/if}
           {#if showInOut}
