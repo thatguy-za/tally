@@ -9,6 +9,7 @@
   import LogoPicker from '$lib/components/LogoPicker.svelte';
   import AddImportOverlay from '$lib/components/AddImportOverlay.svelte';
   import CategorySelect from '$lib/components/CategorySelect.svelte';
+  import TransactionRow from '$lib/components/TransactionRow.svelte';
   import { toast } from '$lib/toast.svelte.js';
   import { guessDomain } from '$lib/logo.js';
   import { formatMonth } from '$lib/currency.js';
@@ -23,6 +24,7 @@
   let ruleMatchText = $state('');
   let editingLogoFor = $state(null);
   let selected = $state(new Set());
+  let expandedId = $state(null); // mobile row expansion — one open at a time
 
   // optimistic UI state
   let catOverride = $state(new Map()); // id -> categoryId string ('' = uncategorised)
@@ -218,6 +220,44 @@
     } finally {
       pendingCat.delete(t.id);
       pendingCat = new Set(pendingCat);
+    }
+  }
+
+  async function dismissUncategorised(t) {
+    const body = new FormData();
+    body.set('id', String(t.id));
+    body.set('dismissed', t.dismissed_uncategorised ? '0' : '1');
+    try {
+      const res = await fetch('?/dismissUncategorised', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
+      if (!res.ok) throw new Error();
+      await invalidateAll();
+    } catch {
+      toast('Could not update', { type: 'info' });
+    }
+  }
+
+  // mobile sort <select> — mirrors setSort/sortKey/sortDir as one combined value
+  let mobileSortValue = $derived(sortKey === null ? 'date-desc' : `${sortKey}-${sortDir}`);
+  function setMobileSort(value) {
+    const [key, dir] = value.split('-');
+    setSort(key, dir);
+  }
+
+  // mobile has no real <form> to hand `use:enhance`, so it posts directly —
+  // same optimistic-remove-then-revert-on-failure shape as deleteSubmit below
+  async function deleteTransaction(t) {
+    removed.add(t.id);
+    removed = new Set(removed);
+    const body = new FormData();
+    body.set('id', String(t.id));
+    try {
+      const res = await fetch('?/delete', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
+      if (!res.ok) throw new Error();
+      toast('Transaction deleted');
+    } catch {
+      removed.delete(t.id);
+      removed = new Set(removed);
+      toast('Could not delete', { type: 'info' });
     }
   }
 
@@ -463,6 +503,38 @@
   </div>
 {/if}
 
+{#snippet ruleForm(t)}
+  <form method="POST" action="?/saveRule" use:enhance class="grid gap-2 sm:grid-cols-6">
+    <div class="sm:col-span-3">
+      <label class="label" for="rule-match-{t.id}">When description contains</label>
+      <div class="flex items-center gap-2">
+        <MerchantLogo domain={guessDomain(ruleMatchText)} color={catColor(currentCat(t))} size={22} />
+        <input class="input min-w-0 flex-1" id="rule-match-{t.id}" name="match_text" bind:value={ruleMatchText} required />
+      </div>
+    </div>
+    <div class="sm:col-span-2">
+      <label class="label" for="rule-cat-{t.id}">Category</label>
+      <input type="hidden" name="category_id" value={ruleCategoryId} />
+      <CategorySelect categories={data.categories} value={ruleCategoryId}
+        triggerClass="input" placeholder="Choose…"
+        onChange={(v) => (ruleCategoryId = v)}
+        onCreated={() => invalidateAll()} />
+    </div>
+    <div>
+      <label class="label" for="rule-pri-{t.id}">Priority</label>
+      <input class="input tnum" id="rule-pri-{t.id}" name="priority" type="number" value="0" />
+    </div>
+    <div class="flex flex-wrap items-center gap-3 sm:col-span-6">
+      <button class="btn btn-primary btn-sm">Save rule</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick={() => (rulingId = null)}>Cancel</button>
+      <label class="flex items-center gap-1.5 text-[12px] text-[var(--ink-faint)]">
+        <input type="checkbox" name="overwrite" /> also recategorise matching transactions that already have one
+      </label>
+    </div>
+    <p class="text-[12px] text-[var(--ink-faint)] sm:col-span-6">Future imports and manual entries with this text get this category.</p>
+  </form>
+{/snippet}
+
 {#snippet sortable(key, label, thClass, alignEnd = false)}
   <th class={thClass}>
     <span class="inline-flex items-center gap-1.5 {alignEnd ? 'w-full justify-end' : ''}">
@@ -481,7 +553,7 @@
 
 <div class="card card-flush">
   {#if data.transactions.length}
-    <div class="overflow-x-auto">
+    <div class="hidden overflow-x-auto sm:block">
     <table class="w-full table-fixed text-sm" style="min-width:900px">
       <colgroup>
         <col style="width:40px" />
@@ -508,35 +580,7 @@
           {#if rulingId === t.id}
             <tr class="border-b border-[var(--border)]">
               <td colspan="7" class="p-3" style="background:var(--paper-sunk)">
-                <form method="POST" action="?/saveRule" use:enhance class="grid gap-2 sm:grid-cols-6">
-                  <div class="sm:col-span-3">
-                    <label class="label" for="rule-match-{t.id}">When description contains</label>
-                    <div class="flex items-center gap-2">
-                      <MerchantLogo domain={guessDomain(ruleMatchText)} color={catColor(currentCat(t))} size={22} />
-                      <input class="input min-w-0 flex-1" id="rule-match-{t.id}" name="match_text" bind:value={ruleMatchText} required />
-                    </div>
-                  </div>
-                  <div class="sm:col-span-2">
-                    <label class="label" for="rule-cat-{t.id}">Category</label>
-                    <input type="hidden" name="category_id" value={ruleCategoryId} />
-                    <CategorySelect categories={data.categories} value={ruleCategoryId}
-                      triggerClass="input" placeholder="Choose…"
-                      onChange={(v) => (ruleCategoryId = v)}
-                      onCreated={() => invalidateAll()} />
-                  </div>
-                  <div>
-                    <label class="label" for="rule-pri-{t.id}">Priority</label>
-                    <input class="input tnum" id="rule-pri-{t.id}" name="priority" type="number" value="0" />
-                  </div>
-                  <div class="flex flex-wrap items-center gap-3 sm:col-span-6">
-                    <button class="btn btn-primary btn-sm">Save rule</button>
-                    <button type="button" class="btn btn-ghost btn-sm" onclick={() => (rulingId = null)}>Cancel</button>
-                    <label class="flex items-center gap-1.5 text-[12px] text-[var(--ink-faint)]">
-                      <input type="checkbox" name="overwrite" /> also recategorise matching transactions that already have one
-                    </label>
-                  </div>
-                  <p class="text-[12px] text-[var(--ink-faint)] sm:col-span-6">Future imports and manual entries with this text get this category.</p>
-                </form>
+                {@render ruleForm(t)}
               </td>
             </tr>
           {:else}
@@ -615,6 +659,58 @@
         {/each}
       </tbody>
     </table>
+    </div>
+
+    <!-- mobile: card list of TransactionRow, no horizontal scroll -->
+    <div class="sm:hidden">
+      {#if rulingId && sortedRows.some((t) => t.id === rulingId)}
+        <div class="border-b border-[var(--border)] p-3" style="background:var(--paper-sunk)">
+          {@render ruleForm(sortedRows.find((t) => t.id === rulingId))}
+        </div>
+      {/if}
+      <div class="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2.5">
+        <label class="flex items-center gap-2 text-[13px] text-[var(--ink-faint)]">
+          <input type="checkbox" checked={allChecked} onchange={toggleAll} /> Select all
+        </label>
+        <select class="input w-auto py-1.5 text-[13px]" value={mobileSortValue}
+          onchange={(e) => setMobileSort(e.currentTarget.value)}>
+          <option value="date-desc">Newest first</option>
+          <option value="date-asc">Oldest first</option>
+          <option value="amount-asc">Largest amount</option>
+          <option value="amount-desc">Smallest amount</option>
+          <option value="description-asc">A–Z</option>
+          <option value="category-asc">Category</option>
+        </select>
+      </div>
+      {#each sortedRows as t (t.id)}
+        <div class="border-b border-[var(--border)] last:border-0">
+          <TransactionRow
+            t={{
+              ...t,
+              date: fieldVal(t, 'date'),
+              description: fieldVal(t, 'description'),
+              notes: fieldVal(t, 'notes'),
+              amount: Number(fieldVal(t, 'amount')),
+              category_id: currentCat(t) || null
+            }}
+            expanded={expandedId === t.id}
+            onToggleExpand={() => (expandedId = expandedId === t.id ? null : t.id)}
+            selectable
+            selected={selected.has(t.id)}
+            onToggle={() => toggle(t.id)}
+            showRule
+            showCategory
+            categories={data.categories}
+            currency={data.currency}
+            pending={savingIds.has(t.id) || pendingCat.has(t.id)}
+            onEdit={(key, value) => commitField(t, key, value)}
+            onCategoryChange={(v) => categoriseViaPicker(t, v)}
+            onDelete={() => deleteTransaction(t)}
+            onSaveRule={() => { rulingId = t.id; ruleCategoryId = String(t.category_id ?? ''); ruleMatchText = t.description; }}
+            onDismissUncategorised={() => dismissUncategorised(t)}
+          />
+        </div>
+      {/each}
     </div>
   {:else}
     <EmptyState

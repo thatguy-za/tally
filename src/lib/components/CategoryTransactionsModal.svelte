@@ -1,6 +1,7 @@
 <script>
   import Icon from './Icon.svelte';
   import CategorySelect from './CategorySelect.svelte';
+  import TransactionRow from './TransactionRow.svelte';
   import { formatMonth } from '$lib/currency.js';
   import { formatMoney } from '$lib/privacy.svelte.js';
   import { parseAmount } from '$lib/csv.js';
@@ -30,10 +31,13 @@
 
   let isRange = $derived(!!toMonth && toMonth !== month);
   let periodLabel = $derived(isRange ? `${formatMonth(month)} – ${formatMonth(toMonth)}` : formatMonth(month));
+  // every row shares one category except in the mixed "Other"/"Uncategorised" buckets
+  let showCategory = $derived(categoryId === 'other' || categoryId === 'none');
 
   let rows = $state([]);
   let loading = $state(true);
   let loadError = $state('');
+  let expandedId = $state(null); // mobile row expansion — one open at a time
 
   async function load() {
     loading = true;
@@ -73,6 +77,19 @@
     body.set('amount', String(merged.amount));
     await fetch('/transactions?/update', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
     onChanged?.();
+  }
+
+  // shared by the mobile row's onEdit and the desktop amount cell's onchange
+  // below — same sign-preserving parse either way
+  function commitAmount(row, raw) {
+    const v = parseAmount(raw);
+    if (v == null) return;
+    const signed = /^\s*[-+]/.test(raw) ? v : Math.abs(v) * (row.amount >= 0 ? 1 : -1);
+    updateRow(row, { amount: signed });
+  }
+  function commitRowField(row, key, value) {
+    if (key === 'amount') commitAmount(row, value);
+    else updateRow(row, { [key]: value });
   }
 
   async function setCategory(row, newCategoryId) {
@@ -138,7 +155,7 @@
       <p class="py-8 text-center text-sm text-[var(--ink-faint)]">Nothing left in this category for {periodLabel}.</p>
     {:else}
       <div class="card card-flush">
-        <div class="overflow-x-auto">
+        <div class="hidden overflow-x-auto sm:block">
           <table class="w-full text-[13px]">
             <thead>
               <tr class="border-b border-[var(--border)] text-left">
@@ -165,17 +182,7 @@
                     <input class="cell tnum w-[78px] text-right" inputmode="decimal"
                       style={r.amount > 0 ? 'color:var(--positive)' : ''}
                       value={r.amount}
-                      onchange={(e) => {
-                        const raw = e.currentTarget.value;
-                        const v = parseAmount(raw);
-                        if (v == null) return;
-                        // The field shows the signed amount, but a bare number
-                        // keeps the direction it already had — retyping 80 over
-                        // a −80 shouldn't quietly turn a spend into income. An
-                        // explicit − or + is taken at its word.
-                        const signed = /^\s*[-+]/.test(raw) ? v : Math.abs(v) * (r.amount >= 0 ? 1 : -1);
-                        updateRow(r, { amount: signed });
-                      }} />
+                      onchange={(e) => commitAmount(r, e.currentTarget.value)} />
                   </td>
                   <td class="py-1 pr-2">
                     <CategorySelect {categories} value={String(r.category_id ?? '')}
@@ -198,6 +205,25 @@
             </tbody>
           </table>
         </div>
+
+        <div class="sm:hidden">
+          {#each rows as r (r.id)}
+            <div class="border-b border-[var(--border)] last:border-0">
+              <TransactionRow
+                t={r}
+                expanded={expandedId === r.id}
+                onToggleExpand={() => (expandedId = expandedId === r.id ? null : r.id)}
+                {showCategory}
+                {categories}
+                {currency}
+                onEdit={(key, value) => commitRowField(r, key, value)}
+                onCategoryChange={(v) => setCategory(r, v)}
+                onDelete={() => removeRow(r.id)}
+              />
+            </div>
+          {/each}
+        </div>
+
         <div class="flex items-center justify-between border-t border-[var(--border)] px-4 py-2.5 text-[13px]">
           <span class="text-[var(--ink-faint)]">{rows.length} transaction{rows.length === 1 ? '' : 's'}</span>
           <span class="tnum font-medium">{formatMoney(total, currency)}</span>

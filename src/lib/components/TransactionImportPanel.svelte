@@ -1,9 +1,11 @@
 <script>
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
+  import { slide } from 'svelte/transition';
   import Icon from './Icon.svelte';
   import Confetti from './Confetti.svelte';
   import CategorySelect from './CategorySelect.svelte';
+  import { formatMoney } from '$lib/privacy.svelte.js';
   import { parseCsv, parseAmount, parseDate, guessMapping, dupeKey, DATE_FORMATS } from '$lib/csv.js';
 
   /** @type {{ data: any, onClose: () => void, compact?: boolean }} */
@@ -157,6 +159,16 @@
     ...data.categories,
     ...newCatNames.map((n) => ({ id: `new:${n}`, name: `${n} (new)` }))
   ]);
+
+  // mobile: one card expanded at a time, and a way to show a chosen
+  // category's name for a row (id, or "new:Name" from a mapped column/AI)
+  let mobileExpanded = $state(null);
+  const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  function categoryLabel(catValue) {
+    if (!catValue) return null;
+    if (String(catValue).startsWith('new:')) return `${String(catValue).slice(4)} (new)`;
+    return categoryOptions.find((c) => String(c.id) === String(catValue))?.name ?? null;
+  }
 
   let stats = $derived({
     total: rows.length,
@@ -533,15 +545,80 @@
       <span class="tnum ml-auto text-[var(--ink-faint)]">+{stats.incoming.toFixed(2)} / −{stats.outgoing.toFixed(2)}</span>
     </div>
 
-    <!-- thin format line -->
-    <div class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-[var(--ink-faint)]">
+    <!-- thin format line — desktop only; the mapping selects double as this on mobile -->
+    <div class="mb-3 hidden flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-xs text-[var(--ink-faint)] sm:flex">
       <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={hasHeader} /> First row is a header</label>
       <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={invert} /> Flip signs</label>
     </div>
 
+    <!-- mobile: column mapping has no meaning in a card layout, so it moves
+         into its own labelled block above the list instead of a header row -->
+    <div class="mb-3 flex flex-col gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] p-3 text-[13px] sm:hidden">
+      <div>
+        <label class="label" for="mm-date">Date column</label>
+        <select class="input {mapping.date === '' ? '!border-[var(--negative)]' : ''}" id="mm-date" bind:value={mapping.date}>
+          {#if mapping.date === ''}
+            <option value="">Date ({DATE_FORMATS.find((d) => d.value === dateOrder)?.label ?? dateOrder})</option>
+          {/if}
+          {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="mm-desc">Description column</label>
+        <select class="input" id="mm-desc" bind:value={mapping.description}>
+          <option value="">— column —</option>
+          {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+        </select>
+      </div>
+      <div>
+        <span class="label">Amount column</span>
+        {#if amountSplit}
+          <div class="flex flex-col gap-1.5">
+            <select class="input" bind:value={mapping.debit}>
+              <option value="">money out…</option>
+              {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+            </select>
+            <select class="input" bind:value={mapping.credit}>
+              <option value="">money in…</option>
+              {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+            </select>
+            <button type="button" class="self-start text-[11px] text-[var(--ink-faint)] hover:underline"
+              onclick={useSingle}>← one signed column</button>
+          </div>
+        {:else}
+          <div class="flex flex-col gap-1.5">
+            <select class="input" bind:value={mapping.amount}>
+              <option value="">— column —</option>
+              {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+            </select>
+            <button type="button" class="self-start text-[11px] text-[var(--ink-faint)] hover:underline"
+              onclick={useSplit}>separate debit / credit?</button>
+          </div>
+        {/if}
+      </div>
+      <div>
+        <label class="label" for="mm-cat">Category column</label>
+        <select class="input" id="mm-cat" bind:value={mapping.category}>
+          <option value="">— none —</option>
+          {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+        </select>
+      </div>
+      <div>
+        <label class="label" for="mm-notes">Notes column</label>
+        <select class="input" id="mm-notes" bind:value={mapping.notes}>
+          <option value="">— none —</option>
+          {#each headers as h, i}<option value={String(i)}>{h}</option>{/each}
+        </select>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-xs text-[var(--ink-faint)]">
+        <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={hasHeader} /> First row is a header</label>
+        <label class="flex items-center gap-1.5"><input type="checkbox" bind:checked={invert} /> Flip signs</label>
+      </div>
+    </div>
+
     <!-- the table (its header row maps the columns) -->
     <div class="card card-flush">
-      <div class="overflow-x-auto">
+      <div class="hidden overflow-x-auto sm:block">
         <table class="w-full text-[13px]">
           <thead>
             <tr class="border-b border-[var(--border)] text-left">
@@ -659,6 +736,95 @@
             {/each}
           </tbody>
         </table>
+      </div>
+
+      <!-- mobile: card list, expand in place to fix a mis-parsed row -->
+      <div class="sm:hidden">
+        {#each shown as r (r.i)}
+          <div class="border-b border-[var(--border)] last:border-0">
+            <div class="flex items-center gap-3 px-3 py-2.5 {r.included ? '' : 'opacity-40'}"
+              style={r.error ? 'box-shadow: inset 3px 0 0 var(--negative)' : r.duplicate ? 'box-shadow: inset 3px 0 0 var(--warning)' : ''}>
+              <input type="checkbox" class="h-[18px] w-[18px] shrink-0" checked={r.included}
+                onchange={(e) => edit(r.i, { excluded: !e.currentTarget.checked })}
+                aria-label="Include {r.description || 'this row'}" />
+              <button type="button" class="flex min-w-0 flex-1 items-center gap-2.5 py-1 text-left"
+                aria-expanded={mobileExpanded === r.i}
+                onclick={() => (mobileExpanded = mobileExpanded === r.i ? null : r.i)}>
+                <span class="min-w-0 flex-1">
+                  <span class="flex items-baseline gap-2">
+                    <span class="min-w-0 flex-1 truncate text-[14px] font-medium">{r.description || '—'}</span>
+                    <span class="tnum shrink-0 text-[14px] font-semibold" style={Number(r.amount) > 0 ? 'color:var(--positive)' : ''}>
+                      {Number.isFinite(Number(r.amount)) ? formatMoney(Number(r.amount), data.currency) : '—'}
+                    </span>
+                  </span>
+                  <span class="mt-0.5 flex items-center gap-1.5 text-[12px] text-[var(--ink-faint)]">
+                    <span class="shrink-0">{r.date ? shortDate(r.date) : 'No date'}</span>
+                    <span>·</span>
+                    {#if r.error}
+                      <span class="shrink-0" style="color:var(--negative)">Needs fixing</span>
+                    {:else if r.duplicate}
+                      <span class="shrink-0" style="color:var(--warning)">Duplicate</span>
+                    {:else if aiSuggested.has(r.i)}
+                      <Icon name="sparkle" size={11} class="shrink-0 text-[var(--accent)]" />
+                      <span class="truncate">{categoryLabel(r.catValue) ?? 'Uncategorised'}</span>
+                    {:else if r.byRule}
+                      <Icon name="repeat" size={11} class="shrink-0 text-[var(--ink-faint)]" />
+                      <span class="truncate">{categoryLabel(r.catValue) ?? 'Uncategorised'}</span>
+                    {:else}
+                      <span class="truncate {categoryLabel(r.catValue) ? '' : 'italic'}">{categoryLabel(r.catValue) ?? 'Uncategorised'}</span>
+                    {/if}
+                    <Icon name="edit" size={12}
+                      class="ml-auto shrink-0 transition-colors {mobileExpanded === r.i ? 'text-[var(--accent)]' : ''}" />
+                  </span>
+                </span>
+              </button>
+            </div>
+
+            {#if mobileExpanded === r.i}
+              <div transition:slide={{ duration: 160 }} class="space-y-3 px-3 pb-3.5">
+                <div>
+                  <label class="label" for="m-desc-{r.i}">Description</label>
+                  <input class="input" id="m-desc-{r.i}" value={r.description}
+                    onchange={(e) => edit(r.i, { description: e.currentTarget.value })} />
+                </div>
+                <div class="flex gap-3">
+                  <div class="flex-1">
+                    <label class="label" for="m-date-{r.i}">Date</label>
+                    <input class="input {!r.date ? 'bad' : ''}" id="m-date-{r.i}" type="date" value={r.date ?? ''}
+                      onchange={(e) => edit(r.i, { date: e.currentTarget.value || null })} />
+                  </div>
+                  <div class="flex-1">
+                    <label class="label" for="m-amt-{r.i}">Amount</label>
+                    <input class="input tnum text-right {r.amount == null || !Number.isFinite(r.amount) ? 'bad' : ''}"
+                      id="m-amt-{r.i}" inputmode="decimal" value={r.amount ?? ''}
+                      onchange={(e) => { const v = parseAmount(e.currentTarget.value); edit(r.i, { amount: v == null ? e.currentTarget.value : v }); }} />
+                  </div>
+                </div>
+                <div class="flex gap-3">
+                  <div class="flex-1">
+                    <label class="label" for="m-cat-{r.i}">Category</label>
+                    {#if aiPending.has(r.i)}
+                      <span class="ai-shimmer flex h-[38px] items-center gap-1.5 rounded-[var(--radius-sm)] px-2 text-[12px] text-[var(--ink-faint)]">
+                        <span class="ai-dot"></span> AI…
+                      </span>
+                    {:else}
+                      <CategorySelect categories={categoryOptions} value={r.catValue}
+                        onChange={(v) => { aiSuggested = new Set([...aiSuggested].filter((x) => x !== r.i)); edit(r.i, { category: v }); }}
+                        onCreated={() => invalidateAll()}
+                        placeholder="Uncategorised"
+                        triggerClass="input w-full" />
+                    {/if}
+                  </div>
+                  <div class="flex-1">
+                    <label class="label" for="m-notes-{r.i}">Notes</label>
+                    <input class="input" id="m-notes-{r.i}" value={r.notes} placeholder="—"
+                      onchange={(e) => edit(r.i, { notes: e.currentTarget.value })} />
+                  </div>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/each}
       </div>
       {#if rowFilter}
         <p class="border-t border-[var(--border)] px-4 py-2 text-xs text-[var(--ink-faint)]">

@@ -55,7 +55,7 @@
   {/if}
 
   <div class="card card-flush">
-    <div class="overflow-x-auto">
+    <div class="hidden overflow-x-auto sm:block">
       <table class="w-full text-[13px]">
         <thead>
           <tr class="border-b border-[var(--border)] text-left">
@@ -107,6 +107,59 @@
         </tbody>
       </table>
     </div>
+
+    <!-- mobile: a data-entry grid of blank rows, so each becomes a stacked
+         card instead of a collapsible row — there's nothing to collapse -->
+    <div class="sm:hidden">
+      {#each rows as r (r.id)}
+        {@const c = computed(r)}
+        <div class="space-y-3 border-b border-[var(--border)] p-3 last:border-0">
+          <div class="flex items-start justify-between gap-2">
+            <span class="text-[12px] font-medium text-[var(--ink-faint)]">New transaction</span>
+            <button type="button" class="rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"
+              aria-label="Remove row" onclick={() => removeRow(r.id)}>
+              <Icon name="trash" size={14} />
+            </button>
+          </div>
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="label" for="mr-date-{r.id}">Date <span style="color:var(--negative)">*</span></label>
+              <input class="input tnum {!r.date ? 'bad' : ''}" id="mr-date-{r.id}" type="date" bind:value={r.date} />
+            </div>
+            <div class="flex-1">
+              <label class="label" for="mr-amt-{r.id}">Amount <span style="color:var(--negative)">*</span></label>
+              <input class="input tnum text-right {r.amount !== '' && c.magnitude == null ? 'bad' : ''}"
+                id="mr-amt-{r.id}" inputmode="decimal" placeholder="0.00" bind:value={r.amount} />
+            </div>
+          </div>
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <label class="label" for="mr-type-{r.id}">Type</label>
+              <select class="input" id="mr-type-{r.id}" bind:value={r.direction}>
+                <option value="out">Out</option>
+                <option value="in">In</option>
+              </select>
+            </div>
+            <div class="flex-1">
+              <span class="label">Category</span>
+              <CategorySelect categories={data.categories} value={r.category_id}
+                onChange={(v) => (r.category_id = v)}
+                onCreated={() => invalidateAll()}
+                triggerClass="input w-full" />
+            </div>
+          </div>
+          <div>
+            <label class="label" for="mr-desc-{r.id}">Description</label>
+            <input class="input" id="mr-desc-{r.id}" placeholder="e.g. Supermarket" bind:value={r.description} />
+          </div>
+          <div>
+            <label class="label" for="mr-notes-{r.id}">Notes</label>
+            <input class="input" id="mr-notes-{r.id}" placeholder="—" bind:value={r.notes} maxlength="280" />
+          </div>
+        </div>
+      {/each}
+    </div>
+
     <div class="border-t border-[var(--border)] px-4 py-2">
       <button type="button" class="inline-flex items-center gap-1 text-[13px] text-[var(--ink-faint)] hover:text-[var(--ink)]"
         onclick={addRow}>

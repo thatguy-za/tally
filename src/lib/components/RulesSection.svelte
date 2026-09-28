@@ -68,6 +68,8 @@
     }
   }
 
+  const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+
   function toggleAccept(id) {
     const next = new Set(preview.accepted);
     if (next.has(id)) next.delete(id);
@@ -218,7 +220,7 @@
       </div>
 
       <div class="card card-flush">
-        <div class="overflow-x-auto">
+        <div class="hidden overflow-x-auto sm:block">
           <table class="w-full text-[13px]">
             <thead>
               <tr class="border-b border-[var(--border)] text-left">
@@ -261,6 +263,30 @@
               {/each}
             </tbody>
           </table>
+        </div>
+
+        <div class="sm:hidden">
+          {#each preview.changes as c (c.id)}
+            <div class="flex items-start gap-3 border-b border-[var(--border)] px-3 py-2.5 last:border-0">
+              <input type="checkbox" class="mt-2 h-[18px] w-[18px] shrink-0" checked={preview.accepted.has(c.id)}
+                onchange={() => toggleAccept(c.id)} aria-label="Accept change for {c.description}" />
+              <MerchantLogo domain={guessDomain(c.description)} color={c.to_category_color} size={30} />
+              <span class="min-w-0 flex-1">
+                <span class="flex items-baseline gap-2">
+                  <span class="min-w-0 flex-1 truncate text-[14px] font-medium">{c.description || '—'}</span>
+                  <Money value={c.amount} currency={currency} colour="auto" class="tnum shrink-0 text-[14px] font-semibold" />
+                </span>
+                <span class="mt-0.5 flex items-center gap-1.5 truncate text-[12px] text-[var(--ink-faint)]">
+                  <span class="shrink-0">{shortDate(c.date)}</span>
+                  <span>·</span>
+                  <span class="truncate">{c.from_category_name || 'Uncategorised'}</span>
+                  <Icon name="arrowRight" size={11} class="shrink-0" />
+                  <span class="dot shrink-0" style="background:{c.to_category_color}"></span>
+                  <span class="truncate font-medium text-[var(--ink-soft)]">{c.to_category_name}</span>
+                </span>
+              </span>
+            </div>
+          {/each}
         </div>
       </div>
 

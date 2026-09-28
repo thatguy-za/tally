@@ -1,5 +1,13 @@
 import { json, error } from '@sveltejs/kit';
-import { listTransactions } from '$lib/server/queries.js';
+import { listTransactions, getLogoDomains } from '$lib/server/queries.js';
+
+// matches the transactions page's own load (+page.server.js) — without this
+// the same merchant shows a logo there and a plain dot here
+function withLogos(transactions) {
+  const logoDomains = getLogoDomains(transactions.map((t) => t.description));
+  for (const t of transactions) t.logo_domain = logoDomains.get(t.description) ?? null;
+  return transactions;
+}
 
 const YM = /^\d{4}-\d{2}$/;
 
@@ -41,7 +49,7 @@ export function GET({ url, locals }) {
       kind,
       accountId: locals.accountId
     });
-    return json({ transactions });
+    return json({ transactions: withLogos(transactions) });
   }
 
   const categoryId = categoryParam === 'none' ? 'none' : Number(categoryParam);
@@ -52,5 +60,5 @@ export function GET({ url, locals }) {
 
   const kind = categoryId === -1 ? url.searchParams.get('kind') || 'expense' : undefined;
   const transactions = listTransactions(locals.user.id, { ...span, categoryId, kind, accountId: locals.accountId });
-  return json({ transactions });
+  return json({ transactions: withLogos(transactions) });
 }
