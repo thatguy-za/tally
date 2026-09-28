@@ -287,6 +287,20 @@ describe('applyRules', () => {
     expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(inSavings).category_id).toBe(groceries);
     expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(inChecking).category_id).toBeNull();
   });
+
+  it('with excludeIds, leaves those rows alone even though they otherwise match', () => {
+    const u = makeUser();
+    const acct = defaultAccount(u);
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+    createRule(u, acct, 'SPAR', groceries, 0);
+    const kept = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', account_id: acct }).lastInsertRowid);
+    const skipped = Number(addTx(u, { date: '2026-05-02', amount: -9, description: 'SPAR run', account_id: acct }).lastInsertRowid);
+
+    const changed = applyRules(u, { onlyUncategorised: true, excludeIds: [skipped], accountId: acct });
+    expect(changed).toBe(1);
+    expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(kept).category_id).toBe(groceries);
+    expect(db.prepare('SELECT category_id FROM transactions WHERE id = ?').get(skipped).category_id).toBeNull();
+  });
 });
 
 describe('previewRuleRerun', () => {
@@ -394,6 +408,12 @@ describe('bulkInsert', () => {
     expect(result.duplicates).toBe(2);
     const count = db.prepare('SELECT COUNT(*) AS n FROM transactions WHERE user_id = ?').get(u).n;
     expect(count).toBe(2); // the original + the one genuinely new row
+    // one id per input row, in order — null for the two skipped as duplicates
+    // (row 0 dupes the pre-existing Coffee; row 2 dupes row 1 within the batch)
+    expect(result.ids).toHaveLength(3);
+    expect(result.ids[0]).toBeNull();
+    expect(result.ids[2]).toBeNull();
+    expect(result.ids[1]).toEqual(expect.any(Number));
   });
 
   it('can be told to keep duplicates', () => {

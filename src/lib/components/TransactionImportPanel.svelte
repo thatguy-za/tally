@@ -131,10 +131,15 @@
         const hit = c.categoryName && byName.get(c.categoryName.toLowerCase());
         if (hit) catValue = String(hit);
         else if (c.categoryName) catValue = `new:${c.categoryName}`;
-        else {
+        // a duplicate is excluded by default — if the user includes it anyway,
+        // it still shouldn't get auto-categorised by a rule (or, below, AI);
+        // a manual pick from the category dropdown still works either way
+        else if (!duplicate) {
           const ruleId = ruleMatch(description);
           if (ruleId) { catValue = String(ruleId); byRule = true; }
           else catValue = '';
+        } else {
+          catValue = '';
         }
       }
       const included = e.excluded !== undefined ? !e.excluded : !(error || duplicate);
@@ -203,6 +208,7 @@
           description: r.description,
           amount: r.amount,
           notes: r.notes,
+          duplicate: r.duplicate,
           category_id: /^\d+$/.test(String(r.catValue)) ? Number(r.catValue) : null,
           category_name: String(r.catValue).startsWith('new:') ? String(r.catValue).slice(4) : null
         }))
@@ -264,8 +270,11 @@
 
   async function runAiSuggest() {
     // rules already ran during review (see `rows`) — only send what is still
-    // uncategorised, so a rule match never costs an AI call
-    const targets = rows.filter((r) => !r.error && !r.catValue);
+    // uncategorised, so a rule match never costs an AI call. Duplicates are
+    // excluded here too: they're skipped by rules for the same reason, and
+    // spending an AI call categorising a row that's normally not even
+    // imported would be wasted at best.
+    const targets = rows.filter((r) => !r.error && !r.catValue && !r.duplicate);
     if (!targets.length) {
       aiState = { running: false, error: '', done: 0, total: 0, count: 0, cost: 0, ran: true };
       return;

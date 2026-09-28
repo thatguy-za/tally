@@ -91,6 +91,10 @@ export const actions = {
     };
 
     const prepared = [];
+    // parallel to `prepared` — flagged by the review UI as a duplicate of an
+    // existing transaction; kept out of rule/AI categorisation below even if
+    // the user chose to import it anyway (skipDuplicates off)
+    const wasDuplicate = [];
     let invalid = 0;
     for (const r of incoming) {
       const date = String(r.date || '').slice(0, 10);
@@ -104,15 +108,20 @@ export const actions = {
         category_id: resolveCategory(r),
         account_id: accountId
       });
+      wasDuplicate.push(!!r.duplicate);
     }
     if (!prepared.length)
       return fail(400, { error: 'None of the selected rows have a valid date and amount.' });
 
-    const { inserted, duplicates } = bulkInsert(locals.user.id, prepared, {
+    const { inserted, duplicates, ids } = bulkInsert(locals.user.id, prepared, {
       skipDuplicates: opts.skipDuplicates !== false
     });
+    // rows flagged as duplicates client-side but inserted anyway (the user
+    // overrode the skip) never get auto-categorised by a rule or AI — only
+    // an explicit category pick or the CSV's own category column applies
+    const excludeIds = ids.filter((id, i) => id != null && wasDuplicate[i]);
     const categorisedByRules = opts.runRules
-      ? applyRules(locals.user.id, { onlyUncategorised: true, accountId })
+      ? applyRules(locals.user.id, { onlyUncategorised: true, excludeIds, accountId })
       : 0;
 
     return {

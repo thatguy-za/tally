@@ -208,7 +208,14 @@ export function existingDupeKeys(userId) {
   return new Set(rows.map(dupeKey));
 }
 
-/** Insert rows, skipping ones that duplicate an existing transaction or an earlier row in the batch. */
+/**
+ * Insert rows, skipping ones that duplicate an existing transaction or an
+ * earlier row in the batch.
+ * @returns {{ inserted: number, duplicates: number, ids: (number|null)[] }}
+ * `ids` has one entry per input row, in order — the new row's id, or null
+ * for one skipped as a duplicate — so a caller can map its own per-row
+ * metadata (e.g. "this was flagged as a duplicate") onto real ids.
+ */
 export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
   const seen = skipDuplicates ? existingDupeKeys(userId) : new Set();
   const stmt = db.prepare(
@@ -217,18 +224,20 @@ export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
   );
   let inserted = 0;
   let duplicates = 0;
+  const ids = [];
   tx(() => {
     for (const r of rows) {
       if (skipDuplicates) {
         const k = dupeKey(r);
-        if (seen.has(k)) { duplicates++; continue; }
+        if (seen.has(k)) { duplicates++; ids.push(null); continue; }
         seen.add(k);
       }
-      stmt.run(userId, r.date, r.description || '', r.amount, r.category_id || null, r.account_id || null, r.notes || '');
+      const info = stmt.run(userId, r.date, r.description || '', r.amount, r.category_id || null, r.account_id || null, r.notes || '');
+      ids.push(Number(info.lastInsertRowid));
       inserted++;
     }
   });
-  return { inserted, duplicates };
+  return { inserted, duplicates, ids };
 }
 
 // `IS` rather than `=` for account_id below: a transaction's account_id can
@@ -478,10 +487,13 @@ export function deleteRule(userId, accountId, id) {
 /**
  * Apply a single account's rules to that same account's transactions.
  * @param {number} userId
- * @param {{ onlyUncategorised?: boolean, ids?: number[], accountId: number }} opts
+ * @param {{ onlyUncategorised?: boolean, ids?: number[], excludeIds?: number[], accountId: number }} opts
+ * `excludeIds` keeps specific rows out of the sweep even though they'd
+ * otherwise match — e.g. a duplicate a CSV import inserted at the user's
+ * request, which shouldn't get auto-categorised by a rule or AI.
  * @returns {number} number of transactions updated
  */
-export function applyRules(userId, { onlyUncategorised = true, ids = null, accountId = null } = {}) {
+export function applyRules(userId, { onlyUncategorised = true, ids = null, excludeIds = null, accountId = null } = {}) {
   const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   const rules = db
     .prepare('SELECT * FROM rules WHERE user_id = ? AND account_id = ? ORDER BY priority DESC, id')
@@ -498,12 +510,16 @@ export function applyRules(userId, { onlyUncategorised = true, ids = null, accou
       let sql = `UPDATE transactions SET category_id = @categoryId
                  WHERE user_id = @userId AND lower(description) LIKE @match ${af}`;
       if (onlyUncategorised) sql += ' AND category_id IS NULL';
+      const anon = [];
       if (ids && ids.length) {
         sql += ` AND id IN (${ids.map(() => '?').join(',')})`;
-        changed += Number(db.prepare(sql).run(params, ...ids).changes);
-      } else {
-        changed += Number(db.prepare(sql).run(params).changes);
+        anon.push(...ids);
       }
+      if (excludeIds && excludeIds.length) {
+        sql += ` AND id NOT IN (${excludeIds.map(() => '?').join(',')})`;
+        anon.push(...excludeIds);
+      }
+      changed += Number(db.prepare(sql).run(params, ...anon).changes);
     }
   });
   return changed;
