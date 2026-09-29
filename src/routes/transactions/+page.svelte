@@ -134,8 +134,24 @@
     });
   });
 
+  // Long periods run to hundreds of rows, which on a phone is a page several
+  // thousand pixels tall. Show a first page and let the reader ask for more,
+  // rather than paying for every row up front.
+  const PAGE_SIZE = 20;
+  let shownCount = $state(PAGE_SIZE);
+  let pagedRows = $derived(sortedRows.slice(0, shownCount));
+  let hasMore = $derived(sortedRows.length > pagedRows.length);
+  // a new filter, search or sort is a different list — start it from the top
+  $effect(() => {
+    data.transactions;
+    sortKey;
+    sortDir;
+    shownCount = PAGE_SIZE;
+  });
+
+  // "select all" means the rows actually on screen, not the ones still paged away
   let allChecked = $derived(
-    visibleRows.length > 0 && visibleRows.every((t) => selected.has(t.id))
+    pagedRows.length > 0 && pagedRows.every((t) => selected.has(t.id))
   );
   function toggle(id) {
     const next = new Set(selected);
@@ -143,7 +159,7 @@
     selected = next;
   }
   function toggleAll() {
-    selected = allChecked ? new Set() : new Set(visibleRows.map((t) => t.id));
+    selected = allChecked ? new Set() : new Set(pagedRows.map((t) => t.id));
   }
   function setParams(updates) {
     const url = new URL($page.url);
@@ -576,7 +592,7 @@
         </tr>
       </thead>
       <tbody>
-        {#each sortedRows as t (t.id)}
+        {#each pagedRows as t (t.id)}
           {#if rulingId === t.id}
             <tr class="border-b border-[var(--border)]">
               <td colspan="7" class="p-3" style="background:var(--paper-sunk)">
@@ -663,9 +679,9 @@
 
     <!-- mobile: card list of TransactionRow, no horizontal scroll -->
     <div class="sm:hidden">
-      {#if rulingId && sortedRows.some((t) => t.id === rulingId)}
+      {#if rulingId && pagedRows.some((t) => t.id === rulingId)}
         <div class="border-b border-[var(--border)] p-3" style="background:var(--paper-sunk)">
-          {@render ruleForm(sortedRows.find((t) => t.id === rulingId))}
+          {@render ruleForm(pagedRows.find((t) => t.id === rulingId))}
         </div>
       {/if}
       <div class="flex items-center justify-between gap-2 border-b border-[var(--border)] px-3 py-2.5">
@@ -682,7 +698,7 @@
           <option value="category-asc">Category</option>
         </select>
       </div>
-      {#each sortedRows as t (t.id)}
+      {#each pagedRows as t (t.id)}
         <div class="border-b border-[var(--border)] last:border-0">
           <TransactionRow
             t={{
@@ -712,6 +728,17 @@
         </div>
       {/each}
     </div>
+
+    {#if hasMore}
+      <div class="flex items-center justify-between gap-3 border-t border-[var(--border)] px-4 py-3">
+        <span class="text-[13px] text-[var(--ink-faint)]">
+          Showing {pagedRows.length} of {sortedRows.length}
+        </span>
+        <button type="button" class="btn btn-ghost btn-sm" onclick={() => (shownCount += PAGE_SIZE)}>
+          Show {Math.min(PAGE_SIZE, sortedRows.length - pagedRows.length)} more
+        </button>
+      </div>
+    {/if}
   {:else}
     <EmptyState
       icon="transactions"

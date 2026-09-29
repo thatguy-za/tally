@@ -52,7 +52,10 @@
   const W1 = 640;
   let NODE_W = $derived(lerp(W, W0, W1, 10, 14));
   const GAP = 14;
-  let LABEL_GUTTER = $derived(lerp(W, W0, W1, 40, 132));
+  // the floor has to fit a typical category name (~11 characters) rather than
+  // the bare minimum, or ordinary names like "Groceries" break mid-word on a
+  // phone. Costs the ribbons ~13px a side, which they can spare.
+  let LABEL_GUTTER = $derived(lerp(W, W0, W1, 56, 132));
   let nameFont = $derived(lerp(W, W0, W1, 10, 11.5));
   let amountFont = $derived(lerp(W, W0, W1, 9, 10.5));
   // characters that fit on one line within the gutter, at the current name
@@ -163,22 +166,23 @@
   // just look truncated, so wrap it onto up to `maxLines` lines ourselves,
   // word by word, ellipsizing only what still doesn't fit
   function wrapLines(name, maxLen, maxLines) {
-    const words = name.split(' ');
     const lines = [];
-    let cur = '';
-    let i = 0;
-    while (i < words.length && lines.length < maxLines) {
-      const candidate = cur ? `${cur} ${words[i]}` : words[i];
-      if (candidate.length <= maxLen || !cur) {
-        cur = candidate;
-        i++;
-      } else {
-        lines.push(cur);
-        cur = '';
+    let rest = String(name ?? '').trim();
+    while (rest && lines.length < maxLines) {
+      if (rest.length <= maxLen) {
+        lines.push(rest);
+        rest = '';
+        break;
       }
+      // break at the last space that fits; a word longer than the line itself
+      // has no space to break at, so break it mid-word rather than let it run
+      // the full width of its own name and get clipped by the SVG's edge
+      let cut = rest.lastIndexOf(' ', maxLen);
+      if (cut <= 0) cut = maxLen;
+      lines.push(rest.slice(0, cut).replace(/\s+$/, ''));
+      rest = rest.slice(cut).replace(/^\s+/, '');
     }
-    if (cur) lines.push(cur);
-    if (i < words.length) {
+    if (rest) {
       let last = lines[lines.length - 1] || '';
       while (last.length > 1 && `${last}…`.length > maxLen) last = last.slice(0, -1);
       lines[lines.length - 1] = `${last.replace(/\s+$/, '')}…`;

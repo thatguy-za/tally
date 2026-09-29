@@ -120,8 +120,8 @@
         <thead>
           <tr class="border-b border-[var(--border)] text-left">
             <th class="th px-3 py-2">Name</th>
-            <th class="th px-3 py-2">Type</th>
-            <th class="th px-3 py-2 text-right">Transactions</th>
+            <th class="th hidden px-3 py-2 sm:table-cell">Type</th>
+            <th class="th hidden px-3 py-2 text-right sm:table-cell">Transactions</th>
             <th class="w-16"></th>
           </tr>
         </thead>
@@ -158,9 +158,15 @@
                     <span class="dot shrink-0" style="background:{c.color}"></span>
                     <span class="truncate font-medium">{c.name}</span>
                   </span>
+                  <!-- there isn't room for four columns on a phone, so Type and
+                       Transactions fold in under the name rather than pushing
+                       the row into a sideways scroll -->
+                  <span class="mt-0.5 block pl-4 text-[12px] text-[var(--ink-faint)] sm:hidden">
+                    {kindLabel[c.kind] || c.kind} · {c.count} transaction{c.count === 1 ? '' : 's'}
+                  </span>
                 </td>
-                <td class="px-3 py-2.5 text-[var(--ink-faint)]">{kindLabel[c.kind] || c.kind}</td>
-                <td class="px-3 py-2.5 text-right tnum text-[var(--ink-faint)]">{c.count}</td>
+                <td class="hidden px-3 py-2.5 text-[var(--ink-faint)] sm:table-cell">{kindLabel[c.kind] || c.kind}</td>
+                <td class="hidden px-3 py-2.5 text-right tnum text-[var(--ink-faint)] sm:table-cell">{c.count}</td>
                 <td class="px-3 py-2.5">
                   <div class="flex justify-end gap-0.5 opacity-70 transition group-hover:opacity-100">
                     <button type="button" class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"

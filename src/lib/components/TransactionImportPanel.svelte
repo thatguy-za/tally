@@ -5,8 +5,10 @@
   import Icon from './Icon.svelte';
   import Confetti from './Confetti.svelte';
   import CategorySelect from './CategorySelect.svelte';
+  import MerchantLogo from './MerchantLogo.svelte';
   import { formatMoney } from '$lib/privacy.svelte.js';
   import { parseCsv, parseAmount, parseDate, guessMapping, dupeKey, DATE_FORMATS } from '$lib/csv.js';
+  import { guessDomain } from '$lib/logo.js';
 
   /** @type {{ data: any, onClose: () => void, compact?: boolean }} */
   let { data, onClose, compact = $bindable(true) } = $props();
@@ -164,6 +166,13 @@
   // category's name for a row (id, or "new:Name" from a mapped column/AI)
   let mobileExpanded = $state(null);
   const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  // these rows aren't saved yet, so there's no stored logo domain to read —
+  // guess it from the description the same way an imported row will once it is
+  function categoryColour(catValue) {
+    if (!catValue || String(catValue).startsWith('new:')) return 'var(--ink-faint)';
+    return categoryOptions.find((c) => String(c.id) === String(catValue))?.color || 'var(--ink-faint)';
+  }
+
   function categoryLabel(catValue) {
     if (!catValue) return null;
     if (String(catValue).startsWith('new:')) return `${String(catValue).slice(4)} (new)`;
@@ -750,6 +759,7 @@
               <button type="button" class="flex min-w-0 flex-1 items-center gap-2.5 py-1 text-left"
                 aria-expanded={mobileExpanded === r.i}
                 onclick={() => (mobileExpanded = mobileExpanded === r.i ? null : r.i)}>
+                <MerchantLogo domain={guessDomain(r.description)} color={categoryColour(r.catValue)} size={30} />
                 <span class="min-w-0 flex-1">
                   <span class="flex items-baseline gap-2">
                     <span class="min-w-0 flex-1 truncate text-[14px] font-medium">{r.description || '—'}</span>
