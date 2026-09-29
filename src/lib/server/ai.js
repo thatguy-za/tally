@@ -416,41 +416,127 @@ export function extractAmounts(text, currency) {
     /* fall through with the defaults above */
   }
 
+  // what this currency is called in words, so "1850 euros" is read as money
+  // too — a model that drops the symbol was still stating a figure
+  const names = new Set([currency.toLowerCase()]);
+  for (const n of [1, 2]) {
+    try {
+      const word = new Intl.NumberFormat('en', { style: 'currency', currency, currencyDisplay: 'name' })
+        .formatToParts(n)
+        .find((p) => p.type === 'currency')?.value;
+      if (word) names.add(word.toLowerCase());
+    } catch {
+      /* the ISO code alone will do */
+    }
+  }
+
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const number = `\\d{1,3}(?:${esc(group)}\\d{3})*(?:${esc(decimal)}\\d+)?|\\d+(?:${esc(decimal)}\\d+)?`;
   const patterns = symbol
     ? [`${esc(symbol)}\\s?-?(${number})`, `-?(${number})\\s?${esc(symbol)}`]
     : [];
   patterns.push(`-?(${number})\\s?%`); // bare percentages, e.g. "97% of it elapsed"
+  // "1,850 euros" / "1850 EUR" — the code is usually written upper case
+  patterns.push({ source: `-?(${number})\\s?(?:${[...names].map(esc).join('|')})\\b`, flags: 'gi' });
+  // a bare figure the model wrote without any currency marking at all. A
+  // thousands separator, minor units or four-plus digits all say "money";
+  // plain small integers do not, and are left alone — "3 months" and "the
+  // 1st" are not figures being claimed, and checking them would discard good
+  // summaries over nothing.
+  // the lookbehind has to exclude the group and decimal separators too, or
+  // this matches *inside* a figure the symbol patterns already read: "€3,247.00"
+  // would yield a phantom 247, which then makes unrelated numbers look traceable
+  patterns.push(
+    `(?<![${esc(symbol ?? '')}\\d${esc(group)}${esc(decimal)}])` +
+      `(-?\\d{1,3}(?:${esc(group)}\\d{3})+(?:${esc(decimal)}\\d+)?|-?\\d+${esc(decimal)}\\d{2}|-?\\d{4,})` +
+      `(?![\\d${esc(decimal)}])`
+  );
 
   const amounts = [];
   for (const pattern of patterns) {
-    const re = new RegExp(pattern, 'g');
+    let re;
+    try {
+      re = typeof pattern === 'string' ? new RegExp(pattern, 'g') : new RegExp(pattern.source, pattern.flags);
+    } catch {
+      continue; // a lookbehind-less engine simply skips that refinement
+    }
     let m;
     while ((m = re.exec(text))) {
       const n = parseFloat(m[1].split(group).join('').replace(decimal, '.'));
       if (Number.isFinite(n)) amounts.push(n);
     }
   }
-  return amounts;
+  return [...new Set(amounts)];
 }
 
 /**
- * Prompt instructions alone don't stop a model from quietly doing its own
- * arithmetic — evaluating Haiku against these two summaries caught it citing
- * "leaving you €1,850 to work with" and "you saved €2,030" when neither
- * figure was ever given to it (both were its own, sometimes-wrong, mental
- * subtraction of numbers it *was* given). This is a code-level backstop: every
- * currency amount or percentage the model's text mentions must be traceable
- * to one that actually appears in the facts sheet it was handed, within ±1
- * unit (the prompt explicitly allows "rounding for readability"). A summary
- * that fails is discarded rather than shown, exactly like an empty response.
+ * How far a stated figure may sit from the fact behind it. The prompt invites
+ * "rounding for readability", which a flat ±1 quietly forbade: "around €3,200"
+ * for a real €3,247 was discarded as an invention. Allow half the rounding
+ * step the figure itself implies — €3,200 is round to the hundred, so ±50 —
+ * but never more than 5% of it, so a suspiciously round number can't license
+ * a wildly different one.
  */
+function roundingTolerance(n) {
+  const abs = Math.abs(n);
+  if (!abs || !Number.isInteger(n)) return 1; // cents quoted: expect near-exact
+  let unit = 1;
+  while (abs % (unit * 10) === 0 && unit < 1e6) unit *= 10;
+  return Math.max(1, Math.min(unit / 2, abs * 0.05));
+}
+
+/**
+ * Splits the facts sheet into the per-category figures ("- Groceries: €310.96
+ * (usual €353.81 — €42.85 less)" gives Groceries all three) and the
+ * period-level ones (Came in / Spent / Saved and their comparisons). Only the
+ * first kind is owned by a name: a period total is about the whole period, so
+ * it can legitimately appear in a sentence that happens to name one category.
+ */
+function factsByLabel(facts, currency) {
+  const byCategory = new Map();
+  const totals = [];
+  for (const line of facts.split('\n')) {
+    const m = /^(\s*-\s+)?([A-Za-z][^:]{0,40}):\s*(.+)$/.exec(line);
+    if (!m) continue;
+    const amounts = extractAmounts(m[3], currency);
+    if (!amounts.length) continue;
+    if (m[1]) byCategory.set(m[2].trim().toLowerCase(), amounts);
+    else totals.push(...amounts);
+  }
+  return { byCategory, totals };
+}
+
 export function verifiedAgainstFacts(text, facts, currency) {
   const said = extractAmounts(text, currency);
   if (!said.length) return true;
   const given = extractAmounts(facts, currency);
-  return said.every((n) => given.some((g) => Math.abs(n - g) <= 1));
+  const traceable = (n) => given.some((g) => Math.abs(n - g) <= roundingTolerance(n));
+  if (!said.every(traceable)) return false;
+
+  // Every figure exists somewhere in the facts — but that alone lets the model
+  // hang the right number on the wrong name ("Eating out hit €250" when €250
+  // was Groceries). Where a sentence names exactly one category, its figures
+  // have to be that category's own, or a period total that belongs to no
+  // category in particular.
+  const { byCategory, totals } = factsByLabel(facts, currency);
+  if (!byCategory.size) return true;
+  // "Rent & housing" is almost always written back as "rent and housing"
+  const loose = (t) => t.toLowerCase().replace(/\s*&\s*/g, ' and ').replace(/\s+/g, ' ');
+  const near = (n, pool) => pool.some((g) => Math.abs(n - g) <= roundingTolerance(n));
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    const said = loose(sentence);
+    const mentioned = [...byCategory.keys()].filter((l) => said.includes(loose(l)));
+    // none named, or several: no single owner to hold the figures to
+    if (mentioned.length !== 1) continue;
+    const owned = byCategory.get(mentioned[0]);
+    for (const n of extractAmounts(sentence, currency)) {
+      if (near(n, owned) || near(n, totals)) continue;
+      // only object when the figure demonstrably belongs to a different
+      // category; anything else is the global check's business
+      if ([...byCategory.values()].some((pool) => near(n, pool))) return false;
+    }
+  }
+  return true;
 }
 
 /**
