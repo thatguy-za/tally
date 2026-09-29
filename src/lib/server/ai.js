@@ -400,6 +400,60 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
 }
 
 /**
+ * Every currency amount and percentage mentioned in `text`, as plain numbers —
+ * built from Intl's own formatting of `currency` so it recognises whatever
+ * shape formatMoney() actually produces (symbol before/after, its grouping
+ * and decimal separators), rather than assuming "$1,234.56".
+ */
+export function extractAmounts(text, currency) {
+  let symbol, group = ',', decimal = '.';
+  try {
+    const parts = new Intl.NumberFormat(undefined, { style: 'currency', currency }).formatToParts(1234.5);
+    symbol = parts.find((p) => p.type === 'currency')?.value;
+    group = parts.find((p) => p.type === 'group')?.value ?? group;
+    decimal = parts.find((p) => p.type === 'decimal')?.value ?? decimal;
+  } catch {
+    /* fall through with the defaults above */
+  }
+
+  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const number = `\\d{1,3}(?:${esc(group)}\\d{3})*(?:${esc(decimal)}\\d+)?|\\d+(?:${esc(decimal)}\\d+)?`;
+  const patterns = symbol
+    ? [`${esc(symbol)}\\s?-?(${number})`, `-?(${number})\\s?${esc(symbol)}`]
+    : [];
+  patterns.push(`-?(${number})\\s?%`); // bare percentages, e.g. "97% of it elapsed"
+
+  const amounts = [];
+  for (const pattern of patterns) {
+    const re = new RegExp(pattern, 'g');
+    let m;
+    while ((m = re.exec(text))) {
+      const n = parseFloat(m[1].split(group).join('').replace(decimal, '.'));
+      if (Number.isFinite(n)) amounts.push(n);
+    }
+  }
+  return amounts;
+}
+
+/**
+ * Prompt instructions alone don't stop a model from quietly doing its own
+ * arithmetic — evaluating Haiku against these two summaries caught it citing
+ * "leaving you €1,850 to work with" and "you saved €2,030" when neither
+ * figure was ever given to it (both were its own, sometimes-wrong, mental
+ * subtraction of numbers it *was* given). This is a code-level backstop: every
+ * currency amount or percentage the model's text mentions must be traceable
+ * to one that actually appears in the facts sheet it was handed, within ±1
+ * unit (the prompt explicitly allows "rounding for readability"). A summary
+ * that fails is discarded rather than shown, exactly like an empty response.
+ */
+export function verifiedAgainstFacts(text, facts, currency) {
+  const said = extractAmounts(text, currency);
+  if (!said.length) return true;
+  const given = extractAmounts(facts, currency);
+  return said.every((n) => given.some((g) => Math.abs(n - g) <= 1));
+}
+
+/**
  * Bumped whenever the prompt changes. It feeds the cache fingerprint, so a
  * reworded summary regenerates instead of serving the old style forever.
  */
@@ -652,12 +706,17 @@ export function buildPeriodFacts(
  */
 export async function summarisePeriod(insights, currency, opts = {}) {
   const model = getModel();
+  const facts = buildPeriodFacts(insights, currency, opts);
   const { text, usage } = await callText({
     system: summarySystem(opts.isSavingsAccount),
-    userText: buildPeriodFacts(insights, currency, opts),
+    userText: facts,
     maxTokens: 200,
     model
   });
+  if (text && !verifiedAgainstFacts(text, facts, currency)) {
+    console.warn('[ai] period summary cited a figure not in the facts sheet, discarding:', text);
+    return { text: '', usage, costUsd: estimateCost(usage, model) };
+  }
   return { text, usage, costUsd: estimateCost(usage, model) };
 }
 
@@ -705,12 +764,17 @@ export function buildSavingsFacts(series, currency) {
  */
 export async function summariseSavings(series, currency) {
   const model = getModel();
+  const facts = buildSavingsFacts(series, currency);
   const { text, usage } = await callText({
     system: SAVINGS_SUMMARY_SYSTEM,
-    userText: buildSavingsFacts(series, currency),
+    userText: facts,
     maxTokens: 150,
     model
   });
+  if (text && !verifiedAgainstFacts(text, facts, currency)) {
+    console.warn('[ai] savings summary cited a figure not in the facts sheet, discarding:', text);
+    return { text: '', usage, costUsd: estimateCost(usage, model) };
+  }
   return { text, usage, costUsd: estimateCost(usage, model) };
 }
 
