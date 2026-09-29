@@ -597,6 +597,39 @@ describe('periodInsights', () => {
     expect(mover.delta).toBe(150);
   });
 
+  // regression: uncategorised spending counted towards `spent` but was dropped
+  // from the category breakdown by an inner join, so the biggest driver of a
+  // period's change could be missing from `movers` entirely — which let the AI
+  // summary blame whichever category happened to be listed instead
+  it('counts uncategorised spending as its own mover', () => {
+    const u = makeUser();
+    const groceries = makeCategory(u, 'Groceries', 'expense');
+
+    // two quiet months to set a baseline, both fully categorised
+    for (const ym of ['2025-01', '2025-02']) {
+      addTx(u, { date: `${ym}-02`, amount: -100, category_id: groceries });
+    }
+    // then a month where the real change is a pile of uncategorised spending
+    addTx(u, { date: '2025-03-02', amount: -110, category_id: groceries });
+    addTx(u, { date: '2025-03-03', amount: -400, category_id: null });
+
+    const ins = periodInsights(u, '2025-03', '2025-03');
+    expect(ins.spent).toBe(510);
+
+    const unc = ins.movers.find((m) => m.id === -1);
+    expect(unc).toBeDefined();
+    expect(unc.name).toBe('Uncategorised');
+    expect(unc.spent).toBe(400);
+    expect(unc.usual).toBe(0);
+    expect(unc.delta).toBe(400);
+    expect(unc.color).toBeTruthy(); // needs *some* colour or its dot renders invisible
+
+    // and it is the biggest mover, not an afterthought behind groceries
+    expect(ins.movers[0].id).toBe(-1);
+    expect(ins.topCategories[0].id).toBe(-1);
+    expect(ins.topCategories[0].total).toBe(400);
+  });
+
   it('excludes a saving category from earned/spent and counts it as saved, on a regular account', () => {
     const u = makeUser();
     const acct = makeAccount(u, 'Checking');

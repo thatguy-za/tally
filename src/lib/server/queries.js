@@ -817,12 +817,19 @@ export function periodInsights(userId, from, to, accountId = null) {
       }
     : null;
 
+  // Uncategorised spending counts towards `spent` above, so it has to appear
+  // in the breakdown too — an inner join dropped it, which left the biggest
+  // driver of a period's change invisible to both the movers list and the AI
+  // summary built from it, inviting the blame to land on whatever category
+  // happened to be listed. -1 is the same synthetic bucket the charts and
+  // listTransactions already use for it.
   const catRows = db
     .prepare(
-      `SELECT c.id, c.name, c.color, substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS total
-       FROM transactions t JOIN categories c ON c.id = t.category_id
-       WHERE t.user_id = @userId AND t.amount < 0 AND c.kind = 'expense' ${af.sql}
-       GROUP BY c.id, ym`
+      `SELECT COALESCE(c.id, -1) AS id, COALESCE(c.name, 'Uncategorised') AS name, c.color,
+              substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS total
+       FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+       WHERE t.user_id = @userId AND t.amount < 0 AND (c.kind = 'expense' OR c.id IS NULL) ${af.sql}
+       GROUP BY COALESCE(c.id, -1), ym`
     )
     .all({ userId, ...af.params });
 
@@ -835,7 +842,13 @@ export function periodInsights(userId, from, to, accountId = null) {
   for (const r of catRows) {
     let e = byCat.get(r.id);
     if (!e) {
-      e = { id: r.id, name: r.name, color: r.color, periodByMonth: new Map(), beforeByMonth: new Map() };
+      e = {
+        id: r.id,
+        name: r.name,
+        color: r.color || 'var(--border-strong)',
+        periodByMonth: new Map(),
+        beforeByMonth: new Map()
+      };
       byCat.set(r.id, e);
     }
     if (r.ym >= from && r.ym <= to) e.periodByMonth.set(r.ym, r.total);
