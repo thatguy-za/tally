@@ -1,8 +1,8 @@
 {
   "name": "Tally",
   "short_name": "Tally",
-  "description": "Self-hosted budgeting — import, categorise, budget and report on your money.",
-  "start_url": "/dashboard",
+  "description": "Self-hosted budgeting — import, categorise, budget and see where your money goes.",
+  "start_url": "/insights",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f6f3ec",

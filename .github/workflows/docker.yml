@@ -2,9 +2,17 @@ name: Build Docker image
 
 on:
   push:
+    # a release always builds, whatever its diff touched — the image has to
+    # exist for the tag
     tags: ['v*']
   pull_request:
     branches: [main]
+    # nothing here reaches the image, so there is nothing to build as a check
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
   workflow_dispatch:
 
 env:
