@@ -23,7 +23,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # write, not read: the release step below creates the GitHub release
+      contents: write
       packages: write
 
     steps:
@@ -63,3 +64,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Tags were being cut without a matching GitHub release, so the "Latest"
+      # badge sat on whatever was last published by hand — sixteen versions
+      # behind by the time anyone noticed. Idempotent, so re-running a build
+      # for an existing tag does not fail.
+      - name: Create the GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && exit 0
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
