@@ -1074,10 +1074,58 @@ function executeChatTool(userId, accountId, name, input, charts) {
 
 const chatToolSpecs = CHAT_TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
 
-async function chatTurnAnthropic({ system, messages, userId, accountId, model, apiKeyOverride }) {
+/**
+ * Every number appearing in the tool results a chat answer was built from.
+ * Unlike a summary's facts sheet these are raw JSON, so take *all* numeric
+ * literals rather than only money-shaped ones — ids and counts among them.
+ * Over-collecting here only makes the check more forgiving, which is the right
+ * way to be wrong: a false rejection would throw away a good answer.
+ */
+function numbersInToolResults(results) {
+  const out = [];
+  for (const r of results) {
+    for (const m of String(r).matchAll(/-?\d+(?:\.\d+)?/g)) {
+      const n = parseFloat(m[0]);
+      if (Number.isFinite(n)) out.push(n);
+    }
+  }
+  return out;
+}
+
+/**
+ * The chat equivalent of verifiedAgainstFacts: every figure the answer states
+ * has to trace back to something a tool actually returned. Chat is already
+ * grounded by its tools, so this is a backstop against the model doing its own
+ * arithmetic in prose — the one thing tool-calling does not prevent.
+ * @param {string} text @param {string[]} toolResults @param {string} currency
+ */
+export function groundedInToolResults(text, toolResults, currency) {
+  const said = extractAmounts(text, currency);
+  if (!said.length || !toolResults.length) return true;
+  const given = numbersInToolResults(toolResults);
+  return said.every((n) => given.some((g) => Math.abs(n - g) <= roundingTolerance(n)));
+}
+
+/**
+ * The answer to hand back: the model's own words when its figures check out,
+ * a chart-naming fallback when it said nothing at all, and a refusal when it
+ * stated a figure no tool returned.
+ */
+function verifiedChatText(said, toolResults, charts, currency) {
+  const text = textOrFallback(said, charts);
+  if (!text || groundedInToolResults(text, toolResults, currency)) return text;
+  console.warn('[ai] chat answer cited a figure no tool returned, withholding:', text);
+  return CHAT_UNVERIFIED_TEXT;
+}
+
+const CHAT_UNVERIFIED_TEXT =
+  "I worked that out but the figures didn't line up with what I looked up, so I'd rather not guess — ask me again, or narrow it to one category or month.";
+
+async function chatTurnAnthropic({ system, messages, userId, accountId, model, apiKeyOverride, currency }) {
   const anthropic = client('anthropic', apiKeyOverride);
   const usage = { input: 0, output: 0 };
   const charts = [];
+  const toolResults = [];
   const convo = messages.map((m) => ({ role: m.role, content: m.content }));
 
   for (let round = 0; round < CHAT_MAX_ROUNDS; round++) {
@@ -1099,7 +1147,7 @@ async function chatTurnAnthropic({ system, messages, userId, accountId, model, a
     const toolUses = res.content.filter((b) => b.type === 'tool_use');
     if (!toolUses.length) {
       const said = res.content.find((b) => b.type === 'text')?.text ?? '';
-      return { text: textOrFallback(said, charts), usage, charts };
+      return { text: verifiedChatText(said, toolResults, charts, currency), usage, charts };
     }
 
     convo.push({ role: 'assistant', content: res.content });
@@ -1112,6 +1160,7 @@ async function chatTurnAnthropic({ system, messages, userId, accountId, model, a
         } catch (e) {
           content = JSON.stringify({ error: e?.message || 'That lookup failed.' });
         }
+        toolResults.push(content);
         return { type: 'tool_result', tool_use_id: tu.id, content };
       })
     });
@@ -1130,16 +1179,21 @@ async function chatTurnAnthropic({ system, messages, userId, accountId, model, a
     usage.input += res.usage?.input_tokens ?? 0;
     usage.output += res.usage?.output_tokens ?? 0;
     const said = res.content.find((b) => b.type === 'text')?.text ?? '';
-    return { text: textOrFallback(said, charts) || CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+    return {
+      text: verifiedChatText(said, toolResults, charts, currency) || CHAT_TOOL_TIMEOUT_TEXT,
+      usage,
+      charts
+    };
   } catch {
     return { text: textOrFallback('', charts) || CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
   }
 }
 
-async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiKeyOverride }) {
+async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiKeyOverride, currency }) {
   const openai = client('openai', apiKeyOverride);
   const usage = { input: 0, output: 0 };
   const charts = [];
+  const toolResults = [];
   const tools = CHAT_TOOLS.map((t) => ({
     type: 'function',
     function: { name: t.name, description: t.description, parameters: t.input_schema, strict: true }
@@ -1163,7 +1217,7 @@ async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiK
 
     const msg = res.choices?.[0]?.message;
     const calls = msg?.tool_calls || [];
-    if (!calls.length) return { text: textOrFallback(msg?.content, charts), usage, charts };
+    if (!calls.length) return { text: verifiedChatText(msg?.content, toolResults, charts, currency), usage, charts };
 
     convo.push(msg);
     for (const c of calls) {
@@ -1179,6 +1233,7 @@ async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiK
       } catch (e) {
         content = JSON.stringify({ error: e?.message || 'That lookup failed.' });
       }
+      toolResults.push(content);
       convo.push({ role: 'tool', tool_call_id: c.id, content });
     }
   }
@@ -1193,7 +1248,11 @@ async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiK
     usage.input += res.usage?.prompt_tokens ?? 0;
     usage.output += res.usage?.completion_tokens ?? 0;
     const said = res.choices?.[0]?.message?.content ?? '';
-    return { text: textOrFallback(said, charts) || CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+    return {
+      text: verifiedChatText(said, toolResults, charts, currency) || CHAT_TOOL_TIMEOUT_TEXT,
+      usage,
+      charts
+    };
   } catch {
     return { text: textOrFallback('', charts) || CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
   }
@@ -1222,8 +1281,11 @@ const CHAT_SYSTEM = (currency, today) =>
   'specifically; a lookup by name, description or note with no period mentioned at all is not ' +
   'time-scoped, so pass null for from/to there instead of silently limiting it to this month. When a ' +
   'comparison across categories or months would be clearer as a chart, call show_chart with ' +
-  'the numbers you already looked up (it does not fetch anything itself) — still give your ' +
-  'normal text answer too, don\'t reply with only a chart. Keep answers short and concrete — a ' +
+  'the numbers you already looked up (it does not fetch anything itself). The chart never ' +
+  'stands on its own: after calling it, write the answer in words as well, saying what the ' +
+  'chart shows — which is biggest, what moved, what the reader should take from it. A reply ' +
+  'that is only a chart is not an answer, and neither is one that just names the chart. ' +
+  'Keep answers short and concrete — a ' +
   'sentence or two, or a brief list for multiple items — with real personality in the phrasing, ' +
   'but never at the expense of accuracy. Plain English, no markdown headings, no "as your ' +
   'financial advisor" preamble and no signing off as Tori — just talk like her. Never invent a ' +
@@ -1247,7 +1309,7 @@ export async function chatWithData(userId, accountId, history, currency) {
   const system = CHAT_SYSTEM(currency, new Date().toISOString().slice(0, 10));
 
   const turn = provider === 'openai' ? chatTurnOpenAI : chatTurnAnthropic;
-  const { text, usage, charts } = await turn({ system, messages: history, userId, accountId, model });
+  const { text, usage, charts } = await turn({ system, messages: history, userId, accountId, model, currency });
   return { text, usage, charts, costUsd: estimateCost(usage, model) };
 }
 

@@ -297,14 +297,14 @@
   <div class="mb-4 grid {data.savings.configured ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-[var(--border)] overflow-hidden rounded-[var(--radius)] border border-[var(--border)]"
     style="background:var(--surface);box-shadow:var(--shadow-sm)">
     <div class="min-w-0 px-2.5 py-3 sm:px-5 sm:py-4">
-      <p class="kicker truncate">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
+      <p class="kicker min-h-[2.6em] leading-snug sm:min-h-0 sm:truncate">Came in{ins.single && ins.partial ? ' so far' : ''}</p>
       <span class="mt-1 block stat-value truncate text-[15px] sm:mt-2 sm:text-[24px]" style="color:var(--positive)">
         <Money value={ins.earned} currency={data.currency} colour="none" />
       </span>
       <p class="mt-1 hidden truncate text-xs text-[var(--ink-faint)] sm:block">{sub(ins, 'earned')}</p>
     </div>
     <div class="min-w-0 px-2.5 py-3 sm:px-5 sm:py-4">
-      <p class="kicker truncate">Went out{ins.single && ins.partial ? ' so far' : ''}</p>
+      <p class="kicker min-h-[2.6em] leading-snug sm:min-h-0 sm:truncate">Went out{ins.single && ins.partial ? ' so far' : ''}</p>
       <!-- deliberately not red: spending more than usual isn't automatically
            bad, so the number stays neutral and the breakdown explains what moved -->
       <span class="mt-1 block stat-value truncate text-[15px] sm:mt-2 sm:text-[24px]"><Money value={ins.spent} currency={data.currency} /></span>
@@ -313,7 +313,7 @@
     {#if data.savings.configured}
       <button type="button" class="min-w-0 px-2.5 py-3 text-left transition-colors hover:bg-[var(--paper-sunk)] sm:px-5 sm:py-4"
         onclick={openSavingsModal}>
-        <p class="kicker truncate">Saved{ins.single && ins.partial ? ' so far' : ''}</p>
+        <p class="kicker min-h-[2.6em] leading-snug sm:min-h-0 sm:truncate">Saved{ins.single && ins.partial ? ' so far' : ''}</p>
         <span class="mt-1 block stat-value truncate text-[15px] sm:mt-2 sm:text-[24px]"
           style="color:{ins.saved < 0 ? 'var(--ink)' : 'var(--positive)'}">
           <Money value={ins.saved} currency={data.currency} colour="none" />
@@ -371,7 +371,8 @@
 {/snippet}
 
 {#snippet whatChanged()}
-  <div class="mb-1 flex items-baseline justify-between gap-3">
+  <!-- the caption drops below the heading on a phone rather than wrapping it -->
+  <div class="mb-1 flex flex-col items-start gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
     <h2 class="text-lg">What changed</h2>
     <span class="text-xs text-[var(--ink-faint)]">biggest moves, not biggest totals</span>
   </div>

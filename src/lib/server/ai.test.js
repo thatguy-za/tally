@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractAmounts, verifiedAgainstFacts } from './ai.js';
+import { extractAmounts, verifiedAgainstFacts, groundedInToolResults } from './ai.js';
 
 describe('extractAmounts', () => {
   it('reads currency amounts regardless of symbol position', () => {
@@ -188,3 +188,33 @@ const cases = [
     expect(verifiedAgainstFacts(tampered, septFacts, 'EUR')).toBe(true);
   });
 });
+
+describe('groundedInToolResults', () => {
+  // what category_totals / search_transactions actually hand back
+  const results = [
+    '{"categories":[{"id":3,"name":"Groceries","total":310.96},{"id":7,"name":"Eating out","total":16.76}]}',
+    '{"month":"2026-09","spent":2045.98,"earned":3200}'
+  ];
+
+  it('accepts an answer whose figures all came from a tool', () => {
+    expect(groundedInToolResults('Groceries came to €310.96 against €2,045.98 spent.', results, 'EUR')).toBe(true);
+  });
+
+  // the one thing tool-calling does not prevent
+  it('rejects arithmetic the model did itself', () => {
+    expect(groundedInToolResults('Groceries and eating out came to €327.72 together.', results, 'EUR')).toBe(false);
+  });
+
+  it('reads small whole figures out of raw JSON, which are not money-shaped', () => {
+    expect(groundedInToolResults('That category holds 7 transactions worth €16.76.', ['{"count":7,"total":16.76}'], 'EUR')).toBe(true);
+  });
+
+  it('has nothing to check when the answer states no figures', () => {
+    expect(groundedInToolResults('You have no budgets set up yet.', results, 'EUR')).toBe(true);
+  });
+
+  it('stays out of the way when no tool was called', () => {
+    expect(groundedInToolResults('Rent was €1,150.', [], 'EUR')).toBe(true);
+  });
+});
+

@@ -104,7 +104,9 @@
 </script>
 
 <div class="card">
-  <div class="mb-1 flex items-center justify-between">
+  <!-- side by side once there is room; stacked on a phone, where sharing the
+       row squeezed the heading onto three lines -->
+  <div class="mb-1 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
     <h2 class="text-lg">Auto-categorisation rules</h2>
     <button type="button" class="btn btn-ghost btn-sm flex items-center gap-1.5" onclick={runPreview} disabled={previewing}>
       <Icon name="repeat" size={13} class={previewing ? 'animate-spin' : ''} />
@@ -276,13 +278,16 @@
                   <span class="min-w-0 flex-1 truncate text-[14px] font-medium">{c.description || '—'}</span>
                   <Money value={c.amount} currency={currency} colour="auto" class="tnum shrink-0 text-[14px] font-semibold" />
                 </span>
-                <span class="mt-0.5 flex items-center gap-1.5 truncate text-[12px] text-[var(--ink-faint)]">
+                <!-- the whole point of this row is which category becomes which,
+                     so the two names wrap rather than truncate: on a phone both
+                     ends were being cut to "Uncategori… → Eating …" -->
+                <span class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12px] text-[var(--ink-faint)]">
                   <span class="shrink-0">{shortDate(c.date)}</span>
                   <span>·</span>
-                  <span class="truncate">{c.from_category_name || 'Uncategorised'}</span>
+                  <span>{c.from_category_name || 'Uncategorised'}</span>
                   <Icon name="arrowRight" size={11} class="shrink-0" />
                   <span class="dot shrink-0" style="background:{c.to_category_color}"></span>
-                  <span class="truncate font-medium text-[var(--ink-soft)]">{c.to_category_name}</span>
+                  <span class="font-medium text-[var(--ink-soft)]">{c.to_category_name}</span>
                 </span>
               </span>
             </div>
