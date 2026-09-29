@@ -780,9 +780,24 @@ export async function summariseSavings(series, currency) {
 
 /* ------------------------------------------------------------ chat with your data */
 
-const CHAT_MAX_ROUNDS = 4; // tool round-trips per user message, before giving up
+// Tool round-trips per user message. A charted comparison legitimately needs
+// several: resolve the category, fetch a total per month, call show_chart, then
+// one more turn to actually write the answer once the chart comes back. Four
+// was not enough for that, and the question failed *after* drawing the chart.
+const CHAT_MAX_ROUNDS = 7;
 const CHAT_TOOL_TIMEOUT_TEXT =
   "That needed more digging than I can do in one go — try asking something narrower, like a shorter date range or one category.";
+
+/**
+ * Never hand back an empty bubble. The model sometimes ends a charted answer
+ * with the chart alone, which renders as a chart above nothing at all.
+ */
+function textOrFallback(text, charts) {
+  const t = (text || '').trim();
+  if (t) return t;
+  const title = charts?.[charts.length - 1]?.title;
+  return title ? `Here's ${title.charAt(0).toLowerCase()}${title.slice(1)}.` : '';
+}
 
 /**
  * Read-only tools the chat assistant can call — each one runs against a
@@ -997,7 +1012,8 @@ async function chatTurnAnthropic({ system, messages, userId, accountId, model, a
 
     const toolUses = res.content.filter((b) => b.type === 'tool_use');
     if (!toolUses.length) {
-      return { text: res.content.find((b) => b.type === 'text')?.text?.trim() ?? '', usage, charts };
+      const said = res.content.find((b) => b.type === 'text')?.text ?? '';
+      return { text: textOrFallback(said, charts), usage, charts };
     }
 
     convo.push({ role: 'assistant', content: res.content });
@@ -1014,7 +1030,24 @@ async function chatTurnAnthropic({ system, messages, userId, accountId, model, a
       })
     });
   }
-  return { text: CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+
+  // Out of rounds, but the tool results gathered so far usually already answer
+  // the question — ask once more with the tools withdrawn so it has to reply in
+  // prose, instead of apologising on top of a chart it just drew.
+  try {
+    const res = await anthropic.messages.create({
+      ...requestParams(model),
+      max_tokens: 1024,
+      system,
+      messages: [...convo, { role: 'user', content: CHAT_WRAP_UP }]
+    });
+    usage.input += res.usage?.input_tokens ?? 0;
+    usage.output += res.usage?.output_tokens ?? 0;
+    const said = res.content.find((b) => b.type === 'text')?.text ?? '';
+    return { text: textOrFallback(said, charts) || CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+  } catch {
+    return { text: textOrFallback('', charts) || CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+  }
 }
 
 async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiKeyOverride }) {
@@ -1044,7 +1077,7 @@ async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiK
 
     const msg = res.choices?.[0]?.message;
     const calls = msg?.tool_calls || [];
-    if (!calls.length) return { text: msg?.content?.trim() ?? '', usage, charts };
+    if (!calls.length) return { text: textOrFallback(msg?.content, charts), usage, charts };
 
     convo.push(msg);
     for (const c of calls) {
@@ -1063,8 +1096,27 @@ async function chatTurnOpenAI({ system, messages, userId, accountId, model, apiK
       convo.push({ role: 'tool', tool_call_id: c.id, content });
     }
   }
-  return { text: CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+
+  // same wrap-up as the Anthropic path above
+  try {
+    const res = await openai.chat.completions.create({
+      model,
+      max_completion_tokens: 1024,
+      messages: [...convo, { role: 'user', content: CHAT_WRAP_UP }]
+    });
+    usage.input += res.usage?.prompt_tokens ?? 0;
+    usage.output += res.usage?.completion_tokens ?? 0;
+    const said = res.choices?.[0]?.message?.content ?? '';
+    return { text: textOrFallback(said, charts) || CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+  } catch {
+    return { text: textOrFallback('', charts) || CHAT_TOOL_TIMEOUT_TEXT, usage, charts };
+  }
 }
+
+const CHAT_WRAP_UP =
+  'Answer now in plain prose, using only the figures already returned by the tools above. ' +
+  'Do not ask for another lookup. If those results do not fully answer the question, say what ' +
+  'they do show and what is missing.';
 
 const CHAT_SYSTEM = (currency, today) =>
   TORI_PERSONA + ' ' +
