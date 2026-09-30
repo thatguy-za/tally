@@ -6,10 +6,10 @@
   let { data } = $props();
 
   const STARTERS = [
-    { icon: 'transactions', text: 'How much did I spend on groceries this month?' },
-    { icon: 'reports', text: 'Chart my spending by category this month' },
-    { icon: 'budgets', text: 'Am I over budget on anything right now?' },
-    { icon: 'sparkle', text: 'How does this month compare to my usual?' }
+    { icon: 'wallet', text: 'How am I doing this month?' },
+    { icon: 'reports', text: 'What were the outliers in my spending over the last 12 months?' },
+    { icon: 'budgets', text: 'How much have I put away this year, and am I keeping it up?' },
+    { icon: 'repeat', text: 'What do my subscriptions cost me over a year?' }
   ];
 
   // shown one at a time, picked fresh for each message, while Tori works
