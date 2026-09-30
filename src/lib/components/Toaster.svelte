@@ -9,9 +9,11 @@
     <button
       class="toast"
       transition:fly={{ x: 24, duration: 220 }}
-      onclick={() => dismiss(t.id)}
+      onclick={() => (t.onClick ? t.onClick() : dismiss(t.id))}
     >
-      <span class="t-mark"><Icon name={t.type === 'success' ? 'check' : 'sparkle'} size={11} stroke={2.5} /></span>
+      <span class="t-mark">
+        <Icon name={t.type === 'success' ? 'check' : t.type === 'update' ? 'download' : 'sparkle'} size={11} stroke={2.5} />
+      </span>
       <span>{t.message}</span>
     </button>
   {/each}

@@ -1,6 +1,5 @@
 <script>
   import { enhance } from '$app/forms';
-  import Icon from '$lib/components/Icon.svelte';
   let { form, data } = $props();
 
   let blocked = $state('');
@@ -21,9 +20,7 @@
 
 <div class="w-full max-w-sm rise">
   <div class="mb-7 flex flex-col items-center text-center">
-    <span class="mb-4 grid h-11 w-11 place-items-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-contrast)]">
-      <Icon name="wallet" size={22} stroke={2} />
-    </span>
+    <img src="/icon.svg" alt="" class="mb-4 h-11 w-11" />
     <h1 class="text-2xl" style="font-family:var(--font-display)">Welcome back</h1>
     <p class="mt-1 text-[13px] text-[var(--ink-faint)]">Sign in to Tally</p>
   </div>

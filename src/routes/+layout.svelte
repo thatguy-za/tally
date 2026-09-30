@@ -10,6 +10,7 @@
   import OnboardingOverlay from '$lib/components/OnboardingOverlay.svelte';
   import { initTheme } from '$lib/theme.svelte.js';
   import { initPrivacy } from '$lib/privacy.svelte.js';
+  import { toast } from '$lib/toast.svelte.js';
   let { data, children } = $props();
 
   let nav = $derived([
@@ -29,6 +30,30 @@
   $effect(() => {
     initTheme();
     initPrivacy();
+  });
+
+  // The service worker only caches its own static assets (see
+  // src/service-worker.js) — never pages or data — so registering it is
+  // purely about instant asset loads and a branded offline fallback, with
+  // no risk of one user on a shared device ever seeing another's cached page.
+  $effect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('/service-worker.js').then((reg) => {
+      reg.addEventListener('updatefound', () => {
+        const installing = reg.installing;
+        installing?.addEventListener('statechange', () => {
+          // a controller already existing means this is an update, not the
+          // very first install — nothing to announce the first time around
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+            toast('A new version is ready — tap to refresh.', {
+              type: 'update',
+              duration: 0,
+              onClick: () => location.reload()
+            });
+          }
+        });
+      });
+    });
   });
 
   onNavigate((navigation) => {
@@ -70,9 +95,7 @@
         </button>
 
         <a href="/insights" class="flex shrink-0 items-center gap-2.5">
-          <span class="grid h-8 w-8 place-items-center rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-contrast)]">
-            <Icon name="wallet" size={17} stroke={2} />
-          </span>
+          <img src="/icon.svg" alt="" class="h-8 w-8" />
           <span class="text-[17px] font-medium tracking-tight" style="font-family:var(--font-display)">Tally</span>
         </a>
 
