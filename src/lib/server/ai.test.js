@@ -259,6 +259,37 @@ describe('groundedInToolResults', () => {
     expect(groundedInToolResults('You spent €135 more than usual.', toolResult, 'EUR')).toBe(false);
     expect(groundedInToolResults("You're spending 135% more than usual.", toolResult, 'EUR')).toBe(true);
   });
+
+  // real failure caught while re-testing budget wording: Transport's pct is
+  // 40 and its pctOver is -60 (60 under), and the model said "60% of
+  // budget" — 60 genuinely appears in the tool result, and it IS a
+  // percentage, but it's the wrong one: pctOver, not pct
+  describe('distinguishing which percentage a claim is (pct vs pctOver vs vsUsual)', () => {
+    const toolResult = ['{"name":"Transport","target":150,"actual":60,"pct":40,"pctOver":-60}'];
+
+    it('rejects "X% of budget" when X is really a different category\'s pctOver', () => {
+      expect(groundedInToolResults('Transport is at 60% of budget.', toolResult, 'EUR')).toBe(false);
+    });
+
+    it('accepts "X% of budget" for the real pct figure', () => {
+      expect(groundedInToolResults('Transport is at 40% of budget.', toolResult, 'EUR')).toBe(true);
+    });
+
+    it('accepts "X% under budget" for the real pctOver figure', () => {
+      expect(groundedInToolResults('Transport is 60% under budget.', toolResult, 'EUR')).toBe(true);
+    });
+
+    it('rejects "X% under budget" when X is really pct, not pctOver', () => {
+      expect(groundedInToolResults('Transport is 40% under budget.', toolResult, 'EUR')).toBe(false);
+    });
+
+    it('falls back to accepting any percentage when the phrasing gives no cue', () => {
+      // "at 40%" alone, with nothing after it, could plausibly be either —
+      // same permissive default verifiedAgainstFacts uses for an unnamed category
+      expect(groundedInToolResults('Transport is sitting at 40% right now.', toolResult, 'EUR')).toBe(true);
+      expect(groundedInToolResults('Transport is sitting at 60% right now.', toolResult, 'EUR')).toBe(true);
+    });
+  });
 });
 
 describe('pctVsUsual', () => {

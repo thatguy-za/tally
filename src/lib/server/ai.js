@@ -414,6 +414,25 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * a *percentage* field (pctOver) happened to equal 19, when the actual
  * amount was €15.
  */
+/**
+ * Several tool-returned percentages mean different things — "% of budget"
+ * (pct), "% over/under budget" (pctOver), "% more/less than usual"
+ * (vsUsualPct/pctChange) — and the same digit can be any of them depending
+ * on the category. Guessing which one a stated percentage refers to from the
+ * words right after it (the same way factsByLabel below reads which category
+ * a currency figure belongs to from the words around it) is what lets the
+ * check tell "19% over budget" apart from "19% of budget" even though both
+ * are, numerically, just "19". `null` means the phrasing didn't give a
+ * confident cue either way — see groundedInToolResults for how that's handled.
+ */
+function classifyStatedPctMeaning(text, afterIndex) {
+  const window = text.slice(afterIndex, afterIndex + 40);
+  if (/^\s*(?:more|less|higher|lower|above|below)\b[^.?!]{0,25}\busual\b/i.test(window)) return 'vsUsual';
+  if (/^\s*(?:over|under|above|below)\b[^.?!]{0,20}\b(?:budget|target)\b/i.test(window)) return 'pctOver';
+  if (/^\s*of\b[^.?!]{0,20}\b(?:budget|target)\b/i.test(window)) return 'pct';
+  return null;
+}
+
 function extractTypedAmounts(text, currency) {
   let symbol, group = ',', decimal = '.';
   try {
@@ -479,10 +498,11 @@ function extractTypedAmounts(text, currency) {
     while ((m = re.exec(text))) {
       const n = parseFloat(m[1].split(group).join('').replace(decimal, '.'));
       if (!Number.isFinite(n)) continue;
-      const key = `${pattern.kind}:${n}`;
+      const meaning = pattern.kind === 'percent' ? classifyStatedPctMeaning(text, re.lastIndex) : null;
+      const key = `${pattern.kind}:${n}:${meaning}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      amounts.push({ value: n, kind: pattern.kind });
+      amounts.push({ value: n, kind: pattern.kind, meaning });
     }
   }
   return amounts;
@@ -1131,25 +1151,25 @@ function executeChatTool(userId, accountId, name, input, charts) {
 
 const chatToolSpecs = CHAT_TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }));
 
+/** Which specific percentage a tool's own field name is — see classifyStatedPctMeaning. */
+const PCT_MEANING_BY_KEY = { pct: 'pct', pctover: 'pctOver', pctchange: 'vsUsual', vsusualpct: 'vsUsual' };
+
 /**
- * Every number appearing in the tool results a chat answer was built from.
- * Unlike a summary's facts sheet these are raw JSON, so take *all* numeric
- * literals rather than only money-shaped ones — ids and counts among them.
- * Over-collecting here only makes the check more forgiving, which is the right
- * way to be wrong: a false rejection would throw away a good answer.
- */
-/**
- * Every number in a tool result, split by whether its own JSON key marks it
- * as a percentage (pct/percent/rate) or not — so a currency-tagged figure in
- * the answer can't be satisfied by a percentage that happens to share the
- * same digits, and vice versa. This is what actually caught the model
- * writing "€19 over" when pctOver was 19 but the real amount was €15: 19
- * genuinely appears in the tool result, just as a percentage, not a euro
- * amount. Falls back to one undifferentiated pool (as "other") when a result
- * isn't parseable JSON (e.g. `{"error": "..."}` already came through that way).
+ * Every number in a tool result: currency/plain figures in `other`, and
+ * percentages split by *which* percentage they are (see PCT_MEANING_BY_KEY),
+ * with anything percent-shaped but not one of those specific fields (e.g.
+ * savingsRate) filed under 'other' within `byMeaning` — still recognised as
+ * a percentage, just not one whose meaning the phrasing check can pin down.
+ * Splitting by meaning (not just currency-vs-percent) is what catches the
+ * model saying "60% of budget" when the 60 it saw was really pctOver (a
+ * *different* category's under-budget amount) — both 40 (pct) and 60
+ * (pctOver) are genuine percentages in the same tool result, so telling them
+ * apart needs more than "is this a percentage at all". Falls back to one
+ * undifferentiated `other` pool when a result isn't parseable JSON (e.g.
+ * `{"error": "..."}` already came through that way).
  */
 function numbersInToolResults(results) {
-  const percent = [];
+  const byMeaning = {}; // meaning ('pct'|'pctOver'|'vsUsual'|'other') -> number[]
   const other = [];
   // a tool result stores a shortfall/decrease as a signed negative (delta:
   // -330, pctChange: -45), but natural phrasing states the magnitude with a
@@ -1160,20 +1180,28 @@ function numbersInToolResults(results) {
     pool.push(n);
     if (n < 0) pool.push(-n);
   };
-  const isPct = (key) => key != null && /pct|percent|rate/i.test(key);
+  const isPctKey = (key) => key != null && /pct|percent|rate/i.test(key);
   // once a key on the way down says "percentage" (vsUsualPct, pctChange...),
   // every number nested under it is one too, even where the leaf's own key
   // is a plain name shared with a currency field elsewhere — vsUsualPct.spent
-  // is a percentage, not an amount, despite being called "spent"
-  const walk = (node, key, pct) => {
-    const nowPct = pct || isPct(key);
-    if (typeof node === 'number' && Number.isFinite(node)) add(nowPct ? percent : other, node);
-    else if (Array.isArray(node)) for (const v of node) walk(v, key, nowPct);
-    else if (node && typeof node === 'object') for (const [k, v] of Object.entries(node)) walk(v, k, nowPct);
+  // is a percentage, not an amount, despite being called "spent". The first
+  // key that names a *specific* percentage wins for meaning; a plain "pct"
+  // nested under nothing more specific stays "pct".
+  const walk = (node, key, ctx) => {
+    const meaning = (key && PCT_MEANING_BY_KEY[key.toLowerCase()]) || ctx.meaning;
+    const percent = ctx.percent || isPctKey(key);
+    const next = { percent, meaning };
+    if (typeof node === 'number' && Number.isFinite(node)) {
+      if (!percent) return add(other, node);
+      const bucket = meaning || 'other';
+      (byMeaning[bucket] ??= []);
+      add(byMeaning[bucket], node);
+    } else if (Array.isArray(node)) for (const v of node) walk(v, key, next);
+    else if (node && typeof node === 'object') for (const [k, v] of Object.entries(node)) walk(v, k, next);
   };
   for (const r of results) {
     try {
-      walk(JSON.parse(r), null, false);
+      walk(JSON.parse(r), null, { percent: false, meaning: null });
     } catch {
       for (const m of String(r).matchAll(/-?\d+(?:\.\d+)?/g)) {
         const n = parseFloat(m[0]);
@@ -1181,7 +1209,7 @@ function numbersInToolResults(results) {
       }
     }
   }
-  return { percent, other };
+  return { byMeaning, other };
 }
 
 /**
@@ -1196,9 +1224,18 @@ function numbersInToolResults(results) {
 export function groundedInToolResults(text, toolResults, currency) {
   const said = extractTypedAmounts(text, currency);
   if (!said.length || !toolResults.length) return true;
-  const { percent, other } = numbersInToolResults(toolResults);
+  const { byMeaning, other } = numbersInToolResults(toolResults);
   const near = (n, pool) => pool.some((g) => Math.abs(n - g) <= roundingTolerance(n));
-  return said.every((a) => near(a.value, a.kind === 'percent' ? percent : other));
+  return said.every((a) => {
+    if (a.kind !== 'percent') return near(a.value, other);
+    // the phrasing confidently said which percentage this is ("over budget",
+    // "of budget", "more than usual") — it has to be grounded by that exact
+    // one, not just any percentage the tools happened to return; ambiguous
+    // phrasing (no recognised cue) falls back to any of them, same as the
+    // permissive default verifiedAgainstFacts uses for an unnamed category
+    if (a.meaning) return near(a.value, byMeaning[a.meaning] || []);
+    return near(a.value, Object.values(byMeaning).flat());
+  });
 }
 
 /**
