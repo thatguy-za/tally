@@ -1306,7 +1306,14 @@ const CHAT_SYSTEM = (currency, today) =>
   'reuse a number from earlier in the conversation without re-checking it. Use list_categories ' +
   'to resolve a category name to its id, category_totals for spending/income by category, ' +
   'search_transactions for specific line items, period_summary for how a period compares to ' +
-  'usual, and budget_status for target-vs-actual in a month. Transactions can carry a short ' +
+  'usual, and budget_status for target-vs-actual in a month. period_summary\'s vsUsualPct and ' +
+  'each mover\'s pctChange are already "how much more or less than usual", so a value of 133 ' +
+  'means "133% more than usual" (roughly 2.3x), never "133% of usual" (which would mean only ' +
+  '33% more) — get that wrong and the number is technically present but the sentence around it ' +
+  'is not. budget_status\'s pct is "how much of the target" (119 means "at 119% of budget"), ' +
+  'while its pctOver is already the over/under difference (19 means "19% over budget", -10 ' +
+  'means "10% under") — say whichever one you were given, never turn one into the other or ' +
+  'subtract 100 from pct yourself. Transactions can carry a short ' +
   'free-text note as well as a description — search_transactions\'s search argument checks ' +
   'both. A spending/income question naming something that is not one of this person\'s actual ' +
   'categories (confirm against list_categories, don\'t assume) — a merchant, a note, a label ' +
