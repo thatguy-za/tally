@@ -405,7 +405,16 @@ export async function categoriseUncategorisedTransactions(userId, accountId = nu
  * shape formatMoney() actually produces (symbol before/after, its grouping
  * and decimal separators), rather than assuming "$1,234.56".
  */
-export function extractAmounts(text, currency) {
+/**
+ * Same as `extractAmounts`, but keeps each figure's kind — 'currency' (an
+ * amount) or 'percent' — rather than flattening them into one pool. Kept
+ * apart so a currency-tagged figure in an answer can't be satisfied by a
+ * percentage that happens to share the same digits, and vice versa: the
+ * real bug this exists for was "€19 over" being accepted as grounded because
+ * a *percentage* field (pctOver) happened to equal 19, when the actual
+ * amount was €15.
+ */
+function extractTypedAmounts(text, currency) {
   let symbol, group = ',', decimal = '.';
   try {
     const parts = new Intl.NumberFormat(undefined, { style: 'currency', currency }).formatToParts(1234.5);
@@ -433,11 +442,14 @@ export function extractAmounts(text, currency) {
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const number = `\\d{1,3}(?:${esc(group)}\\d{3})*(?:${esc(decimal)}\\d+)?|\\d+(?:${esc(decimal)}\\d+)?`;
   const patterns = symbol
-    ? [`${esc(symbol)}\\s?-?(${number})`, `-?(${number})\\s?${esc(symbol)}`]
+    ? [
+        { source: `${esc(symbol)}\\s?-?(${number})`, kind: 'currency' },
+        { source: `-?(${number})\\s?${esc(symbol)}`, kind: 'currency' }
+      ]
     : [];
-  patterns.push(`-?(${number})\\s?%`); // bare percentages, e.g. "97% of it elapsed"
+  patterns.push({ source: `-?(${number})\\s?%`, kind: 'percent' }); // bare percentages, e.g. "97% of it elapsed"
   // "1,850 euros" / "1850 EUR" — the code is usually written upper case
-  patterns.push({ source: `-?(${number})\\s?(?:${[...names].map(esc).join('|')})\\b`, flags: 'gi' });
+  patterns.push({ source: `-?(${number})\\s?(?:${[...names].map(esc).join('|')})\\b`, flags: 'gi', kind: 'currency' });
   // a bare figure the model wrote without any currency marking at all. A
   // thousands separator, minor units or four-plus digits all say "money";
   // plain small integers do not, and are left alone — "3 months" and "the
@@ -446,27 +458,38 @@ export function extractAmounts(text, currency) {
   // the lookbehind has to exclude the group and decimal separators too, or
   // this matches *inside* a figure the symbol patterns already read: "€3,247.00"
   // would yield a phantom 247, which then makes unrelated numbers look traceable
-  patterns.push(
-    `(?<![${esc(symbol ?? '')}\\d${esc(group)}${esc(decimal)}])` +
+  patterns.push({
+    source:
+      `(?<![${esc(symbol ?? '')}\\d${esc(group)}${esc(decimal)}])` +
       `(-?\\d{1,3}(?:${esc(group)}\\d{3})+(?:${esc(decimal)}\\d+)?|-?\\d+${esc(decimal)}\\d{2}|-?\\d{4,})` +
-      `(?![\\d${esc(decimal)}])`
-  );
+      `(?![\\d${esc(decimal)}])`,
+    kind: 'currency'
+  });
 
+  const seen = new Set();
   const amounts = [];
   for (const pattern of patterns) {
     let re;
     try {
-      re = typeof pattern === 'string' ? new RegExp(pattern, 'g') : new RegExp(pattern.source, pattern.flags);
+      re = new RegExp(pattern.source, pattern.flags || 'g');
     } catch {
       continue; // a lookbehind-less engine simply skips that refinement
     }
     let m;
     while ((m = re.exec(text))) {
       const n = parseFloat(m[1].split(group).join('').replace(decimal, '.'));
-      if (Number.isFinite(n)) amounts.push(n);
+      if (!Number.isFinite(n)) continue;
+      const key = `${pattern.kind}:${n}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      amounts.push({ value: n, kind: pattern.kind });
     }
   }
-  return [...new Set(amounts)];
+  return amounts;
+}
+
+export function extractAmounts(text, currency) {
+  return [...new Set(extractTypedAmounts(text, currency).map((a) => a.value))];
 }
 
 /**
@@ -520,11 +543,16 @@ function factsByLabel(facts, currency) {
 }
 
 export function verifiedAgainstFacts(text, facts, currency) {
-  const said = extractAmounts(text, currency);
-  if (!said.length) return true;
-  const given = extractAmounts(facts, currency);
-  const traceable = (n) => given.some((g) => Math.abs(n - g) <= roundingTolerance(n));
-  if (!said.every(traceable)) return false;
+  const saidTyped = extractTypedAmounts(text, currency);
+  if (!saidTyped.length) return true;
+  // a currency figure must trace to a currency figure, and a percentage (the
+  // facts sheet's only one is "elapsed" — "97% of it elapsed") to a
+  // percentage — the same digits meaning two different things should not
+  // license each other, same reasoning as groundedInToolResults
+  const givenTyped = extractTypedAmounts(facts, currency);
+  const pool = (kind) => givenTyped.filter((g) => g.kind === kind).map((g) => g.value);
+  const traceable = (a) => pool(a.kind).some((g) => Math.abs(a.value - g) <= roundingTolerance(a.value));
+  if (!saidTyped.every(traceable)) return false;
 
   // Every figure exists somewhere in the facts — but that alone lets the model
   // hang the right number on the wrong name ("Eating out hit €250" when €250
@@ -1110,36 +1138,67 @@ const chatToolSpecs = CHAT_TOOLS.map((t) => ({ name: t.name, description: t.desc
  * Over-collecting here only makes the check more forgiving, which is the right
  * way to be wrong: a false rejection would throw away a good answer.
  */
+/**
+ * Every number in a tool result, split by whether its own JSON key marks it
+ * as a percentage (pct/percent/rate) or not — so a currency-tagged figure in
+ * the answer can't be satisfied by a percentage that happens to share the
+ * same digits, and vice versa. This is what actually caught the model
+ * writing "€19 over" when pctOver was 19 but the real amount was €15: 19
+ * genuinely appears in the tool result, just as a percentage, not a euro
+ * amount. Falls back to one undifferentiated pool (as "other") when a result
+ * isn't parseable JSON (e.g. `{"error": "..."}` already came through that way).
+ */
 function numbersInToolResults(results) {
-  const out = [];
+  const percent = [];
+  const other = [];
+  // a tool result stores a shortfall/decrease as a signed negative (delta:
+  // -330, pctChange: -45), but natural phrasing states the magnitude with a
+  // directional word instead ("in the red by €330", "cut by 45%") rather
+  // than literally writing "-45%" — both are the same fact, so both must be
+  // recognised as grounded
+  const add = (pool, n) => {
+    pool.push(n);
+    if (n < 0) pool.push(-n);
+  };
+  const isPct = (key) => key != null && /pct|percent|rate/i.test(key);
+  // once a key on the way down says "percentage" (vsUsualPct, pctChange...),
+  // every number nested under it is one too, even where the leaf's own key
+  // is a plain name shared with a currency field elsewhere — vsUsualPct.spent
+  // is a percentage, not an amount, despite being called "spent"
+  const walk = (node, key, pct) => {
+    const nowPct = pct || isPct(key);
+    if (typeof node === 'number' && Number.isFinite(node)) add(nowPct ? percent : other, node);
+    else if (Array.isArray(node)) for (const v of node) walk(v, key, nowPct);
+    else if (node && typeof node === 'object') for (const [k, v] of Object.entries(node)) walk(v, k, nowPct);
+  };
   for (const r of results) {
-    for (const m of String(r).matchAll(/-?\d+(?:\.\d+)?/g)) {
-      const n = parseFloat(m[0]);
-      if (!Number.isFinite(n)) continue;
-      out.push(n);
-      // a tool result stores a shortfall/decrease as a signed negative
-      // (delta: -330, pctChange: -45), but natural phrasing states the
-      // magnitude with a directional word instead ("in the red by €330",
-      // "cut by 45%") rather than literally writing "-45%" — both are the
-      // same fact, so both must be recognised as grounded
-      if (n < 0) out.push(-n);
+    try {
+      walk(JSON.parse(r), null, false);
+    } catch {
+      for (const m of String(r).matchAll(/-?\d+(?:\.\d+)?/g)) {
+        const n = parseFloat(m[0]);
+        if (Number.isFinite(n)) add(other, n);
+      }
     }
   }
-  return out;
+  return { percent, other };
 }
 
 /**
  * The chat equivalent of verifiedAgainstFacts: every figure the answer states
- * has to trace back to something a tool actually returned. Chat is already
- * grounded by its tools, so this is a backstop against the model doing its own
- * arithmetic in prose — the one thing tool-calling does not prevent.
+ * has to trace back to something a tool actually returned, and a percentage
+ * must trace back to a percentage specifically (see numbersInToolResults).
+ * Chat is already grounded by its tools, so this is a backstop against the
+ * model doing its own arithmetic in prose — the one thing tool-calling does
+ * not prevent.
  * @param {string} text @param {string[]} toolResults @param {string} currency
  */
 export function groundedInToolResults(text, toolResults, currency) {
-  const said = extractAmounts(text, currency);
+  const said = extractTypedAmounts(text, currency);
   if (!said.length || !toolResults.length) return true;
-  const given = numbersInToolResults(toolResults);
-  return said.every((n) => given.some((g) => Math.abs(n - g) <= roundingTolerance(n)));
+  const { percent, other } = numbersInToolResults(toolResults);
+  const near = (n, pool) => pool.some((g) => Math.abs(n - g) <= roundingTolerance(n));
+  return said.every((a) => near(a.value, a.kind === 'percent' ? percent : other));
 }
 
 /**

@@ -237,6 +237,28 @@ describe('groundedInToolResults', () => {
     const toolResult = ['{"spent":2045.98,"usualBaseline":{"spent":1752.06}}'];
     expect(groundedInToolResults("You're spending about 17% more than usual this month.", toolResult, 'EUR')).toBe(false);
   });
+
+  // real failure caught while re-testing budget_status: it wrote "€19 over"
+  // when the actual overage was €15 — 19 genuinely appears in the tool
+  // result, but only as pctOver (a percentage), not as a euro amount, and
+  // the untyped check couldn't tell the two apart
+  it('rejects a percentage figure written back with a currency symbol', () => {
+    const toolResult = ['{"name":"Eating out","target":80,"actual":95,"remaining":-15,"pctOver":19}'];
+    expect(groundedInToolResults('Eating out is €19 over your €80 budget.', toolResult, 'EUR')).toBe(false);
+  });
+
+  it('still accepts that same percentage stated as a percentage', () => {
+    const toolResult = ['{"name":"Eating out","target":80,"actual":95,"remaining":-15,"pctOver":19}'];
+    expect(groundedInToolResults('Eating out is 19% over its €80 budget, €15 over.', toolResult, 'EUR')).toBe(true);
+  });
+
+  // vsUsualPct.spent is a percentage even though its own key ("spent") is
+  // also used for a real currency amount elsewhere in the same result
+  it('classifies a percentage nested under a plainly-named key by its parent, not itself', () => {
+    const toolResult = ['{"spent":3830,"vsUsualPct":{"spent":135}}'];
+    expect(groundedInToolResults('You spent €135 more than usual.', toolResult, 'EUR')).toBe(false);
+    expect(groundedInToolResults("You're spending 135% more than usual.", toolResult, 'EUR')).toBe(true);
+  });
 });
 
 describe('pctVsUsual', () => {
