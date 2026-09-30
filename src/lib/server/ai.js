@@ -486,6 +486,19 @@ function roundingTolerance(n) {
 }
 
 /**
+ * How far `actual` sits from `usual`, as a whole-number percentage — computed
+ * here so a chat answer to "how does this compare to usual" can quote a real
+ * percentage instead of the model working one out itself (see period_summary
+ * in executeChatTool). `null` when `usual` is too close to zero to divide by,
+ * or missing entirely (no baseline yet) — the model is expected to describe
+ * the period on its own terms rather than invent a percentage in that case.
+ */
+export function pctVsUsual(actual, usual) {
+  if (usual == null || Math.abs(usual) < 0.5) return null;
+  return Math.round(((actual - usual) / usual) * 100);
+}
+
+/**
  * Splits the facts sheet into the per-category figures ("- Groceries: €310.96
  * (usual €353.81 — €42.85 less)" gives Groceries all three) and the
  * period-level ones (Came in / Spent / Saved and their comparisons). Only the
@@ -930,7 +943,7 @@ const CHAT_TOOLS = [
   },
   {
     name: 'period_summary',
-    description: 'Earned/spent/saved for a period, and how it compares to this person\'s usual (median) month — for "how am I doing" / "is this more than usual" questions.',
+    description: 'Earned/spent/saved for a period, and how it compares to this person\'s usual (median) month — for "how am I doing" / "is this more than usual" / "how does this compare to usual" questions. The result already includes vsUsualPct and each mover\'s pctChange, so quote those directly rather than computing a percentage yourself.',
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -943,7 +956,7 @@ const CHAT_TOOLS = [
   },
   {
     name: 'budget_status',
-    description: "Target vs. actual per category for one month — for questions about budgets or targets.",
+    description: "Target vs. actual per category for one month — for questions about budgets or targets. Includes pct (% of target) and pctOver (% over/under target); quote those directly rather than deriving one from the other.",
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -1046,6 +1059,9 @@ function executeChatTool(userId, accountId, name, input, charts) {
 
     case 'period_summary': {
       const ins = periodInsights(userId, input.from, input.to, accountId);
+      // same basis periodInsights itself compares against "usual" with — a
+      // single month's own actual, or the period's typical (median) month
+      const basis = (key) => (ins.single ? ins[key] : ins.avg[key]);
       return {
         earned: ins.earned,
         spent: ins.spent,
@@ -1054,17 +1070,30 @@ function executeChatTool(userId, accountId, name, input, charts) {
         savingsRate: ins.rate,
         avgPerMonth: ins.avg,
         usualBaseline: ins.baseline,
-        biggestMovesVsUsual: ins.movers
+        // computed here, not left for the model to work out — "how does this
+        // compare to usual" is exactly the question that invited it to invent
+        // its own percentage, which the fact-checking below then had to reject
+        vsUsualPct: ins.baseline && {
+          earned: pctVsUsual(basis('earned'), ins.baseline.earned),
+          spent: pctVsUsual(basis('spent'), ins.baseline.spent),
+          saved: pctVsUsual(basis('saved'), ins.baseline.saved)
+        },
+        biggestMovesVsUsual: ins.movers.map((m) => ({ ...m, pctChange: pctVsUsual(m.spent, m.usual) }))
       };
     }
 
     case 'budget_status':
+      // pct ("% of target") and pctOver ("% over/under target", the more
+      // natural way to say it — "19% over" rather than "119% of target") are
+      // both included so the model never has to derive one from the other
       return budgetStatus(userId, input.month, accountId).map((r) => ({
         name: r.name,
         kind: r.kind,
         target: r.target,
         actual: r.actual,
-        remaining: r.remaining
+        remaining: r.remaining,
+        pct: r.pct,
+        pctOver: r.target ? pctVsUsual(r.actual, r.target) : null
       }));
 
     default:
@@ -1086,7 +1115,14 @@ function numbersInToolResults(results) {
   for (const r of results) {
     for (const m of String(r).matchAll(/-?\d+(?:\.\d+)?/g)) {
       const n = parseFloat(m[0]);
-      if (Number.isFinite(n)) out.push(n);
+      if (!Number.isFinite(n)) continue;
+      out.push(n);
+      // a tool result stores a shortfall/decrease as a signed negative
+      // (delta: -330, pctChange: -45), but natural phrasing states the
+      // magnitude with a directional word instead ("in the red by €330",
+      // "cut by 45%") rather than literally writing "-45%" — both are the
+      // same fact, so both must be recognised as grounded
+      if (n < 0) out.push(-n);
     }
   }
   return out;

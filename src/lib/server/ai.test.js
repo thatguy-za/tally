@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractAmounts, verifiedAgainstFacts, groundedInToolResults } from './ai.js';
+import { extractAmounts, verifiedAgainstFacts, groundedInToolResults, pctVsUsual } from './ai.js';
 
 describe('extractAmounts', () => {
   it('reads currency amounts regardless of symbol position', () => {
@@ -209,12 +209,49 @@ describe('groundedInToolResults', () => {
     expect(groundedInToolResults('That category holds 7 transactions worth €16.76.', ['{"count":7,"total":16.76}'], 'EUR')).toBe(true);
   });
 
+  // a tool stores a shortfall as a signed negative (kept: -330, pctChange:
+  // -45), but natural phrasing states the magnitude with a directional word
+  // ("in the red by €330", "cut by 45%") rather than writing "-45%" literally
+  it('accepts a magnitude stated with a directional word for a negative tool figure', () => {
+    const toolResult = ['{"kept":-330,"biggestMovesVsUsual":[{"name":"Eating out","pctChange":-45}]}'];
+    expect(groundedInToolResults("You're in the red by €330 this month, but eating out is down 45%.", toolResult, 'EUR')).toBe(true);
+  });
+
   it('has nothing to check when the answer states no figures', () => {
     expect(groundedInToolResults('You have no budgets set up yet.', results, 'EUR')).toBe(true);
   });
 
   it('stays out of the way when no tool was called', () => {
     expect(groundedInToolResults('Rent was €1,150.', [], 'EUR')).toBe(true);
+  });
+
+  // period_summary now hands the chat tool a ready-made percentage (see
+  // pctVsUsual below) precisely so a "how does this compare to usual"
+  // question has a real number to quote instead of computing one itself
+  it('accepts a percentage that came from period_summary\'s own vsUsualPct', () => {
+    const toolResult = ['{"spent":2045.98,"usualBaseline":{"spent":1752.06},"vsUsualPct":{"spent":17}}'];
+    expect(groundedInToolResults("You're spending about 17% more than usual this month.", toolResult, 'EUR')).toBe(true);
+  });
+
+  it('still rejects a percentage the model worked out itself', () => {
+    const toolResult = ['{"spent":2045.98,"usualBaseline":{"spent":1752.06}}'];
+    expect(groundedInToolResults("You're spending about 17% more than usual this month.", toolResult, 'EUR')).toBe(false);
+  });
+});
+
+describe('pctVsUsual', () => {
+  it('computes a signed whole-number percentage change', () => {
+    expect(pctVsUsual(2045.98, 1752.06)).toBe(17);
+    expect(pctVsUsual(1450, 1600)).toBe(-9);
+  });
+
+  it('returns null rather than divide by a usual too close to zero', () => {
+    expect(pctVsUsual(50, 0)).toBeNull();
+    expect(pctVsUsual(50, 0.2)).toBeNull();
+  });
+
+  it('returns null when there is no baseline at all', () => {
+    expect(pctVsUsual(50, null)).toBeNull();
   });
 });
 
