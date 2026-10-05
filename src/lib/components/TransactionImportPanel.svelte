@@ -1,5 +1,5 @@
 <script>
-  import { tick } from 'svelte';
+  import { tick, onMount } from 'svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { slide } from 'svelte/transition';
@@ -8,6 +8,7 @@
   import CategorySelect from './CategorySelect.svelte';
   import MerchantLogo from './MerchantLogo.svelte';
   import { formatMoney } from '$lib/privacy.svelte.js';
+  import { isIOS } from '$lib/device.js';
   import { parseCsv, parseAmount, parseDate, guessMapping, dupeKey, DATE_FORMATS } from '$lib/csv.js';
   import { guessDomain } from '$lib/logo.js';
 
@@ -28,6 +29,17 @@
   let selectedFiles = $state([]); // File[] — one CSV or several from the same bank
   let dragOver = $state(false);
   let fileInputEl = $state();
+
+  // a phone has nothing to drop a file onto, and iOS's Files picker greys out
+  // anything it doesn't label as CSV — statements saved via "Save to Files"
+  // often come through as generic text or data. The server checks the content
+  // is a real CSV anyway, so iOS gets an unfiltered picker.
+  let touch = $state(false);
+  let ios = $state(false);
+  onMount(() => {
+    touch = matchMedia('(pointer: coarse)').matches;
+    ios = isIOS(navigator);
+  });
 
   function onFileChange(e) {
     selectedFiles = Array.from(e.currentTarget.files || []);
@@ -492,13 +504,18 @@
         <p class="font-medium">
           {selectedFiles.length === 1 ? selectedFiles[0].name : `${selectedFiles.length} files selected`}
         </p>
-        <p class="text-xs text-[var(--ink-faint)]">Click or drop to choose different files</p>
+        <p class="text-xs text-[var(--ink-faint)]">{touch ? 'Tap to choose different files' : 'Click or drop to choose different files'}</p>
       {:else}
-        <p class="font-medium">Drop your CSV here, or click to browse</p>
+        <p class="font-medium">{touch ? 'Tap to choose your statement' : 'Drop your CSV here, or click to browse'}</p>
         <p class="max-w-xs text-xs text-[var(--ink-faint)]">
           Any bank export — comma, semicolon or tab separated, columns in any order. Max 8 MB each.
           Select several files from the same bank to import them all at once.
         </p>
+        {#if ios}
+          <p class="max-w-xs text-xs text-[var(--ink-faint)]">
+            On iPhone or iPad, first save the statement to the Files app (Share, then Save to Files), then choose it here.
+          </p>
+        {/if}
       {/if}
     </label>
     <input
@@ -507,7 +524,7 @@
       id="file"
       name="file"
       type="file"
-      accept=".csv,.tsv,.txt,text/csv"
+      accept={ios ? undefined : '.csv,.tsv,.txt,text/csv'}
       multiple
       required
       onchange={onFileChange}
