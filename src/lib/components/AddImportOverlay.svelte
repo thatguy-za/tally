@@ -3,8 +3,8 @@
   import ManualAddPanel from './ManualAddPanel.svelte';
   import TransactionImportPanel from './TransactionImportPanel.svelte';
 
-  /** @type {{ data: any, form: any, onClose: () => void }} */
-  let { data, form, onClose } = $props();
+  /** @type {{ data: any, form: any, onClose: () => void, initialFiles?: File[] }} */
+  let { data, form, onClose, initialFiles = [] } = $props();
 
   let tab = $state('import');
   // the CSV tab's own upload step (before a file's been analysed) is just a
@@ -53,7 +53,7 @@
     {#if tab === 'add'}
       <ManualAddPanel {data} {form} {onClose} />
     {:else}
-      <TransactionImportPanel {data} {onClose} bind:compact />
+      <TransactionImportPanel {data} {onClose} {initialFiles} bind:compact />
     {/if}
   </div>
 </div>

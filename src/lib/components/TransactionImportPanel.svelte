@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { slide } from 'svelte/transition';
@@ -10,8 +11,14 @@
   import { parseCsv, parseAmount, parseDate, guessMapping, dupeKey, DATE_FORMATS } from '$lib/csv.js';
   import { guessDomain } from '$lib/logo.js';
 
-  /** @type {{ data: any, onClose: () => void, compact?: boolean }} */
-  let { data, onClose, compact = $bindable(true) } = $props();
+  /**
+   * `initialFiles` is a statement already chosen elsewhere — one shared to the
+   * app from another Android app, see /share. It is dropped into the upload
+   * step and sent straight on to review, so the journey from the share sheet
+   * is the normal import flow minus the file picker.
+   * @type {{ data: any, onClose: () => void, compact?: boolean, initialFiles?: File[] }}
+   */
+  let { data, onClose, compact = $bindable(true), initialFiles = [] } = $props();
 
   // local copy of the action result — kept outside the page's own `form` prop
   // so "Import another" can clear it and start over without a navigation
@@ -35,6 +42,17 @@
     fileInputEl.files = dt.files;
     selectedFiles = dropped;
   }
+
+  let preloaded = false;
+  $effect(() => {
+    if (preloaded || !initialFiles.length || !fileInputEl) return;
+    preloaded = true;
+    const dt = new DataTransfer();
+    for (const f of initialFiles) dt.items.add(f);
+    fileInputEl.files = dt.files;
+    selectedFiles = [...initialFiles];
+    tick().then(() => fileInputEl?.form?.requestSubmit());
+  });
 
   // ---- raw parse ----------------------------------------------------------
   // several files are assumed to share one layout (the same bank export,

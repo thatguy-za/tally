@@ -11,6 +11,8 @@
   import { initTheme } from '$lib/theme.svelte.js';
   import { initPrivacy } from '$lib/privacy.svelte.js';
   import { toast } from '$lib/toast.svelte.js';
+  import { dev } from '$app/environment';
+  import { peekStash } from '$lib/share-stash.js';
   let { data, children } = $props();
 
   let nav = $derived([
@@ -38,7 +40,12 @@
   // no risk of one user on a shared device ever seeing another's cached page.
   $effect(() => {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('/service-worker.js').then((reg) => {
+    // a shared statement nobody picked up (e.g. signed out at the time) is
+    // financial data in browser storage — peeking drops it once it has expired
+    peekStash().catch(() => {});
+    // in dev the worker is served as an ES module; the production build
+    // bundles it into a classic script
+    navigator.serviceWorker.register('/service-worker.js', { type: dev ? 'module' : 'classic' }).then((reg) => {
       reg.addEventListener('updatefound', () => {
         const installing = reg.installing;
         installing?.addEventListener('statechange', () => {

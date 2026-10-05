@@ -24,6 +24,10 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 function crossSiteBlocked(event) {
   const { request } = event;
   if (!UNSAFE_METHODS.has(request.method)) return false;
+  // the OS share sheet posts here with an Origin the browser chooses, not the
+  // page's — and this route never reads the body, it only redirects, so there
+  // is nothing a forged request could do with it
+  if (event.url.pathname === '/share-target') return false;
   const origin = request.headers.get('origin');
   if (!origin) return false;
 

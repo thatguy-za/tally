@@ -1,6 +1,7 @@
 <script>
+  import { onMount } from 'svelte';
   import { enhance } from '$app/forms';
-  import { goto, invalidateAll } from '$app/navigation';
+  import { goto, invalidateAll, replaceState } from '$app/navigation';
   import { page } from '$app/stores';
   import { fly, slide } from 'svelte/transition';
   import Icon from '$lib/components/Icon.svelte';
@@ -15,9 +16,29 @@
   import { formatMonth } from '$lib/currency.js';
   import { formatMoney } from '$lib/privacy.svelte.js';
   import { parseAmount } from '$lib/csv.js';
+  import { readStash, clearStash } from '$lib/share-stash.js';
   let { data, form } = $props();
 
-  let showAddImport = $state($page.url.searchParams.has('new'));
+  // arriving from /share, where a statement shared to the app waits in the
+  // share stash — the overlay opens once the file has been picked up so the
+  // import panel can start with it already chosen
+  const arrivedFromShare = $page.url.searchParams.has('shared');
+  let sharedFiles = $state([]);
+  let showAddImport = $state($page.url.searchParams.has('new') && !arrivedFromShare);
+
+  onMount(async () => {
+    if (!arrivedFromShare) return;
+    try {
+      sharedFiles = await readStash();
+    } catch {
+      sharedFiles = [];
+    }
+    // consumed — nothing should be left behind to be picked up twice
+    await clearStash().catch(() => {});
+    replaceState('/transactions', {});
+    showAddImport = true;
+    if (!sharedFiles.length) toast("That file didn't make it over — choose it here instead.", { type: 'info' });
+  });
   let showFilters = $state(false);
   let rulingId = $state(null);
   let ruleCategoryId = $state('');
@@ -760,5 +781,5 @@
 {/if}
 
 {#if showAddImport}
-  <AddImportOverlay {data} {form} onClose={() => (showAddImport = false)} />
+  <AddImportOverlay {data} {form} initialFiles={sharedFiles} onClose={() => (showAddImport = false)} />
 {/if}
