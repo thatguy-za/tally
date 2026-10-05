@@ -10,7 +10,7 @@
   import OnboardingOverlay from '$lib/components/OnboardingOverlay.svelte';
   import { initTheme } from '$lib/theme.svelte.js';
   import { initPrivacy } from '$lib/privacy.svelte.js';
-  import { toast } from '$lib/toast.svelte.js';
+  import { toast, toasts, dismiss } from '$lib/toast.svelte.js';
   import { dev } from '$app/environment';
   import { peekStash } from '$lib/share-stash.js';
   let { data, children } = $props();
@@ -34,6 +34,35 @@
     initPrivacy();
   });
 
+  // Offered once per update, never nagging: the new worker has already taken
+  // over (it skips waiting), so this is only a nudge to load the matching page
+  // code. A worker that keeps reinstalling — a deploy still rolling out, or a
+  // proxy serving an old copy of the worker to some requests — must not turn
+  // that nudge into a toast that comes back after every reload, so another is
+  // held back for a while after one has been shown. Dev restarts constantly
+  // and each restart is a "new version", which is just noise there.
+  const UPDATE_PROMPT_KEY = 'tally:update-prompted-at';
+  const UPDATE_PROMPT_COOLDOWN_MS = 10 * 60 * 1000;
+  function promptForUpdate() {
+    if (dev || toasts.some((t) => t.type === 'update')) return;
+    try {
+      const last = Number(localStorage.getItem(UPDATE_PROMPT_KEY)) || 0;
+      if (Date.now() - last < UPDATE_PROMPT_COOLDOWN_MS) return;
+      localStorage.setItem(UPDATE_PROMPT_KEY, String(Date.now()));
+    } catch {
+      /* storage blocked — fall through and prompt */
+    }
+    const id = toast('A new version is ready — tap to refresh.', {
+      type: 'update',
+      duration: 0,
+      dismissible: true,
+      onClick: () => {
+        dismiss(id);
+        location.reload();
+      }
+    });
+  }
+
   // The service worker only caches its own static assets (see
   // src/service-worker.js) — never pages or data — so registering it is
   // purely about instant asset loads and a branded offline fallback, with
@@ -51,13 +80,7 @@
         installing?.addEventListener('statechange', () => {
           // a controller already existing means this is an update, not the
           // very first install — nothing to announce the first time around
-          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-            toast('A new version is ready — tap to refresh.', {
-              type: 'update',
-              duration: 0,
-              onClick: () => location.reload()
-            });
-          }
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) promptForUpdate();
         });
       });
     });
