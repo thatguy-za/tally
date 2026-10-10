@@ -41,6 +41,55 @@ export function setSetting(key, value) {
   else setStmt.run(key, String(value));
 }
 
+const customKey = (provider) => `${provider}_custom_models`;
+const MAX_CUSTOM_MODELS = 20;
+const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
+
+/**
+ * Models an admin added after checking what their provider offers. They are
+ * not in the curated list, so no price is known and no cost is estimated.
+ * @returns {{ id: string, label: string, custom: true }[]}
+ */
+export function getCustomModels(provider) {
+  try {
+    const parsed = JSON.parse(getSetting(customKey(provider)) || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((m) => m && typeof m.id === 'string')
+      .map((m) => ({ id: m.id, label: String(m.label || m.id), custom: true }));
+  } catch {
+    return [];
+  }
+}
+
+/** Every model offered for `provider`: the curated list, then any the admin added. */
+export function modelsFor(provider) {
+  return [...(AI_MODELS[provider] || []), ...getCustomModels(provider)];
+}
+
+/** @returns {{ ok: boolean, error?: string }} */
+export function addCustomModel(provider, id, label) {
+  if (!AI_MODELS[provider]) return { ok: false, error: 'Unknown provider.' };
+  id = String(id || '').trim();
+  if (!MODEL_ID.test(id)) return { ok: false, error: 'That is not a valid model id.' };
+  if (modelsFor(provider).some((m) => m.id === id)) return { ok: true };
+  const custom = getCustomModels(provider);
+  if (custom.length >= MAX_CUSTOM_MODELS)
+    return { ok: false, error: `You can add up to ${MAX_CUSTOM_MODELS} models — remove one first.` };
+  const next = [...custom.map((m) => ({ id: m.id, label: m.label })), { id, label: String(label || id).slice(0, 80) }];
+  setSetting(customKey(provider), JSON.stringify(next));
+  return { ok: true };
+}
+
+/** Removes an added model; if it was the selected one, selection falls back to the default. */
+export function removeCustomModel(provider, id) {
+  const next = getCustomModels(provider)
+    .filter((m) => m.id !== id)
+    .map((m) => ({ id: m.id, label: m.label }));
+  setSetting(customKey(provider), next.length ? JSON.stringify(next) : null);
+  if (getSetting(`${provider}_model`) === id) setSetting(`${provider}_model`, null);
+}
+
 /** Which provider is currently active for the whole instance. */
 export function getProvider() {
   const p = getSetting('ai_provider');
@@ -56,8 +105,7 @@ export function getApiKey(provider = getProvider()) {
 
 export function getModel(provider = getProvider()) {
   const m = getSetting(`${provider}_model`);
-  const list = AI_MODELS[provider] || [];
-  return list.some((x) => x.id === m) ? m : DEFAULT_MODEL[provider];
+  return modelsFor(provider).some((x) => x.id === m) ? m : DEFAULT_MODEL[provider];
 }
 
 /** Loose, provider-shaped sanity check for a pasted API key — not a real validation. */
@@ -67,8 +115,8 @@ export function looksLikeApiKey(provider, key) {
 
 /** Find a model's cost info regardless of which provider it belongs to. */
 export function findModelInfo(id) {
-  for (const list of Object.values(AI_MODELS)) {
-    const m = list.find((x) => x.id === id);
+  for (const provider of Object.keys(AI_MODELS)) {
+    const m = modelsFor(provider).find((x) => x.id === id);
     if (m) return m;
   }
   return null;
@@ -83,7 +131,7 @@ export function providerStatus(provider) {
     keyFromEnv: !!env[ENV_KEY[provider]],
     keyMask: key ? `${key.slice(0, 7)}…${key.slice(-4)}` : null,
     model: getModel(provider),
-    models: AI_MODELS[provider]
+    models: modelsFor(provider)
   };
 }
 
@@ -92,7 +140,7 @@ export function aiStatus() {
   const provider = getProvider();
   return {
     providers: AI_PROVIDERS,
-    modelsByProvider: AI_MODELS,
+    modelsByProvider: Object.fromEntries(AI_PROVIDERS.map((p) => [p.id, modelsFor(p.id)])),
     ...providerStatus(provider)
   };
 }

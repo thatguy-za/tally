@@ -1,8 +1,20 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { db } from '$lib/server/db.js';
 import { hashPassword } from '$lib/server/auth.js';
-import { aiStatus, aiEnabled, setSetting, AI_PROVIDERS, providerStatus, looksLikeApiKey } from '$lib/server/ai-settings.js';
-import { testConnection } from '$lib/server/ai.js';
+import {
+  aiStatus,
+  aiEnabled,
+  setSetting,
+  getApiKey,
+  modelsFor,
+  addCustomModel,
+  removeCustomModel,
+  AI_PROVIDERS,
+  providerStatus,
+  looksLikeApiKey
+} from '$lib/server/ai-settings.js';
+import { testConnection, listProviderModels } from '$lib/server/ai.js';
+import { diffModels } from '$lib/models.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
@@ -80,6 +92,53 @@ export const actions = {
       ok: true,
       msg: key ? 'API key saved.' : 'API key removed — AI features disabled.'
     };
+  },
+
+  // Asks the chosen provider (with its saved key) which models it offers and
+  // reports what this app doesn't list yet — and what it lists that the
+  // provider no longer does. Reads only; nothing is changed until an admin
+  // chooses to add a model.
+  aiModels: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const f = await request.formData();
+    const provider = String(f.get('provider') || '');
+    if (!AI_PROVIDERS.some((p) => p.id === provider)) return fail(400, { section: 'ai', error: 'Unknown provider.' });
+    if (!getApiKey(provider)) return fail(400, { section: 'ai', error: 'Save an API key for this provider first.' });
+    try {
+      const remote = await listProviderModels(provider);
+      const { fresh, missing } = diffModels(provider, remote, modelsFor(provider));
+      return {
+        section: 'models',
+        ok: true,
+        provider,
+        fresh: fresh.slice(0, 15),
+        freshTotal: fresh.length,
+        missing,
+        msg: fresh.length
+          ? `Found ${fresh.length} model${fresh.length === 1 ? '' : 's'} not in your list.`
+          : 'No new models — your list is up to date.'
+      };
+    } catch (e) {
+      return fail(400, { section: 'ai', error: `Couldn't check models: ${e?.message || 'unknown error'}` });
+    }
+  },
+
+  aiAddModel: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const f = await request.formData();
+    const provider = String(f.get('provider') || '');
+    const id = String(f.get('id') || '');
+    const label = String(f.get('label') || '');
+    const r = addCustomModel(provider, id, label);
+    if (!r.ok) return fail(400, { section: 'ai', error: r.error });
+    return { section: 'ai', ok: true, msg: `Added ${label || id} — choose it in the Model list, then save.` };
+  },
+
+  aiRemoveModel: async ({ request, locals }) => {
+    requireAdmin(locals);
+    const f = await request.formData();
+    removeCustomModel(String(f.get('provider') || ''), String(f.get('id') || ''));
+    return { section: 'ai', ok: true, msg: 'Model removed.' };
   },
 
   aiTest: async ({ request, locals }) => {

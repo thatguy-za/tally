@@ -10,7 +10,10 @@ import {
   providerStatus,
   aiStatus,
   aiEnabled,
-  setSetting
+  setSetting,
+  modelsFor,
+  addCustomModel,
+  removeCustomModel
 } from './ai-settings.js';
 
 // keep this suite from leaking settings into others sharing the test DB
@@ -20,6 +23,8 @@ afterEach(() => {
   setSetting('anthropic_model', null);
   setSetting('openai_api_key', null);
   setSetting('openai_model', null);
+  setSetting('anthropic_custom_models', null);
+  setSetting('openai_custom_models', null);
 });
 
 describe('getProvider', () => {
@@ -106,7 +111,7 @@ describe('providerStatus / aiStatus', () => {
   it('reports unconfigured status for a provider with no key', () => {
     const s = providerStatus('openai');
     expect(s).toMatchObject({ provider: 'openai', configured: false, keyFromEnv: false, keyMask: null });
-    expect(s.models).toBe(AI_MODELS.openai);
+    expect(s.models).toEqual(AI_MODELS.openai);
   });
 
   it('masks a configured key', () => {
@@ -122,7 +127,62 @@ describe('providerStatus / aiStatus', () => {
     const s = aiStatus();
     expect(s.provider).toBe('openai');
     expect(s.providers).toBe(AI_PROVIDERS);
-    expect(s.modelsByProvider).toBe(AI_MODELS);
+    expect(s.modelsByProvider).toEqual(AI_MODELS);
     expect(s.configured).toBe(true);
+  });
+});
+
+describe('models added from a provider check', () => {
+  it('are offered alongside the curated list, marked as added', () => {
+    addCustomModel('anthropic', 'claude-opus-6', 'Claude Opus 6');
+    const models = modelsFor('anthropic');
+    expect(models.slice(0, AI_MODELS.anthropic.length)).toEqual(AI_MODELS.anthropic);
+    expect(models.at(-1)).toEqual({ id: 'claude-opus-6', label: 'Claude Opus 6', custom: true });
+    expect(providerStatus('anthropic').models.at(-1).id).toBe('claude-opus-6');
+  });
+
+  it('can be selected, where an unknown id would fall back to the default', () => {
+    setSetting('anthropic_model', 'claude-opus-6');
+    expect(getModel('anthropic')).toBe('claude-opus-5');
+    addCustomModel('anthropic', 'claude-opus-6', 'Claude Opus 6');
+    expect(getModel('anthropic')).toBe('claude-opus-6');
+  });
+
+  it('have no known price, so no cost can be estimated', () => {
+    addCustomModel('openai', 'gpt-6', 'gpt-6');
+    expect(findModelInfo('gpt-6')).toMatchObject({ id: 'gpt-6' });
+    expect(findModelInfo('gpt-6').input).toBeUndefined();
+  });
+
+  it('are kept per provider', () => {
+    addCustomModel('openai', 'gpt-6', 'gpt-6');
+    expect(modelsFor('anthropic').some((m) => m.id === 'gpt-6')).toBe(false);
+  });
+
+  it('are not added twice, nor on top of a curated one', () => {
+    addCustomModel('anthropic', 'claude-opus-6', 'Claude Opus 6');
+    addCustomModel('anthropic', 'claude-opus-6', 'Claude Opus 6');
+    addCustomModel('anthropic', 'claude-opus-5', 'Duplicate');
+    expect(modelsFor('anthropic')).toHaveLength(AI_MODELS.anthropic.length + 1);
+  });
+
+  it('reject an id that is not a plausible model name, and an unknown provider', () => {
+    expect(addCustomModel('anthropic', 'bad id; drop table', 'x').ok).toBe(false);
+    expect(addCustomModel('anthropic', '', 'x').ok).toBe(false);
+    expect(addCustomModel('nonsense', 'claude-opus-6', 'x').ok).toBe(false);
+    expect(modelsFor('anthropic')).toEqual(AI_MODELS.anthropic);
+  });
+
+  it('stop at a sensible cap', () => {
+    for (let i = 0; i < 20; i++) expect(addCustomModel('openai', `gpt-x${i}`, `x${i}`).ok).toBe(true);
+    expect(addCustomModel('openai', 'gpt-one-too-many', 'x').ok).toBe(false);
+  });
+
+  it('can be removed, and removing the selected one falls back to the default', () => {
+    addCustomModel('anthropic', 'claude-opus-6', 'Claude Opus 6');
+    setSetting('anthropic_model', 'claude-opus-6');
+    removeCustomModel('anthropic', 'claude-opus-6');
+    expect(modelsFor('anthropic')).toEqual(AI_MODELS.anthropic);
+    expect(getModel('anthropic')).toBe('claude-opus-5');
   });
 });

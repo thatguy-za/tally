@@ -85,7 +85,7 @@ function requestParams(model) {
 /** @param {{ input:number, output:number }} usage @param {string} model */
 export function estimateCost(usage, model) {
   const m = findModelInfo(model);
-  if (!m) return 0;
+  if (!m || m.input == null || m.output == null) return 0; // an admin-added model has no known price
   return (usage.input / 1e6) * m.input + (usage.output / 1e6) * m.output;
 }
 
@@ -1469,4 +1469,33 @@ export async function testConnection({ provider, apiKey, model } = {}) {
     model
   });
   return { model, reply: text.slice(0, 40) };
+}
+
+const MAX_LISTED_MODELS = 1000;
+
+/**
+ * Every model the saved key for `provider` can use, as the provider reports
+ * it. Both providers expose this as a plain list call, but neither includes
+ * prices, which is why the curated list in ai-settings.js still matters.
+ * @returns {Promise<{ id: string, label: string, created?: number }[]>}
+ */
+export async function listProviderModels(provider) {
+  const c = client(provider);
+  const out = [];
+  try {
+    if (provider === 'openai') {
+      for await (const m of c.models.list()) {
+        out.push({ id: m.id, label: m.id, created: m.created });
+        if (out.length >= MAX_LISTED_MODELS) break;
+      }
+    } else {
+      for await (const m of c.models.list({ limit: 100 })) {
+        out.push({ id: m.id, label: m.display_name || m.id, created: m.created_at ? Date.parse(m.created_at) / 1000 : undefined });
+        if (out.length >= MAX_LISTED_MODELS) break;
+      }
+    }
+  } catch (e) {
+    throw new Error(friendlyError(e, provider));
+  }
+  return out;
 }
