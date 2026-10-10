@@ -103,6 +103,7 @@
       <div class="mt-3">
         <label class="label" for="ob-api-key">API key</label>
         <input class="input" id="ob-api-key" name="api_key" type="password" autocomplete="off"
+          data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"
           placeholder={selectedProvider === 'openai' ? 'sk-…' : 'sk-ant-…'} />
       </div>
       <div class="mt-3">

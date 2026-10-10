@@ -70,6 +70,7 @@
             API key {#if current.configured}<span class="text-[var(--ink-faint)]">· currently {current.keyMask}</span>{/if}
           </label>
           <input class="input" id="ai-key" name="api_key" type="password" autocomplete="off"
+          data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"
             placeholder={current.configured ? 'Enter a new key to replace it' : (selectedProvider === 'openai' ? 'sk-…' : 'sk-ant-…')} />
           <p class="mt-1 text-xs text-[var(--ink-faint)]">Leave blank and save to remove the key and disable AI features.</p>
         </div>
@@ -128,11 +129,18 @@
             </div>
           </div>
           {#if resettingUser === u.id}
-            <form method="POST" action="?/resetUserPassword" use:enhance class="mt-2 flex gap-2"
-              onsubmit={() => (resettingUser = null)}>
+            <!-- closed once the server has answered, not on submit: dropping the
+                 form from the page in an onsubmit handler removes it before
+                 use:enhance has sent it, so a real click did nothing at all -->
+            <form method="POST" action="?/resetUserPassword" class="mt-2 flex gap-2"
+              use:enhance={() => async ({ result, update }) => {
+                await update();
+                if (result.type === 'success') resettingUser = null;
+              }}>
               <input type="hidden" name="id" value={u.id} />
               <input class="input max-w-xs" name="new_password" type="text"
-                placeholder="New password (min 8 chars)" minlength="8" required />
+                placeholder="New password (min 8 chars)" minlength="8" required
+                autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore />
               <button class="btn btn-primary btn-sm">Set</button>
             </form>
           {/if}

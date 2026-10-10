@@ -1,19 +1,5 @@
 <script>
-  import { enhance } from '$app/forms';
   let { form } = $props();
-
-  let blocked = $state('');
-  const submit = () => {
-    blocked = '';
-    return async ({ result, update }) => {
-      if (result.type === 'error' || (result.status && result.status >= 400 && !result.data)) {
-        blocked =
-          'The server rejected the request. If this is a self-hosted deploy behind a proxy, set the ORIGIN environment variable to the URL you use.';
-        return;
-      }
-      await update();
-    };
-  };
 </script>
 
 <svelte:head><title>Create account · Tally</title></svelte:head>
@@ -26,11 +12,11 @@
   </div>
 
   <div class="card">
-    {#if form?.error || blocked}
-      <p class="mb-4 rounded-[var(--radius-sm)] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form?.error || blocked}</p>
+    {#if form?.error}
+      <p class="mb-4 rounded-[var(--radius-sm)] px-3 py-2 text-sm" style="background:var(--negative-wash);color:var(--negative)">{form.error}</p>
     {/if}
 
-    <form method="POST" use:enhance={submit} class="space-y-4">
+    <form method="POST" class="space-y-4">
       <div>
         <label class="label" for="username">Username</label>
         <input class="input" id="username" name="username" type="text" autocomplete="username"

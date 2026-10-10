@@ -169,7 +169,12 @@
   <div class="card">
     <h2 class="text-lg">Change password</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Signed in as {data.username}</p>
-    <form method="POST" action="?/password" use:enhance class="grid max-w-md gap-3">
+    <!-- a plain submit, not use:enhance: browsers only offer to update a saved
+         password after a real form submission, and the hidden username tells
+         the password manager which saved login this new password replaces -->
+    <form method="POST" action="?/password" class="grid max-w-md gap-3">
+      <input class="sr-only" type="text" name="username" value={data.username} autocomplete="username"
+        readonly tabindex="-1" aria-hidden="true" />
       <input class="input" name="current" type="password" placeholder="Current password" autocomplete="current-password" required />
       <input class="input" name="next" type="password" placeholder="New password" autocomplete="new-password" minlength="8" required />
       <input class="input" name="confirm" type="password" placeholder="Confirm new password" autocomplete="new-password" minlength="8" required />
