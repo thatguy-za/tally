@@ -115,7 +115,7 @@
   </div>
   <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
     If a description contains the text, the transaction gets that category — applied on import,
-    on manual entry, and whenever you run them. Higher priority wins. Re-running checks every
+    on manual entry, and whenever you run them. The most specific match (the longest text) wins. Re-running checks every
     transaction, categorised or not, and lets you review the changes before saving.
   </p>
   <div class="overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border)]">
@@ -123,7 +123,6 @@
       <thead>
         <tr class="border-b border-[var(--border)] text-left">
           <th class="th px-3 py-2">Rule</th>
-          <th class="th px-3 py-2 w-16 text-right">Priority</th>
           <th class="w-9"></th>
         </tr>
       </thead>
@@ -139,7 +138,6 @@
                 </span>
               </div>
             </td>
-            <td class="px-3 py-2.5 text-right tnum text-[var(--ink-faint)]">{r.priority}</td>
             <td class="px-3 py-2.5">
               <form method="POST" action="/settings?/deleteRule" use:enhance={submitDelete} class="flex justify-end opacity-70 transition group-hover:opacity-100">
                 <input type="hidden" name="id" value={r.id} />
@@ -151,12 +149,12 @@
           </tr>
         {:else}
           <tr>
-            <td colspan="3" class="py-2 px-3 text-sm text-[var(--ink-faint)]">No rules yet.</td>
+            <td colspan="2" class="py-2 px-3 text-sm text-[var(--ink-faint)]">No rules yet.</td>
           </tr>
         {/each}
         {#if addingNew}
           <tr class="border-b border-[var(--border)] last:border-0">
-            <td colspan="3" class="p-3" style="background:var(--paper-sunk)">
+            <td colspan="2" class="p-3" style="background:var(--paper-sunk)">
               <form method="POST" action="/settings?/addRule" use:enhance={submitAdd} class="flex flex-wrap items-end gap-3">
                 <div class="min-w-[160px] flex-1">
                   <label class="label" for="r-match">Description contains</label>
@@ -169,10 +167,6 @@
                     triggerClass="input" placeholder="Choose…"
                     onChange={(v) => (newRuleCategoryId = v)}
                     onCreated={() => invalidateAll()} />
-                </div>
-                <div class="w-20">
-                  <label class="label" for="r-pri">Priority</label>
-                  <input class="input tnum" id="r-pri" name="priority" type="number" value="0" />
                 </div>
                 <label class="mb-2.5 flex items-center gap-1.5 text-[13px] text-[var(--ink-faint)]">
                   <input type="checkbox" name="overwrite" /> also recategorise matching transactions that already have one

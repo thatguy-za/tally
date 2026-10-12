@@ -34,11 +34,11 @@ export function buildBackupZip(userId) {
 
   const rules = db
     .prepare(
-      `SELECT a.name AS account_name, r.match_text, c.name AS category_name, r.priority
+      `SELECT a.name AS account_name, r.match_text, c.name AS category_name
        FROM rules r
        JOIN accounts a ON a.id = r.account_id
        JOIN categories c ON c.id = r.category_id
-       WHERE r.user_id = ? ORDER BY a.name, r.priority DESC, r.id`
+       WHERE r.user_id = ? ORDER BY a.name, r.id`
     )
     .all(userId);
 
@@ -55,7 +55,7 @@ export function buildBackupZip(userId) {
   return createZip([
     { name: 'transactions.csv', data: toCsv(transactions, ['account_name', 'date', 'description', 'amount', 'category_name', 'dismissed_uncategorised', 'notes']) },
     { name: 'categories.csv', data: toCsv(categories, ['account_name', 'name', 'kind', 'color']) },
-    { name: 'rules.csv', data: toCsv(rules, ['account_name', 'match_text', 'category_name', 'priority']) },
+    { name: 'rules.csv', data: toCsv(rules, ['account_name', 'match_text', 'category_name']) },
     { name: 'budgets.csv', data: toCsv(budgets, ['account_name', 'category_name', 'amount']) }
   ]);
 }
@@ -130,7 +130,7 @@ export function restoreBackup(userId, zipBuffer) {
     }
 
     const insertRule = db.prepare(
-      'INSERT INTO rules (user_id, account_id, match_text, category_id, priority) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO rules (user_id, account_id, match_text, category_id) VALUES (?, ?, ?, ?)'
     );
     let ruleCount = 0;
     for (const r of rules) {
@@ -138,7 +138,7 @@ export function restoreBackup(userId, zipBuffer) {
       const catId = acctId && categoryId.get(`${acctId}:${r.category_name?.trim()}`);
       const matchText = r.match_text?.trim();
       if (!acctId || !catId || !matchText) { skipped++; continue; }
-      insertRule.run(userId, acctId, matchText, catId, Number(r.priority) || 0);
+      insertRule.run(userId, acctId, matchText, catId);
       ruleCount++;
     }
 

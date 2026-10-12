@@ -106,7 +106,9 @@ export const actions = {
         amount,
         notes: String(r.notes || '').trim().slice(0, 280),
         category_id: resolveCategory(r),
-        account_id: accountId
+        account_id: accountId,
+        // only rows the user left ticked are sent, so a flagged duplicate here was chosen
+        keepDuplicate: !!r.duplicate
       });
       wasDuplicate.push(!!r.duplicate);
     }

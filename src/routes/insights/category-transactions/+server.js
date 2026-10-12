@@ -59,6 +59,10 @@ export function GET({ url, locals }) {
     throw error(400, 'Invalid category.');
 
   const kind = categoryId === -1 ? url.searchParams.get('kind') || 'expense' : undefined;
-  const transactions = listTransactions(locals.user.id, { ...span, categoryId, kind, accountId: locals.accountId });
+  // a category can sit on both sides of the flow chart (money in and out), so
+  // a click on one side asks for just that direction
+  const side = url.searchParams.get('side');
+  const direction = side === 'income' ? 'in' : side === 'expense' ? 'out' : undefined;
+  const transactions = listTransactions(locals.user.id, { ...span, categoryId, kind, direction, accountId: locals.accountId });
   return json({ transactions: withLogos(transactions) });
 }

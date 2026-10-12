@@ -18,7 +18,7 @@
   let categoryModal = $state(null);
   // `toMonth` is only passed by the flow chart over a range — a bar-chart
   // segment always belongs to exactly one month
-  function openCategoryModal(seg, ym, source = 'expense', toMonth) {
+  function openCategoryModal(seg, ym, source = 'expense', toMonth, side) {
     if (seg.id === 'other') {
       const excludeIds = (source === 'income' ? data.chart.income : data.chart.expense)
         .filter((c) => c.id !== 'other')
@@ -29,7 +29,7 @@
     // seg.id === -1 is the chart's own "Uncategorised" bucket, shown as its
     // own segment instead of folded into Other — it needs `kind` too, since
     // an uncategorised transaction has no category of its own to classify it
-    categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym, toMonth, kind: seg.id === -1 ? source : undefined };
+    categoryModal = { categoryId: seg.id, categoryName: seg.name, color: seg.color, month: ym, toMonth, side, kind: seg.id === -1 ? source : undefined };
   }
 
   /** Every saving-category transaction for one month, from a savings-chart bar. */
@@ -336,7 +336,7 @@
   {#if singleMonth}
     {#if spendingSegments.length || incomeSegments.length}
       <SpendingSankey title="Where your money went this month" income={incomeSegments} expense={spendingSegments} currency={data.currency}
-        onNodeClick={(seg, source) => openCategoryModal(seg, data.from, source)} />
+        onNodeClick={(seg, source) => openCategoryModal(seg, data.from, source, undefined, source)} />
     {:else}
       <h2 class="mb-4 text-lg">Your spending for this month</h2>
       <EmptyState icon="reports" title="Nothing in this period yet"
@@ -346,7 +346,7 @@
     {#if chartView === 'flow'}
       <SpendingSankey title="Money in and out over this period" income={periodIncomeSegments} expense={periodSpendingSegments}
         currency={data.currency} actions={chartViewToggle}
-        onNodeClick={(seg, source) => openCategoryModal(seg, data.from, source, data.to)} />
+        onNodeClick={(seg, source) => openCategoryModal(seg, data.from, source, data.to, source)} />
     {:else}
       <StackedMonths title="Your spending by month" months={data.chart.months} income={data.chart.income}
         expense={data.chart.expense} values={data.chart.values} currency={data.currency}
@@ -556,6 +556,7 @@
     month={categoryModal.month}
     toMonth={categoryModal.toMonth}
     kind={categoryModal.kind}
+    side={categoryModal.side}
     excludeIds={categoryModal.excludeIds}
     currency={data.currency}
     categories={data.categories}

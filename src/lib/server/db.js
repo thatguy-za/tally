@@ -105,7 +105,6 @@ db.exec(`
     account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     match_text  TEXT NOT NULL,
     category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    priority    INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -262,15 +261,14 @@ if (rebuildingRules) {
         account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
         match_text  TEXT NOT NULL,
         category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-        priority    INTEGER NOT NULL DEFAULT 0,
         created_at  TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
     db.exec(`
-      INSERT INTO rules_new (id, user_id, account_id, match_text, category_id, priority, created_at)
+      INSERT INTO rules_new (id, user_id, account_id, match_text, category_id, created_at)
       SELECT r.id, r.user_id,
         (SELECT account_id FROM categories WHERE categories.id = r.category_id),
-        r.match_text, r.category_id, r.priority, r.created_at
+        r.match_text, r.category_id, r.created_at
       FROM rules r
     `);
     db.exec('DROP TABLE rules');
@@ -284,6 +282,11 @@ if (rebuildingCategories || rebuildingRules) {
     throw new Error(`Foreign key check failed after category/rule migration: ${JSON.stringify(violations)}`);
   }
   db.exec('PRAGMA foreign_keys = ON');
+}
+
+// Rules used to carry a user-set priority; the most specific match now wins.
+if (db.prepare('PRAGMA table_info(rules)').all().some((c) => c.name === 'priority')) {
+  db.exec('ALTER TABLE rules DROP COLUMN priority');
 }
 
 // Savings used to be seeded as an expense, which counted money you kept as

@@ -62,6 +62,7 @@
   <div
     bind:this={popoverEl}
     use:portal
+    data-color-popover
     class="z-[65] grid w-[152px] grid-cols-4 gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--surface-raised)] p-2.5 shadow-[var(--shadow-lg)]"
     style="position:absolute;top:{pos.top}px;left:{pos.left}px"
     role="menu"

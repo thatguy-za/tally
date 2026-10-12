@@ -134,7 +134,7 @@
 
   /**
    * Mirrors queries.js categoriseByRules(): the user's auto-categorisation
-   * rules, highest priority first (as sent from the server), first match on a
+   * rules, most specific first (as sent from the server), first match on a
    * case-insensitive substring of the description wins. Run against every row
    * during review — before anything reaches AI — so a rule match never costs
    * an API call.
@@ -214,6 +214,7 @@
     included: rows.filter((r) => r.included).length,
     errors: rows.filter((r) => r.error).length,
     dupes: rows.filter((r) => r.duplicate).length,
+    dupesIncluded: rows.filter((r) => r.duplicate && r.included).length,
     uncategorised: rows.filter((r) => r.included && !String(r.catValue)).length,
     byRule: rows.filter((r) => r.included && r.byRule).length,
     incoming: rows.filter((r) => r.included && Number.isFinite(r.amount) && r.amount > 0).reduce((s, r) => s + r.amount, 0),
@@ -224,12 +225,13 @@
   // instead of acting on them — errors are already excluded by default (see
   // `included` above), so there was nothing left for that click to *do*
   // except show you which rows they are
-  let rowFilter = $state(null); // 'error' | 'byRule' | 'ai' | null
+  let rowFilter = $state(null); // 'error' | 'dupe' | 'byRule' | 'ai' | null
   function toggleFilter(key) {
     rowFilter = rowFilter === key ? null : key;
   }
   let filteredRows = $derived(
     rowFilter === 'error' ? rows.filter((r) => r.error)
+    : rowFilter === 'dupe' ? rows.filter((r) => r.duplicate)
     : rowFilter === 'byRule' ? rows.filter((r) => r.byRule)
     : rowFilter === 'ai' ? rows.filter((r) => aiSuggested.has(r.i))
     : rows
@@ -242,9 +244,9 @@
     for (const r of rows) next.set(r.i, { ...(next.get(r.i) || {}), excluded: to });
     edits = next;
   }
-  function excludeWhere(pred) {
+  function setExcludedWhere(pred, excluded) {
     const next = new Map(edits);
-    for (const r of rows) if (pred(r)) next.set(r.i, { ...(next.get(r.i) || {}), excluded: true });
+    for (const r of rows) if (pred(r)) next.set(r.i, { ...(next.get(r.i) || {}), excluded });
     edits = next;
   }
 
@@ -559,8 +561,24 @@
         </button>
       {/if}
       {#if stats.dupes}
-        <button type="button" class="rounded px-1.5 py-0.5" style="background:var(--warning-wash);color:var(--warning)"
-          onclick={() => excludeWhere((r) => r.duplicate)}>exclude {stats.dupes} duplicate{stats.dupes === 1 ? '' : 's'}</button>
+        <button type="button" class="rounded px-1.5 py-0.5 {rowFilter === 'dupe' ? 'font-semibold underline' : ''}"
+          style="background:var(--warning-wash);color:var(--warning)"
+          title="Click to see them — tick any you want to import anyway"
+          onclick={() => toggleFilter('dupe')}>
+          {#if stats.dupesIncluded === 0}
+            Excluding {stats.dupes} duplicate{stats.dupes === 1 ? '' : 's'}
+          {:else}
+            {stats.dupes} duplicate{stats.dupes === 1 ? '' : 's'} · {stats.dupesIncluded} included
+          {/if}
+        </button>
+        {#if rowFilter === 'dupe'}
+          {#if stats.dupesIncluded < stats.dupes}
+            <button type="button" class="btn btn-ghost btn-sm" onclick={() => setExcludedWhere((r) => r.duplicate, false)}>Include all</button>
+          {/if}
+          {#if stats.dupesIncluded > 0}
+            <button type="button" class="btn btn-ghost btn-sm" onclick={() => setExcludedWhere((r) => r.duplicate, true)}>Exclude all</button>
+          {/if}
+        {/if}
       {/if}
       {#if stats.byRule}
         <button type="button" class="rounded px-1.5 py-0.5 {rowFilter === 'byRule' ? 'font-semibold underline' : ''}"

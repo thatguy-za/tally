@@ -120,6 +120,9 @@
   // button. Same fix as AccountSwitcher's onWindow.
   function onWindowClick(e) {
     const path = e.composedPath();
+    // the colour swatches live in their own portaled popover, outside ours —
+    // picking one is not a click away from this form
+    if (path.some((n) => n.hasAttribute?.('data-color-popover'))) return;
     if (open && anchor && !path.includes(anchor) && !(popoverEl && path.includes(popoverEl))) open = false;
   }
 

@@ -38,7 +38,7 @@ describe('backup and restore', () => {
     const salary = createCategory(u, main, 'Salary', 'income', '#16a34a').id;
     const savingsCat = createCategory(u, savings, 'Savings & investments', 'saving', '#0ea5e9').id;
 
-    createRule(u, main, 'SPAR', groceries, 5);
+    createRule(u, main, 'SPAR', groceries);
     setBudget(u, groceries, 250);
     addTransaction(u, { date: '2026-01-05', description: 'SPAR run', amount: -42.5, category_id: groceries, account_id: main, notes: 'split with Sam' });
     addTransaction(u, { date: '2026-01-10', description: 'Payday', amount: 2000, category_id: salary, account_id: main });
@@ -69,7 +69,7 @@ describe('backup and restore', () => {
 
     const rules = listRules(u, newMain);
     expect(rules).toHaveLength(1);
-    expect(rules[0]).toMatchObject({ match_text: 'SPAR', category_id: newGroceries.id, priority: 5 });
+    expect(rules[0]).toMatchObject({ match_text: 'SPAR', category_id: newGroceries.id });
 
     const budgetRow = db.prepare('SELECT amount FROM budgets WHERE user_id = ? AND category_id = ?').get(u, newGroceries.id);
     expect(budgetRow.amount).toBe(250);

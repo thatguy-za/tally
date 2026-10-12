@@ -206,33 +206,35 @@ describe('categoriseByRules', () => {
     const u = makeUser();
     const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
-    createRule(u, acct, 'SPAR', groceries, 0);
+    createRule(u, acct, 'SPAR', groceries);
     expect(categoriseByRules(u, acct, 'SPAR Cape Town')).toBe(groceries);
     expect(categoriseByRules(u, acct, 'spar cape town')).toBe(groceries);
     expect(categoriseByRules(u, acct, 'Woolworths')).toBeNull();
   });
 
-  it('prefers the higher-priority rule when more than one matches', () => {
+  it('prefers the more specific (longer) rule when more than one matches', () => {
     const u = makeUser();
     const acct = defaultAccount(u);
     const general = makeCategory(u, 'Shopping', 'expense');
     const specific = makeCategory(u, 'Subscriptions', 'expense');
-    createRule(u, acct, 'Shop', general, 0);
-    createRule(u, acct, 'Shopify', specific, 10);
+    // the general rule is created first, so the result comes from
+    // specificity and not from insertion order
+    createRule(u, acct, 'Shop', general);
+    createRule(u, acct, 'Shopify', specific);
     expect(categoriseByRules(u, acct, 'Shopify invoice')).toBe(specific);
   });
 });
 
 describe('applyRules', () => {
-  it('with onlyUncategorised (the default), a higher-priority rule claims a row before a lower one can', () => {
+  it('with onlyUncategorised (the default), a more specific rule claims a row before a general one can', () => {
     const u = makeUser();
     const acct = defaultAccount(u);
     const general = makeCategory(u, 'Shopping', 'expense');
     const specific = makeCategory(u, 'Subscriptions', 'expense');
-    // inserted low-priority-first, to make sure the effect is from priority
+    // inserted general-first, to make sure the effect is from specificity
     // ordering and not insertion order
-    createRule(u, acct, 'Shop', general, 0);
-    createRule(u, acct, 'Shopify', specific, 10);
+    createRule(u, acct, 'Shop', general);
+    createRule(u, acct, 'Shopify', specific);
     addTx(u, { date: '2026-05-01', amount: -9, description: 'Shopify invoice', account_id: acct });
 
     const changed = applyRules(u, { onlyUncategorised: true, accountId: acct });
@@ -246,7 +248,7 @@ describe('applyRules', () => {
     const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
     const already = makeCategory(u, 'Other', 'expense');
-    createRule(u, acct, 'SPAR', groceries, 0);
+    createRule(u, acct, 'SPAR', groceries);
     const id = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR', category_id: already, account_id: acct }).lastInsertRowid);
 
     const changed = applyRules(u, { onlyUncategorised: true, accountId: acct });
@@ -260,7 +262,7 @@ describe('applyRules', () => {
     const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
     const other = makeCategory(u, 'Other', 'expense');
-    createRule(u, acct, 'SPAR', groceries, 0);
+    createRule(u, acct, 'SPAR', groceries);
     const id = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR', category_id: other, account_id: acct }).lastInsertRowid);
 
     const changed = applyRules(u, { onlyUncategorised: false, accountId: acct });
@@ -274,7 +276,7 @@ describe('applyRules', () => {
     const checking = makeAccount(u, 'Checking');
     const savings = makeAccount(u, 'Savings', '#000', 'savings');
     const groceries = makeCategory(u, 'Groceries', 'expense', savings);
-    createRule(u, savings, 'SPAR', groceries, 0);
+    createRule(u, savings, 'SPAR', groceries);
     const inChecking = Number(
       addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR', account_id: checking }).lastInsertRowid
     );
@@ -292,7 +294,7 @@ describe('applyRules', () => {
     const u = makeUser();
     const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
-    createRule(u, acct, 'SPAR', groceries, 0);
+    createRule(u, acct, 'SPAR', groceries);
     const kept = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', account_id: acct }).lastInsertRowid);
     const skipped = Number(addTx(u, { date: '2026-05-02', amount: -9, description: 'SPAR run', account_id: acct }).lastInsertRowid);
 
@@ -309,7 +311,7 @@ describe('previewRuleRerun', () => {
     const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
     const other = makeCategory(u, 'Other', 'expense');
-    createRule(u, acct, 'SPAR', groceries, 0);
+    createRule(u, acct, 'SPAR', groceries);
     const id = Number(
       addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', category_id: other, account_id: acct }).lastInsertRowid
     );
@@ -329,7 +331,7 @@ describe('previewRuleRerun', () => {
     const u = makeUser();
     const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
-    createRule(u, acct, 'SPAR', groceries, 0);
+    createRule(u, acct, 'SPAR', groceries);
     addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', category_id: groceries, account_id: acct });
     expect(previewRuleRerun(u, acct)).toHaveLength(0);
   });
@@ -338,7 +340,7 @@ describe('previewRuleRerun', () => {
     const u = makeUser();
     const acct = defaultAccount(u);
     const groceries = makeCategory(u, 'Groceries', 'expense');
-    createRule(u, acct, 'SPAR', groceries, 0);
+    createRule(u, acct, 'SPAR', groceries);
     const id = Number(addTx(u, { date: '2026-05-01', amount: -9, description: 'SPAR run', account_id: acct }).lastInsertRowid);
 
     const changes = previewRuleRerun(u, acct);
@@ -360,7 +362,7 @@ describe('deleteRule', () => {
     const home = makeAccount(u, 'Home');
     const other = makeAccount(u, 'Other');
     const groceries = makeCategory(u, 'Groceries', 'expense', home);
-    const id = Number(createRule(u, home, 'SPAR', groceries, 0).lastInsertRowid);
+    const id = Number(createRule(u, home, 'SPAR', groceries).lastInsertRowid);
 
     deleteRule(u, other, id);
     expect(db.prepare('SELECT 1 FROM rules WHERE id = ?').get(id)).toBeTruthy();
@@ -428,6 +430,20 @@ describe('bulkInsert', () => {
     expect(result.duplicates).toBe(0);
   });
 
+  it('imports a duplicate the user explicitly kept, while still skipping the rest', () => {
+    const u = makeUser();
+    addTx(u, { date: '2026-06-01', amount: -10, description: 'Coffee' });
+    addTx(u, { date: '2026-06-02', amount: -5, description: 'Tea' });
+    const result = bulkInsert(u, [
+      { date: '2026-06-01', amount: -10, description: 'Coffee', keepDuplicate: true },
+      { date: '2026-06-02', amount: -5, description: 'Tea' }
+    ]);
+    expect(result.inserted).toBe(1);
+    expect(result.duplicates).toBe(1);
+    expect(result.ids[0]).toEqual(expect.any(Number));
+    expect(result.ids[1]).toBeNull();
+  });
+
   it('stores notes on inserted rows, defaulting to an empty string', () => {
     const u = makeUser();
     bulkInsert(u, [
@@ -477,6 +493,23 @@ describe('transaction notes', () => {
 
     const bySearch = listTransactions(u, { search: 'birthday' });
     expect(bySearch.map((t) => t.description)).toEqual(['Restaurant']);
+  });
+
+  it('search also matches the amount, however it is typed', () => {
+    const u = makeUser();
+    addTransaction(u, { date: '2026-01-01', description: 'Restaurant', amount: -42.5 });
+    addTransaction(u, { date: '2026-01-02', description: 'Salary', amount: 1234.5 });
+    addTransaction(u, { date: '2026-01-03', description: 'Groceries', amount: -20 });
+    const names = (search) => listTransactions(u, { search }).map((t) => t.description).sort();
+
+    expect(names('42.50')).toEqual(['Restaurant']);
+    expect(names('42.5')).toEqual(['Restaurant']);
+    expect(names('-42')).toEqual(['Restaurant']);
+    expect(names('1,234.50')).toEqual(['Salary']);
+    expect(names('€1234')).toEqual(['Salary']);
+    expect(names('-20')).toEqual(['Groceries']);
+    expect(names('20')).toEqual(['Groceries']);
+    expect(names('99')).toEqual([]);
   });
 });
 

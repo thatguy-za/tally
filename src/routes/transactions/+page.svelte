@@ -511,7 +511,7 @@
     <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-faint)]">
       <Icon name="search" size={15} />
     </span>
-    <input class="input pl-9" placeholder="Search description or notes…" value={data.filters.search}
+    <input class="input pl-9" placeholder="Search description, notes or amount…" value={data.filters.search}
       onchange={(e) => setParam('q', e.currentTarget.value)} />
   </div>
 </div>
@@ -549,17 +549,13 @@
         <input class="input min-w-0 flex-1" id="rule-match-{t.id}" name="match_text" bind:value={ruleMatchText} required />
       </div>
     </div>
-    <div class="sm:col-span-2">
+    <div class="sm:col-span-3">
       <label class="label" for="rule-cat-{t.id}">Category</label>
       <input type="hidden" name="category_id" value={ruleCategoryId} />
       <CategorySelect categories={data.categories} value={ruleCategoryId}
         triggerClass="input" placeholder="Choose…"
         onChange={(v) => (ruleCategoryId = v)}
         onCreated={() => invalidateAll()} />
-    </div>
-    <div>
-      <label class="label" for="rule-pri-{t.id}">Priority</label>
-      <input class="input tnum" id="rule-pri-{t.id}" name="priority" type="number" value="0" />
     </div>
     <div class="flex flex-wrap items-center gap-3 sm:col-span-6">
       <button class="btn btn-primary btn-sm">Save rule</button>

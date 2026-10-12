@@ -20,6 +20,7 @@
    *   month: string,
    *   toMonth?: string,
    *   kind?: 'income'|'expense',
+   *   side?: 'income'|'expense',
    *   excludeIds?: number[],
    *   currency: string,
    *   categories: {id:number,name:string}[],
@@ -27,7 +28,7 @@
    *   onChanged?: () => void
    * }}
    */
-  let { categoryId, categoryName, color, month, toMonth, kind, excludeIds = [], currency, categories, onClose, onChanged } = $props();
+  let { categoryId, categoryName, color, month, toMonth, kind, side, excludeIds = [], currency, categories, onClose, onChanged } = $props();
 
   let isRange = $derived(!!toMonth && toMonth !== month);
   let periodLabel = $derived(isRange ? `${formatMonth(month)} – ${formatMonth(toMonth)}` : formatMonth(month));
@@ -52,6 +53,7 @@
       } else if (categoryId === -1 && kind) {
         params.set('kind', kind);
       }
+      if (side && categoryId !== 'other') params.set('side', side);
       const res = await fetch(`/insights/category-transactions?${params}`);
       if (!res.ok) throw new Error();
       const j = await res.json();

@@ -112,11 +112,10 @@ export const actions = {
     const f = await request.formData();
     const matchText = String(f.get('match_text') || '').trim();
     const categoryId = Number(f.get('category_id'));
-    const priority = Number(f.get('priority') || 0);
     const overwrite = f.get('overwrite') === 'on';
     if (!matchText || !categoryId)
       return fail(400, { section: 'rule', error: 'Enter text to match and a category.' });
-    createRule(locals.user.id, locals.accountId, matchText, categoryId, priority);
+    createRule(locals.user.id, locals.accountId, matchText, categoryId);
     const applied = applyRules(locals.user.id, { onlyUncategorised: !overwrite, accountId: locals.accountId });
     return { section: 'rule', ok: true, applied };
   },

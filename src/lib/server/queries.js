@@ -168,8 +168,19 @@ export function listTransactions(userId, f = {}) {
   if (f.accountId === 'none') where.push('t.account_id IS NULL');
   else if (f.accountId) { where.push('t.account_id = @accountId'); params.accountId = f.accountId; }
   if (f.search) {
-    where.push('(lower(t.description) LIKE @search OR lower(t.notes) LIKE @search)');
-    params.search = `%${String(f.search).toLowerCase()}%`;
+    const term = String(f.search).toLowerCase();
+    params.search = `%${term}%`;
+    // a search that reads as an amount — "42", "42.5", "-200", "€1,234.50" —
+    // also matches the amount, compared as the two-decimal text it displays as
+    const amountText = term.replace(/[\s,€$£¥]/g, '');
+    if (/^[-+]?(\d+\.?\d*|\.\d+)$/.test(amountText)) {
+      where.push(
+        `(lower(t.description) LIKE @search OR lower(t.notes) LIKE @search OR printf('%.2f', t.amount) LIKE @amountSearch)`
+      );
+      params.amountSearch = `%${amountText.replace(/^\+/, '')}%`;
+    } else {
+      where.push('(lower(t.description) LIKE @search OR lower(t.notes) LIKE @search)');
+    }
   }
   if (f.amountMin != null) { where.push('abs(t.amount) >= @amountMin'); params.amountMin = f.amountMin; }
   if (f.amountMax != null) { where.push('abs(t.amount) <= @amountMax'); params.amountMax = f.amountMax; }
@@ -227,7 +238,10 @@ export function bulkInsert(userId, rows, { skipDuplicates = true } = {}) {
   const ids = [];
   tx(() => {
     for (const r of rows) {
-      if (skipDuplicates) {
+      // `keepDuplicate`: the review step flagged this as a duplicate and the
+      // user ticked it to be imported anyway — an explicit choice that wins
+      // over the blanket skip
+      if (skipDuplicates && !r.keepDuplicate) {
         const k = dupeKey(r);
         if (seen.has(k)) { duplicates++; ids.push(null); continue; }
         seen.add(k);
@@ -462,22 +476,24 @@ export function categorySparkData(userId, months = 6, accountId = null) {
 
 /* ----------------------------------------------------------------------- rules */
 
+// When more than one rule matches a description, the most specific one — the
+// longest match text — wins, so "Shopify" beats "Shop"; ties go to the older rule.
+const RULE_ORDER = 'length(match_text) DESC, id';
+
 export function listRules(userId, accountId) {
   return db
     .prepare(
       `SELECT r.*, c.name AS category_name, c.color AS category_color
        FROM rules r JOIN categories c ON c.id = r.category_id
-       WHERE r.user_id = ? AND r.account_id = ? ORDER BY r.priority DESC, r.id`
+       WHERE r.user_id = ? AND r.account_id = ? ORDER BY length(r.match_text) DESC, r.id`
     )
     .all(userId, accountId);
 }
 
-export function createRule(userId, accountId, matchText, categoryId, priority = 0) {
+export function createRule(userId, accountId, matchText, categoryId) {
   return db
-    .prepare(
-      'INSERT INTO rules (user_id, account_id, match_text, category_id, priority) VALUES (?, ?, ?, ?, ?)'
-    )
-    .run(userId, accountId, matchText.trim(), categoryId, priority);
+    .prepare('INSERT INTO rules (user_id, account_id, match_text, category_id) VALUES (?, ?, ?, ?)')
+    .run(userId, accountId, matchText.trim(), categoryId);
 }
 
 export function deleteRule(userId, accountId, id) {
@@ -496,7 +512,7 @@ export function deleteRule(userId, accountId, id) {
 export function applyRules(userId, { onlyUncategorised = true, ids = null, excludeIds = null, accountId = null } = {}) {
   const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
   const rules = db
-    .prepare('SELECT * FROM rules WHERE user_id = ? AND account_id = ? ORDER BY priority DESC, id')
+    .prepare(`SELECT * FROM rules WHERE user_id = ? AND account_id = ? ORDER BY ${RULE_ORDER}`)
     .all(userId, accountId);
   let changed = 0;
   tx(() => {
@@ -530,14 +546,14 @@ export function applyRules(userId, { onlyUncategorised = true, ids = null, exclu
  * transactions — categorised or not — and report only the ones whose
  * category would actually change. Nothing is written; this powers "Re-run
  * categorisation"'s preview, so the user approves the diff before anything
- * is saved. Same "first (highest-priority) match wins" semantics as
+ * is saved. Same "first (most specific) match wins" semantics as
  * categoriseByRules, so the preview matches what a single description would
  * actually get.
  * @param {number} userId @param {number} accountId
  */
 export function previewRuleRerun(userId, accountId) {
   const rules = db
-    .prepare('SELECT * FROM rules WHERE user_id = ? AND account_id = ? ORDER BY priority DESC, id')
+    .prepare(`SELECT * FROM rules WHERE user_id = ? AND account_id = ? ORDER BY ${RULE_ORDER}`)
     .all(userId, accountId);
   if (!rules.length) return [];
 
@@ -601,7 +617,7 @@ export function categoriseByRules(userId, accountId, description) {
   const d = description.toLowerCase();
   const rules = db
     .prepare(
-      'SELECT match_text, category_id FROM rules WHERE user_id = ? AND account_id = ? ORDER BY priority DESC, id'
+      `SELECT match_text, category_id FROM rules WHERE user_id = ? AND account_id = ? ORDER BY ${RULE_ORDER}`
     )
     .all(userId, accountId);
   for (const r of rules) if (d.includes(r.match_text.toLowerCase())) return r.category_id;
