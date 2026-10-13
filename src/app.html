@@ -4,7 +4,9 @@
     <meta charset="utf-8" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover lets the page use the whole screen, so the layout
+         pads itself with env(safe-area-inset-*) around notches and the home bar -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f6f3ec" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#16150f" media="(prefers-color-scheme: dark)" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -13,17 +15,11 @@
          way a home-screen launch opens without Safari's browser chrome -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <!-- "black-translucent" would need viewport-fit=cover and safe-area-inset
-         padding to keep the header out from under the notch/status bar,
-         neither of which this app has yet — "default" avoids that bug -->
+    <!-- "default" on purpose: it follows the system's light/dark appearance.
+         "black-translucent" always draws white status-bar text, which would be
+         unreadable over the light theme's pale header. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Tally" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,600&family=Inter:wght@400;450;500;600;700&display=swap"
-      rel="stylesheet"
-    />
     <script>
       // Apply saved theme before first paint to avoid a flash.
       try {

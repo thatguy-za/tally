@@ -10,9 +10,11 @@ COPY . .
 RUN npm run build
 
 # ---- runtime ----
-# No native modules and zero production dependencies: the adapter-node output in
-# build/ is self-contained, and storage is the built-in node:sqlite (Node 22.5+,
-# stable in 24). Just Node + the bundle.
+# The adapter-node output in build/ is self-contained except for the few
+# packages that load native or WASM files at run time and so can't be bundled:
+# the OCR engine for scanned PDF statements (tesseract.js + its English data,
+# all local — nothing is downloaded or sent anywhere) and the canvas that turns
+# PDF pages into images for it. Storage is the built-in node:sqlite.
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
@@ -22,7 +24,9 @@ ENV DATABASE_PATH=/data/tally.sqlite
 ENV BODY_SIZE_LIMIT=8M
 RUN mkdir -p /data && chown node:node /data
 COPY --from=build /app/build ./build
-COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/package.json /app/package-lock.json ./
+# production dependencies only; --ignore-scripts skips an advert-printing postinstall
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 USER node
 EXPOSE 3000
 VOLUME ["/data"]

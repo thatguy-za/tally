@@ -35,6 +35,13 @@ describe('share stash', () => {
     expect(await files[1].text()).toBe('a,b\n3,4');
   });
 
+  it('keeps a shared PDF a PDF, even when the sharing app sent no type', async () => {
+    await stashFiles([new File(['%PDF-1.4'], 'june.pdf', { type: 'application/pdf' }), new File(['%PDF-1.4'], 'july.pdf')]);
+    const files = await readStash();
+    expect(files.map((f) => f.type)).toEqual(['application/pdf', 'application/pdf']);
+    expect(await files[0].text()).toBe('%PDF-1.4');
+  });
+
   it('can list the files without reading them', async () => {
     await stashFiles([csv('statement.csv', 'x,y\n1,2')]);
     expect(await peekStash()).toEqual([{ name: 'statement.csv', size: 7 }]);

@@ -2,6 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===================================================================== fonts
+   Served from this app, not from Google: no visitor's address is sent to a
+   third party on every page load, and the installed app has its type offline
+   (the build output is precached by the service worker). Variable fonts, Latin
+   and Latin Extended only — other scripts fall back to the system font. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/fraunces/files/fraunces-latin-ext-opsz-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/fraunces/files/fraunces-latin-opsz-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* ============================================================= design tokens */
 :root {
   color-scheme: light;
@@ -167,6 +205,10 @@
   .shell {
     position: relative;
     z-index: 1;
+    /* clear the notch in landscape and the home bar (see viewport-fit=cover) */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   /* --- surfaces --- */
@@ -530,7 +572,7 @@ kbd, .kbd {
      ever as tall as its own content — a modal that forgets this would
      otherwise stretch to the full viewport height by flex default */
   align-items: flex-start;
-  padding: 12vh 1rem 1rem;
+  padding: 12vh 1rem calc(1rem + env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--ink) 28%, transparent);
   backdrop-filter: blur(3px);
   animation: overlay-in 0.14s ease both;
@@ -540,8 +582,8 @@ kbd, .kbd {
 /* ============================================================= toasts */
 .toaster {
   position: fixed;
-  right: 1rem;
-  bottom: 1rem;
+  right: calc(1rem + env(safe-area-inset-right));
+  bottom: calc(1rem + env(safe-area-inset-bottom));
   z-index: 70;
   display: flex;
   flex-direction: column;
@@ -583,4 +625,15 @@ kbd, .kbd {
   z-index: 80;
   background: linear-gradient(90deg, transparent, var(--accent), var(--accent-strong));
   transform-origin: left;
+}
+
+/* ============================================================ touch devices */
+/* iOS zooms the page when a field under 16px is focused, and an installed app
+   often stays zoomed. Only on touch screens, so desktop keeps its compact size. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }

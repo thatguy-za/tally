@@ -411,7 +411,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="fixed inset-0 z-30 bg-black/40 sm:hidden" onclick={() => (showFilters = false)}></div>
   <div transition:fly={{ y: 40, duration: 160 }}
-    class="fixed inset-x-0 bottom-0 z-40 max-h-[80vh] overflow-y-auto rounded-t-[var(--radius)] border-t border-[var(--border-strong)] bg-[var(--surface-raised)] shadow-[var(--shadow-lg)] sm:hidden">
+    class="fixed inset-x-0 bottom-0 z-40 max-h-[80dvh] overflow-y-auto pb-[env(safe-area-inset-bottom)] rounded-t-[var(--radius)] border-t border-[var(--border-strong)] bg-[var(--surface-raised)] shadow-[var(--shadow-lg)] sm:hidden">
     <div class="flex justify-center pb-1 pt-2.5"><div class="h-1 w-9 rounded-full" style="background:var(--border-strong)"></div></div>
     <div class="flex items-center border-b border-[var(--border)] px-4 pb-3">
       <h2 class="text-[15px] font-semibold">Filters</h2>
@@ -511,7 +511,7 @@
     <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--ink-faint)]">
       <Icon name="search" size={15} />
     </span>
-    <input class="input pl-9" placeholder="Search description, notes or amount…" value={data.filters.search}
+    <input class="input pl-9" placeholder="Search transactions" value={data.filters.search}
       onchange={(e) => setParam('q', e.currentTarget.value)} />
   </div>
 </div>

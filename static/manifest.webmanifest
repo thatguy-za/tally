@@ -29,6 +29,8 @@
             "application/csv",
             "application/vnd.ms-excel",
             "text/plain",
+            "application/pdf",
+            ".pdf",
             ".csv",
             ".tsv",
             ".txt"

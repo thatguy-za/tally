@@ -400,8 +400,12 @@
     splitMode = false;
     mapping = { ...mapping, debit: '', credit: '' };
   }
+  // a scanned PDF is read with OCR, which takes a while — say so
+  let analyzing = $state(false);
   function submitAnalyze() {
+    analyzing = true;
     return async ({ result }) => {
+      analyzing = false;
       if (result.type === 'success' || result.type === 'failure') form = result.data;
       else if (result.type === 'error') form = { error: result.error?.message || 'Could not read that file.' };
     };
@@ -508,10 +512,13 @@
         </p>
         <p class="text-xs text-[var(--ink-faint)]">{touch ? 'Tap to choose different files' : 'Click or drop to choose different files'}</p>
       {:else}
-        <p class="font-medium">{touch ? 'Tap to choose your statement' : 'Drop your CSV here, or click to browse'}</p>
+        <p class="font-medium">{touch ? 'Tap to choose your statement' : 'Drop your CSV or PDF here, or click to browse'}</p>
         <p class="max-w-xs text-xs text-[var(--ink-faint)]">
           Any bank export — comma, semicolon or tab separated, columns in any order. Max 8 MB each.
           Select several files from the same bank to import them all at once.
+        </p>
+        <p class="max-w-xs text-xs text-[var(--ink-faint)]">
+          PDF statements are read on this server and never sent anywhere — scanned ones too, using OCR. A CSV from your bank is always the most exact.
         </p>
         {#if ios}
           <p class="max-w-xs text-xs text-[var(--ink-faint)]">
@@ -526,7 +533,7 @@
       id="file"
       name="file"
       type="file"
-      accept={ios ? undefined : '.csv,.tsv,.txt,text/csv'}
+      accept={ios ? undefined : '.csv,.tsv,.txt,text/csv,.pdf,application/pdf'}
       multiple
       required
       onchange={onFileChange}
@@ -541,7 +548,10 @@
 
 
     <div class="mt-4 flex gap-2">
-      <button class="btn btn-primary" disabled={!selectedFiles.length}>Continue</button>
+      <button class="btn btn-primary" disabled={!selectedFiles.length || analyzing}>{analyzing ? 'Reading…' : 'Continue'}</button>
+      {#if analyzing}
+        <span class="self-center text-xs text-[var(--ink-faint)]">A scanned PDF can take a minute.</span>
+      {/if}
       <button type="button" class="btn btn-ghost" onclick={onClose}>Cancel</button>
     </div>
   </form>
@@ -549,6 +559,16 @@
 {:else}
   <form method="POST" action="/transactions/import?/import" use:enhance={submitImport}>
     <input type="hidden" name="payload" value={payload} />
+
+    {#if form?.fromPdf}
+      <p class="mb-3 px-1 text-[12px] text-[var(--ink-faint)]">
+        {#if form.ocr}
+          Read from a scan on this server using OCR. Scanned digits can be misread, so check every date and amount against the original before importing — and use “Flip signs” if money in and out are the wrong way round.
+        {:else}
+          Read from your PDF on this server. Layouts vary between banks, so check the dates, amounts and signs before importing — use “Flip signs” if the money in and out are the wrong way round.
+        {/if}
+      </p>
+    {/if}
 
     <!-- status strip — click a coloured chip to see just those rows -->
     <div class="card mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">

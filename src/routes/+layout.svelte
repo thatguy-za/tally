@@ -13,6 +13,8 @@
   import { toast, toasts, dismiss } from '$lib/toast.svelte.js';
   import { dev } from '$app/environment';
   import { peekStash } from '$lib/share-stash.js';
+  import InstallHint from '$lib/components/InstallHint.svelte';
+  import { splashScreens } from '$lib/splash.js';
   let { data, children } = $props();
 
   let nav = $derived([
@@ -104,6 +106,13 @@
 
 <svelte:window onkeydown={onMobileNavKey} />
 
+<svelte:head>
+  <!-- launch images, so an installed iOS app doesn't flash white on start -->
+  {#each splashScreens() as s (s.file + s.media)}
+    <link rel="apple-touch-startup-image" href={s.file} media={s.media} />
+  {/each}
+</svelte:head>
+
 <LoadingBar />
 <Toaster />
 {#if data.onboarding}
@@ -164,7 +173,7 @@
           onclick={() => (mobileNavOpen = false)}
         ></div>
         <nav
-          class="menu-pop absolute left-0 top-full z-40 w-[67%] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-br-[var(--radius)] border-b border-r border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2 shadow-[var(--shadow-lg)] sm:hidden"
+          class="menu-pop absolute left-0 top-full z-40 w-[67%] max-h-[calc(100dvh-4rem)] overflow-y-auto rounded-br-[var(--radius)] border-b border-r border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2 shadow-[var(--shadow-lg)] sm:hidden"
           style="transform-origin:top left"
         >
           {#each nav as item}
@@ -191,6 +200,8 @@
         </nav>
       {/if}
     </header>
+
+    <InstallHint />
 
     <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-9">
       {@render children()}

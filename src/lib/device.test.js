@@ -28,3 +28,21 @@ describe('isIOS', () => {
     expect(isIOS(undefined)).toBe(false);
   });
 });
+
+import { isStandalone, shouldOfferInstall } from './device.js';
+
+describe('install hint', () => {
+  it('detects an installed home-screen app, by either signal', () => {
+    expect(isStandalone({ navigator: { standalone: true } })).toBe(true);
+    expect(isStandalone({ navigator: {}, matchMedia: () => ({ matches: true }) })).toBe(true);
+    expect(isStandalone({ navigator: {}, matchMedia: () => ({ matches: false }) })).toBe(false);
+    expect(isStandalone(undefined)).toBe(false);
+  });
+
+  it('is offered only on iOS, in the browser, until dismissed', () => {
+    expect(shouldOfferInstall({ ios: true, standalone: false, dismissed: false })).toBe(true);
+    expect(shouldOfferInstall({ ios: false, standalone: false, dismissed: false })).toBe(false);
+    expect(shouldOfferInstall({ ios: true, standalone: true, dismissed: false })).toBe(false);
+    expect(shouldOfferInstall({ ios: true, standalone: false, dismissed: true })).toBe(false);
+  });
+});

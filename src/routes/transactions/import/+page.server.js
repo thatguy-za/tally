@@ -12,10 +12,13 @@ import {
   getUserAiCategorise
 } from '$lib/server/queries.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
+import { pdfToCsv } from '$lib/server/pdf-statement.js';
 
 const MAX_ROWS = 5000;
 const MAX_FILES = 20;
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
+const MAX_PDFS = 5;
+const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** @type {import('./$types').PageServerLoad} */
@@ -33,14 +36,35 @@ export const actions = {
   analyze: async ({ request, locals }) => {
     const f = await request.formData();
     const files = f.getAll('file').filter((x) => x && typeof x !== 'string' && x.size > 0);
-    if (!files.length) return fail(400, { error: 'Choose a CSV file.' });
+    if (!files.length) return fail(400, { error: 'Choose a CSV or PDF file.' });
     if (files.length > MAX_FILES) return fail(400, { error: `Too many files (limit ${MAX_FILES}).` });
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) return fail(400, { error: `${file.name} is larger than 8 MB.` });
     }
 
+    const pdfCount = files.filter(isPdf).length;
+    if (pdfCount && pdfCount !== files.length)
+      return fail(400, { error: 'Upload PDFs and CSV files separately — they can’t be reviewed together.' });
+    if (pdfCount > MAX_PDFS) return fail(400, { error: `Too many PDFs at once (limit ${MAX_PDFS}).` });
+
     const parsedFiles = [];
+    let usedOcr = false;
     for (const file of files) {
+      if (isPdf(file)) {
+        // read on this server — a statement PDF is never sent anywhere. The
+        // rows come back as a CSV so the normal review screen takes over.
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (String.fromCharCode(...bytes.subarray(0, 5)) !== '%PDF-')
+          return fail(400, { error: `${file.name} doesn't look like a PDF.` });
+        try {
+          const { csv, ocr } = await pdfToCsv(bytes, locals.user.date_format || 'dmy');
+          usedOcr ||= ocr;
+          parsedFiles.push({ filename: file.name, csv });
+        } catch (e) {
+          return fail(400, { error: `Couldn't read ${file.name}: ${e.message}` });
+        }
+        continue;
+      }
       const text = await file.text();
       if (parseCsv(text).length < 1) return fail(400, { error: `${file.name} doesn't look like a CSV.` });
       parsedFiles.push({ filename: file.name, csv: text });
@@ -50,7 +74,9 @@ export const actions = {
       analyzed: true,
       files: parsedFiles,
       // let the client pre-flag duplicates; capped so the payload stays small
-      existingKeys: [...existingDupeKeys(locals.user.id)].slice(0, 8000)
+      existingKeys: [...existingDupeKeys(locals.user.id)].slice(0, 8000),
+      fromPdf: pdfCount > 0,
+      ocr: usedOcr
     };
   },
 

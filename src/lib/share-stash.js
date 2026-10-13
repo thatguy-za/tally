@@ -13,6 +13,9 @@ export const SHARE_PATH = '/share-target';
 export const SHARE_CACHE = 'tally-share';
 export const SHARE_TTL_MS = 10 * 60 * 1000;
 
+/** Some apps share a file with no type; a PDF keeps its type so the importer reads it as one. */
+const typeFor = (name, type) => type || (/\.pdf$/i.test(name || '') ? 'application/pdf' : 'text/csv');
+
 const keyFor = (i) => `/_share/${i}`;
 const indexOf = (request) => Number(new URL(request.url).pathname.split('/').pop());
 
@@ -26,7 +29,7 @@ export async function stashFiles(files, now = Date.now()) {
         keyFor(i),
         new Response(file, {
           headers: {
-            'content-type': file.type || 'text/csv',
+            'content-type': typeFor(file.name, file.type),
             'x-file-name': encodeURIComponent(file.name),
             'x-file-size': String(file.size),
             'x-stashed-at': String(now)
@@ -73,7 +76,7 @@ export async function readStash(now = Date.now()) {
   return Promise.all(
     entries.map(async (r) => {
       const name = decodeURIComponent(r.headers.get('x-file-name') || 'statement.csv');
-      return new File([await r.arrayBuffer()], name, { type: r.headers.get('content-type') || 'text/csv' });
+      return new File([await r.arrayBuffer()], name, { type: typeFor(name, r.headers.get('content-type')) });
     })
   );
 }

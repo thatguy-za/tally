@@ -14,7 +14,9 @@ import { SHARE_PATH, SHARE_CACHE, stashFiles } from './lib/share-stash.js';
  * generic, dataless fallback page instead of a stale, possibly-wrong one.
  */
 const CACHE = `tally-${version}`;
-const ASSETS = new Set([...build, ...files]);
+// the iOS launch images (static/splash) are only ever fetched by iOS itself,
+// once, at install — no reason to download all of them for everyone
+const ASSETS = new Set([...build, ...files.filter((f) => !f.startsWith('/splash/'))]);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
