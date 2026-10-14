@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createCanvas } from '@napi-rs/canvas';
 import { pdfToCsv } from './pdf-statement.js';
+import { pageSlope } from './ocr.js';
 
 /**
  * A minimal real PDF: monospaced text placed at exact coordinates, so the
@@ -72,6 +73,44 @@ function makeScanPdf(draw) {
     `xref\n0 ${parts.length + 1}\n0000000000 65535 f \n` +
     offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('') +
     `trailer\n<< /Size ${parts.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new Uint8Array(Buffer.concat([out, Buffer.from(tail)]));
+}
+
+/**
+ * One text page followed by one picture-only page — a scan stitched into an
+ * otherwise ordinary statement.
+ */
+function makeMixedPdf(textItems, draw) {
+  const sc = 2;
+  const cv = createCanvas(612 * sc, 792 * sc);
+  const g = cv.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, cv.width, cv.height);
+  g.fillStyle = '#111';
+  g.font = `${10 * sc}px sans-serif`;
+  draw({ text: (t, x, y) => g.fillText(t, x * sc, y * sc), rtext: (t, edge, y) => g.fillText(t, edge * sc - g.measureText(t).width, y * sc) });
+  const jpg = cv.toBuffer('image/jpeg', 85);
+  const body = 'BT /F1 10 Tf\n' + textItems.map(({ x, y, t }) => `1 0 0 1 ${x} ${y} Tm (${t}) Tj\n`).join('') + 'ET';
+  const content = 'q 612 0 0 792 0 0 cm /Im0 Do Q';
+  const parts = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 9 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${body.length} >>\nstream\n${body}\nendstream`,
+    '<< /Producer (test) >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 8 0 R >> >> /Contents 7 0 R >>',
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`
+  ].map((o) => Buffer.from(o));
+  parts.push(Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${cv.width} /Height ${cv.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`), jpg, Buffer.from('\nendstream')]));
+  parts.push(Buffer.from('<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>'));
+  let out = Buffer.from('%PDF-1.4\n');
+  const offsets = parts.map((o, i) => {
+    const at = out.length;
+    out = Buffer.concat([out, Buffer.from(`${i + 1} 0 obj\n`), o, Buffer.from('\nendobj\n')]);
+    return at;
+  });
+  const xref = out.length;
+  const tail = `xref\n0 ${parts.length + 1}\n0000000000 65535 f \n` + offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('') + `trailer\n<< /Size ${parts.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   return new Uint8Array(Buffer.concat([out, Buffer.from(tail)]));
 }
 
@@ -152,5 +191,52 @@ describe('pdfToCsv', () => {
 
   it('says so when the file is not a readable PDF', async () => {
     await expect(pdfToCsv(new TextEncoder().encode('%PDF-1.4 garbage'), 'dmy')).rejects.toThrow(/could not be opened/);
+  });
+
+  it('reads the scanned pages of a mixed document too, instead of silently skipping them', async () => {
+    const page1 = [
+      at(40, 750, 'Statement period 01 Jun 2026 to 30 Jun 2026'),
+      ...header(720),
+      ...txn(700, '01 Jun', 'Coffee Shop', { debit: '10.00', bal: '990.00' }),
+      ...txn(686, '04 Jun', 'Salary June', { credit: '2,500.00', bal: '3,490.00' })
+    ];
+    const pdf = makeMixedPdf(page1, ({ text, rtext }) => {
+      text('Date', 40, 60);
+      text('Description', 110, 60);
+      rtext('Debit', 400, 60);
+      rtext('Credit', 460, 60);
+      rtext('Balance', 540, 60);
+      text('05 Jun', 40, 90);
+      text('Groceries', 110, 90);
+      rtext('61.20', 400, 90);
+      rtext('3,428.80', 540, 90);
+    });
+    const { csv, ocr } = await pdfToCsv(pdf, 'dmy');
+    expect(ocr).toBe(true);
+    expect(csv.trim().split(/\r?\n/).map((l) => l.split(',').slice(0, 2).join(','))).toEqual([
+      'date,description',
+      '2026-06-01,Coffee Shop',
+      '2026-06-04,Salary June',
+      '2026-06-05,Groceries'
+    ]);
+  }, 60_000);
+});
+
+describe('pageSlope', () => {
+  // a line of words whose centres fall along a line of the given slope
+  const lineOf = (slope, n = 8) => ({
+    words: Array.from({ length: n }, (_, i) => ({ bbox: { x0: 100 + i * 80, x1: 160 + i * 80, y0: 500 + slope * (130 + i * 80) - 6, y1: 500 + slope * (130 + i * 80) + 6 } }))
+  });
+
+  it('measures the tilt of a page from its longer lines', () => {
+    expect(pageSlope([lineOf(0.012), lineOf(0.012), lineOf(0.012)])).toBeCloseTo(0.012, 4);
+  });
+  it('takes the middle value, so one odd line does not skew it', () => {
+    expect(pageSlope([lineOf(0.01), lineOf(0.01), lineOf(0.09)])).toBeCloseTo(0.01, 4);
+  });
+  it('ignores short lines, and anything too steep to be a tilt', () => {
+    expect(pageSlope([lineOf(0.05, 2), lineOf(0.05, 3)])).toBe(0);
+    expect(pageSlope([lineOf(0.4), lineOf(0.4)])).toBe(0);
+    expect(pageSlope([])).toBe(0);
   });
 });

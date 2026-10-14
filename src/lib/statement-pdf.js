@@ -32,10 +32,10 @@ const MONEY = /^[(+\-−–]?\s*[A-Za-z$€£¥]{0,3}\s*[(+\-−–]?\s*\d[\d.,\
 const OPENING = /(opening|brought forward|previous|balance\s*b\/?f|b\/?f\s*balance|balance\s*(?:brought|forward))/i;
 
 const ROLE_WORDS = [
-  ['balance', /balance/i],
-  ['debit', /^(debits?|withdrawals?|money out|paid out|payments?( out)?|out|dr|charges?|spent)$/i],
-  ['credit', /^(credits?|deposits?|money in|paid in|receipts?|payments? in|in|cr|received)$/i],
-  ['amount', /^(amount|value|transaction amount|amount \(.*\))$/i]
+  ['balance', /balance|saldo|solde|kontostand|balans/i],
+  ['debit', /^(debits?|débit|soll|withdrawals?|money out|paid out|payments?( out)?|out|dr|charges?|spent|uit|af|ausgaben?|débits?)$/i],
+  ['credit', /^(credits?|crédit|haben|deposits?|money in|paid in|receipts?|payments? in|in|cr|received|bij|einnahmen?|crédits?)$/i],
+  ['amount', /^(amount|value|transaction amount|amount \(.*\)|bedrag|betrag|importe|montant|belopp|kwota)$/i]
 ];
 
 const median = (xs) => {
@@ -126,19 +126,69 @@ function readMoney(text) {
 const cents = (n) => Math.round(n * 100);
 
 /**
+ * Which way round the day and month are written in this statement. A numeric
+ * date like 06/01 reads differently in different countries, and the order set
+ * in Settings is the reader's own, not the bank's. The statement settles it
+ * itself when it can: a day above 12 (06/13 can only be month/day), dates that
+ * run in order one way but jump around the other, or a span of days against a
+ * span of months. Only when nothing decides does the Settings order apply.
+ * @param {{cells:{text:string}[]}[]} lines
+ * @param {'dmy'|'mdy'|'ymd'} userOrder
+ * @returns {'dmy'|'mdy'|'ymd'}
+ */
+export function inferDateOrder(lines, userOrder) {
+  const pairs = [];
+  for (const l of lines) {
+    const m = l.cells[0]?.text.match(/^(\d{1,2})[/.\-](\d{1,2})(?:[/.\-](\d{2,4}))?(?![\d/.])/);
+    if (m) pairs.push([Number(m[1]), Number(m[2])]);
+  }
+  if (pairs.length < 3) return userOrder;
+  const fits = (pick) => pairs.every((p) => { const [d, mo] = pick(p); return d >= 1 && d <= 31 && mo >= 1 && mo <= 12; });
+  const dmy = fits(([a, b]) => [a, b]);
+  const mdy = fits(([a, b]) => [b, a]);
+  if (dmy && !mdy) return 'dmy';
+  if (mdy && !dmy) return 'mdy';
+  if (!dmy && !mdy) return userOrder;
+  // both read as real dates: prefer the reading in which the statement covers
+  // the shorter stretch of time (a month of days, not a year of months)
+  const day = (mo, d) => (mo - 1) * 31 + d;
+  const span = (pick) => {
+    const ds = pairs.map((p) => { const [d, mo] = pick(p); return day(mo, d); });
+    return Math.max(...ds) - Math.min(...ds);
+  };
+  const sd = span(([a, b]) => [a, b]);
+  const sm = span(([a, b]) => [b, a]);
+  if (Math.abs(sd - sm) < 45) return userOrder;
+  return sd < sm ? 'dmy' : 'mdy';
+}
+
+/**
  * @param {{str:string,x:number,y:number,width:number,height:number}[][]} pages
  * @param {{ dateOrder?: 'dmy'|'mdy'|'ymd' }} [opts]
  * @returns {{ rows: {date:string,description:string,amounts:number[]}[], headers: string[], signed: boolean }}
  *   `signed`: each row has one signed `amounts[0]`. When false, `amounts` holds
  *   the amount columns as printed (unsigned) and `headers` names them.
  */
-export function parseStatement(pages, { dateOrder = 'dmy' } = {}) {
-  const lines = pages.flatMap((p) => buildLines(p));
+export function parseStatement(pages, { dateOrder: userOrder = 'dmy', ocr = false } = {}) {
+  // specks and stray marks (especially from a scan) read as lone punctuation
+  // cells; one at the start of a row would hide the date behind it. A line
+  // with nothing real left on it is dropped.
+  const lines = pages
+    .flatMap((p) => buildLines(p))
+    .map((l) => ({
+      ...l,
+      cells: l.cells
+        .map((c) => ({ ...c, text: c.text.replace(/^[.:;,'"`|_~*^]+\s*/, '').trim() }))
+        .filter((c) => /[A-Za-z0-9]/.test(c.text))
+    }))
+    .filter((l) => l.cells.length);
   const year = guessYear(lines);
+  const dateOrder = userOrder === 'ymd' ? userOrder : inferDateOrder(lines, userOrder);
 
   // ---- 1. transaction lines ------------------------------------------------
   const txns = [];
   let opening = null; // balance printed before the first transaction, if any
+  let trailing = null; // a brought-forward balance printed after the last one
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li];
     const money = line.cells.map((c) => ({ c, m: readMoney(c.text) })).filter((x) => x.m);
@@ -146,8 +196,14 @@ export function parseStatement(pages, { dateOrder = 'dmy' } = {}) {
     const date = first ? readDate(first.text, dateOrder, year) : null;
 
     if (!date) {
-      if (money.length && OPENING.test(line.cells.map((c) => c.text).join(' ')) && !txns.length)
-        opening = { right: money[money.length - 1].c.right, value: money[money.length - 1].m.value, sign: money[money.length - 1].m.sign };
+      if (money.length && OPENING.test(line.cells.map((c) => c.text).join(' '))) {
+        const last = money[money.length - 1];
+        const found = { right: last.c.right, value: last.m.value, sign: last.m.sign };
+        // before the first row it is the balance the statement starts from; after
+        // the last row, on a newest-first statement, it is the one the oldest row came from
+        if (!txns.length) opening = found;
+        else trailing = found;
+      }
       continue;
     }
     if (!money.length) continue;
@@ -210,6 +266,50 @@ export function parseStatement(pages, { dateOrder = 'dmy' } = {}) {
   }
   if (columns.length > 6) return { rows: [], headers: [], signed: false };
 
+  // ---- 3b. rows with no date of their own ----------------------------------
+  // Many statements print the date once and leave it blank for the next
+  // transactions of the same day. A line inside the table that has an amount
+  // in one of the columns and a description belongs to the row above it (and,
+  // in a scan, is also where a date the reader missed ends up).
+  const NOT_A_ROW = /\b(totals?|sub-?total|summary|carried forward|brought forward|balance|closing|opening|page \d)/i;
+  const dated = new Set(txns.map((t) => t.li));
+  const extra = [];
+  for (let li = txns[0].li + 1; li < txns[txns.length - 1].li; li++) {
+    if (dated.has(li)) continue;
+    const line = lines[li];
+    const money = line.cells.map((c) => ({ c, m: readMoney(c.text) })).filter((x) => x.m);
+    if (!money.length) continue;
+    const joined = line.cells.map((c) => c.text).join(' ');
+    if (NOT_A_ROW.test(joined) || OPENING.test(joined)) continue;
+    if (!money.every((x) => columns.some((col) => Math.abs(col.right - x.c.right) <= tol * 1.5))) continue;
+    const words = line.cells.filter((c) => !money.some((x) => x.c === c)).map((c) => c.text);
+    if (!/[A-Za-z]{2}/.test(words.join(' '))) continue;
+    const before = [...txns, ...extra].filter((t) => t.li < li).pop();
+    if (!before) continue;
+    const t = { li, line, date: before.date, parts: words, money, descX: line.cells[0].x, vals: new Array(columns.length).fill(null) };
+    for (const x of money) if (t.vals[colOf(x.c.right)] == null) t.vals[colOf(x.c.right)] = x.m;
+    extra.push(t);
+  }
+  txns.push(...extra);
+  txns.sort((a, b) => a.li - b.li);
+
+  // ---- 3c. a scan can lose the decimal point: "31799 CR" for 317.99 --------
+  // only in an amount column that has no figure for the row, and only for a
+  // whole number lined up with that column; read as cents.
+  if (ocr) {
+    for (const t of txns) {
+      for (const c of t.line.cells) {
+        const m = c.text.match(/^(\d{3,9})\s?(CR|DR)?$/i);
+        if (!m || t.money.some((x) => x.c === c)) continue;
+        const col = colOf(c.right);
+        if (Math.abs(columns[col].right - c.right) > tol * 1.2 || t.vals[col]) continue;
+        const suffix = (m[2] || '').toUpperCase();
+        t.vals[col] = { value: Number(m[1]) / 100, sign: suffix === 'DR' ? -1 : suffix === 'CR' ? 1 : null };
+        t.parts = t.parts.filter((p) => p !== c.text);
+      }
+    }
+  }
+
   // ---- 4. column roles, from a header line ---------------------------------
   const roles = new Array(columns.length).fill(null);
   for (const line of lines) {
@@ -235,41 +335,71 @@ export function parseStatement(pages, { dateOrder = 'dmy' } = {}) {
   }
 
   // ---- 5. running balance, to find the balance column and the signs --------
+  // For a pair of consecutive rows with a balance on each, does the balance
+  // move by the amount on the later row (oldest first) or on the earlier row
+  // (newest first)? Statements are listed either way.
+  const pairMatches = (bc, i) => {
+    const a = txns[i - 1].vals[bc];
+    const b = txns[i].vals[bc];
+    if (!a || !b) return null;
+    const diff = Math.abs(cents(signed(b) - signed(a)));
+    const hit = (t) => t.vals.some((v, c) => v && c !== bc && Math.abs(diff - cents(v.value)) <= 1);
+    return { asc: hit(txns[i]), desc: hit(txns[i - 1]) };
+  };
   const balanceCol = (() => {
     const fromHeader = roles.indexOf('balance');
     if (fromHeader >= 0) return fromHeader;
     if (columns.length < 2) return -1;
     const last = columns.length - 1;
-    let ok = 0;
+    let asc = 0;
+    let desc = 0;
     let tested = 0;
     for (let i = 1; i < txns.length; i++) {
-      const a = txns[i - 1].vals[last];
-      const b = txns[i].vals[last];
-      if (!a || !b) continue;
-      const others = txns[i].vals.filter((v, c) => v && c !== last);
-      if (!others.length) continue;
+      const m = pairMatches(last, i);
+      if (!m) continue;
       tested++;
-      const diff = Math.abs(cents(signed(b, last, txns[i]) - signed(a, last, txns[i - 1])));
-      if (others.some((v) => Math.abs(diff - cents(v.value)) <= 1)) ok++;
+      if (m.asc) asc++;
+      if (m.desc) desc++;
     }
-    return tested >= 2 && ok / tested >= 0.6 ? last : -1;
+    return tested >= 2 && Math.max(asc, desc) / tested >= 0.6 ? last : -1;
   })();
   // a balance is printed positive unless marked (overdrawn) — keep its own sign
-  function signed(v, _col, _t) {
+  function signed(v) {
     return (v.sign ?? 1) * v.value;
   }
   if (balanceCol >= 0) roles[balanceCol] = 'balance';
 
-  // the balance change on each line: positive = money in
-  let prevBal = opening && balanceCol >= 0 && Math.abs(opening.right - columns[balanceCol].right) <= tol * 2 ? signed(opening, 0, null) : null;
-  for (const t of txns) {
+  let newestFirst = false;
+  if (balanceCol >= 0) {
+    let asc = 0;
+    let desc = 0;
+    for (let i = 1; i < txns.length; i++) {
+      const m = pairMatches(balanceCol, i);
+      if (m?.asc) asc++;
+      if (m?.desc) desc++;
+    }
+    newestFirst = desc > asc;
+  }
+
+  // the balance change on each line: positive = money in. Oldest first, a
+  // row's change is its balance less the one above; newest first, less the one
+  // below (the older row).
+  let prevBal = opening && balanceCol >= 0 && Math.abs(opening.right - columns[balanceCol].right) <= tol * 2 ? signed(opening) : null;
+  txns.forEach((t, i) => {
     const b = balanceCol >= 0 ? t.vals[balanceCol] : null;
-    if (b) {
-      const bal = signed(b, balanceCol, t);
+    if (!b) {
+      t.delta = null;
+      return;
+    }
+    const bal = signed(b);
+    if (newestFirst) {
+      const older = txns[i + 1]?.vals[balanceCol] ?? (trailing && Math.abs(trailing.right - columns[balanceCol].right) <= tol * 2 ? trailing : null);
+      t.delta = older ? bal - signed(older) : null;
+    } else {
       t.delta = prevBal == null ? null : bal - prevBal;
       prevBal = bal;
-    } else t.delta = null;
-  }
+    }
+  });
 
   const amountCols = columns.map((_, i) => i).filter((i) => i !== balanceCol);
   const desc = (t) => t.parts.join(' ').replace(/\s+/g, ' ').trim();
@@ -304,12 +434,23 @@ export function parseStatement(pages, { dateOrder = 'dmy' } = {}) {
   if (amountCols.length === 1) {
     const col = amountCols[0];
     const rows = [];
+    const marks = txns.map((t) => t.vals[col]?.sign).filter((s) => s != null);
+    // A card statement lists what you spent as plain positive numbers and
+    // marks the payments and refunds (CR, or a minus). That is the other way
+    // round from a bank account, so on a card the unmarked are the money out.
+    const text = lines.map((l) => l.cells.map((c) => c.text).join(' ')).join(' ');
+    const isCard = balanceCol < 0 && /credit limit|minimum payment|payment due|available credit|credit card|card statement/i.test(text);
+    // no card wording, but only credits are marked: the unmarked are debits
+    const onlyCreditsMarked = marks.length > 0 && marks.every((s) => s === 1);
     for (const t of txns) {
       const v = t.vals[col];
       if (!v) continue;
       let sign = v.sign;
-      // an unmarked amount takes its sign from what the balance did
-      if (sign == null && t.delta != null && Math.abs(Math.abs(cents(t.delta)) - cents(v.value)) <= 1) sign = t.delta < 0 ? -1 : 1;
+      if (isCard) sign = sign == null ? -1 : 1;
+      else if (sign == null && onlyCreditsMarked && t.delta == null) sign = -1;
+      // what the balance did is the surest sign there is: it settles an
+      // unmarked amount, and corrects a marker a scan dropped or misread
+      if (t.delta != null && Math.abs(Math.abs(cents(t.delta)) - cents(v.value)) <= 1) sign = t.delta < 0 ? -1 : 1;
       rows.push({ date: t.date, description: desc(t), amounts: [(sign ?? 1) * v.value] });
     }
     return { signed: true, headers: ['Amount'], rows };

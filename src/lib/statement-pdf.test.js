@@ -128,3 +128,132 @@ describe('parseStatement', () => {
     expect(parseStatement([p]).rows).toEqual([]);
   });
 });
+
+import { inferDateOrder } from './statement-pdf.js';
+
+describe('date order inferred from the statement itself', () => {
+  const lines = (...dates) => dates.map((d) => ({ cells: [{ text: d }] }));
+
+  it('a day above 12 settles it, whatever order Settings has', () => {
+    expect(inferDateOrder(lines('06/01', '06/13', '06/20'), 'dmy')).toBe('mdy');
+    expect(inferDateOrder(lines('13/06', '20/06', '25/06'), 'mdy')).toBe('dmy');
+  });
+
+  it('prefers the reading that covers the shorter stretch of time', () => {
+    expect(inferDateOrder(lines('06/01', '06/04', '06/09', '06/11'), 'dmy')).toBe('mdy');
+    expect(inferDateOrder(lines('01/06', '04/06', '09/06', '11/06'), 'mdy')).toBe('dmy');
+  });
+
+  it('keeps the Settings order when nothing decides it', () => {
+    expect(inferDateOrder(lines('03/04', '03/04', '03/04'), 'mdy')).toBe('mdy');
+    expect(inferDateOrder(lines('01/02'), 'dmy')).toBe('dmy');
+  });
+
+  it('reads a US statement correctly when the user is set to day first', () => {
+    const p = page([
+      [cell('Statement 2026', 40)],
+      [cell('Date', 40), cell('Description', 100), right('Amount', 400)],
+      [cell('06/01', 40), cell('Coffee', 100), right('-10.00', 400)],
+      [cell('06/13', 40), cell('Rent', 100), right('-900.00', 400)],
+      [cell('06/28', 40), cell('Salary', 100), right('2,500.00', 400)]
+    ]);
+    expect(parseStatement([p], { dateOrder: 'dmy' }).rows.map((r) => r.date)).toEqual(['2026-06-01', '2026-06-13', '2026-06-28']);
+  });
+});
+
+describe('signs on card statements and other single-column layouts', () => {
+  it('on a card, plain amounts are spending and CR marks a payment', () => {
+    const p = page([
+      [cell('Card statement  Credit limit 5,000.00  2026', 40)],
+      [cell('Date', 40), cell('Description', 100), right('Amount', 400)],
+      [cell('01/06/2026', 40), cell('Coffee', 100), right('4.50', 400)],
+      [cell('02/06/2026', 40), cell('Payment thank you', 100), right('100.00 CR', 400)],
+      [cell('03/06/2026', 40), cell('Shop', 100), right('20.00', 400)]
+    ]);
+    expect(parseStatement([p]).rows.map((r) => r.amounts[0])).toEqual([-4.5, 100, -20]);
+  });
+
+  it('with no card wording, when only credits are marked the rest are debits', () => {
+    const p = page([
+      [cell('Date', 40), cell('Description', 100), right('Amount', 400)],
+      [cell('01/06/2026', 40), cell('Coffee', 100), right('4.50', 400)],
+      [cell('02/06/2026', 40), cell('Salary', 100), right('100.00 CR', 400)],
+      [cell('03/06/2026', 40), cell('Shop', 100), right('20.00', 400)]
+    ]);
+    expect(parseStatement([p]).rows.map((r) => r.amounts[0])).toEqual([-4.5, 100, -20]);
+  });
+
+  it('the balance corrects a minus sign that a scan lost', () => {
+    const p = page([
+      [cell('Opening balance', 100), right('1,000.00', 540)],
+      [cell('01/06/2026', 40), cell('Coffee', 100), right('10.00', 440), right('990.00', 540)],
+      [cell('02/06/2026', 40), cell('Rent', 100), right('-300.00', 440), right('690.00', 540)],
+      [cell('03/06/2026', 40), cell('Pay', 100), right('500.00', 440), right('1,190.00', 540)]
+    ]);
+    expect(parseStatement([p]).rows.map((r) => r.amounts[0])).toEqual([-10, -300, 500]);
+  });
+});
+
+describe('rows and layouts real statements have', () => {
+  it('a transaction with no date of its own takes the date above it', () => {
+    const p = page([
+      [cell('Date', 40), cell('Description', 100), right('Paid out', 400), right('Paid in', 470), right('Balance', 540)],
+      [cell('01/06/2026', 40), cell('Coffee', 100), right('10.00', 400), right('990.00', 540)],
+      [cell('Tea', 100), right('5.00', 400), right('985.00', 540)],
+      [cell('02/06/2026', 40), cell('Salary', 100), right('500.00', 470), right('1,485.00', 540)]
+    ]);
+    expect(parseStatement([p]).rows).toEqual([
+      { date: '2026-06-01', description: 'Coffee', amounts: [-10] },
+      { date: '2026-06-01', description: 'Tea', amounts: [-5] },
+      { date: '2026-06-02', description: 'Salary', amounts: [500] }
+    ]);
+  });
+
+  it('does not take a totals line for a transaction', () => {
+    const p = page([
+      [cell('01/06/2026', 40), cell('Coffee', 100), right('-10.00', 400)],
+      [cell('Total spent', 100), right('10.00', 400)],
+      [cell('02/06/2026', 40), cell('Rent', 100), right('-900.00', 400)]
+    ]);
+    expect(parseStatement([p]).rows.map((r) => r.description)).toEqual(['Coffee', 'Rent']);
+  });
+
+  it('a stray speck at the start of a row does not hide its date', () => {
+    const p = page([
+      [cell('.', 8), cell('01/06/2026', 40), cell('Coffee', 100), right('-10.00', 400)],
+      [cell(':', 8), cell('02/06/2026', 40), cell('Rent', 100), right('-900.00', 400)]
+    ]);
+    expect(parseStatement([p]).rows).toHaveLength(2);
+  });
+
+  it('reads a statement listed newest first, using the running balance', () => {
+    const p = page([
+      [cell('Date', 40), cell('Description', 100), right('Amount', 440), right('Balance', 540)],
+      [cell('03/06/2026', 40), cell('Pay', 100), right('500.00', 440), right('1,190.00', 540)],
+      [cell('02/06/2026', 40), cell('Rent', 100), right('300.00', 440), right('690.00', 540)],
+      [cell('01/06/2026', 40), cell('Coffee', 100), right('10.00', 440), right('990.00', 540)],
+      [cell('Balance brought forward', 100), right('1,000.00', 540)]
+    ]);
+    expect(parseStatement([p]).rows.map((r) => r.amounts[0])).toEqual([500, -300, -10]);
+  });
+
+  it('understands Dutch column headings', () => {
+    const p = page([
+      [cell('Datum', 40), cell('Omschrijving', 100), right('Bedrag', 440), right('Saldo', 540)],
+      [cell('01-06-2026', 40), cell('Koffie', 100), right('-4,50', 440), right('995,50', 540)],
+      [cell('02-06-2026', 40), cell('Salaris', 100), right('2.500,00', 440), right('3.495,50', 540)]
+    ]);
+    expect(parseStatement([p]).rows.map((r) => r.amounts[0])).toEqual([-4.5, 2500]);
+  });
+
+  it('whole-number amounts are repaired only for a scan, and only in an amount column', () => {
+    const rows = [
+      [cell('Date', 40), cell('Description', 100), right('Amount', 440), right('Balance', 540)],
+      [cell('01/06/2026', 40), cell('Coffee', 100), right('10.00 DR', 440), right('990.00 CR', 540)],
+      [cell('02/06/2026', 40), cell('Rent', 100), right('31799 CR', 440), right('1,307.99 CR', 540)],
+      [cell('03/06/2026', 40), cell('Tea', 100), right('5.00 DR', 440), right('1,302.99 CR', 540)]
+    ];
+    expect(parseStatement([page(rows)]).rows).toHaveLength(2);
+    expect(parseStatement([page(rows)], { ocr: true }).rows.map((r) => r.amounts[0])).toEqual([-10, 317.99, -5]);
+  });
+});

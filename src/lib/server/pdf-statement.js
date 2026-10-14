@@ -27,20 +27,25 @@ export async function pdfToCsv(bytes, dateOrder) {
   // no selectable text means a scan or a photo — read it with OCR, still on
   // this server
   let ocr = false;
-  if (!pages.some((p) => p.some((it) => it.str.trim()))) {
+  // pages with no text at all are pictures — a whole scan, or a scanned page
+  // stitched into an otherwise ordinary statement. Only those are read with OCR.
+  const blank = pages.map((p, i) => (p.some((it) => it.str.trim()) ? 0 : i + 1)).filter(Boolean);
+  if (blank.length) {
+    let read;
     try {
-      pages = await ocrPdf(bytes);
+      read = await ocrPdf(bytes, blank);
     } catch (e) {
       if (e instanceof OcrError) throw e;
       console.error('OCR failed', e);
       throw new Error('it is a scan and the OCR engine on this server could not read it.');
     }
+    blank.forEach((n, k) => { pages[n - 1] = read[k]; });
     ocr = true;
-    if (!pages.some((p) => p.length))
+    if (blank.length === pages.length && !pages.some((p) => p.length))
       throw new Error('it looks like a scan, but no text could be made out. Try a clearer or straighter copy, or export a CSV from your bank.');
   }
 
-  const { rows, headers, signed } = parseStatement(pages, { dateOrder });
+  const { rows, headers, signed } = parseStatement(pages, { dateOrder, ocr });
   if (!rows.length)
     throw new Error('no transactions were found in it. Is it a statement with dated lines and amounts? A CSV export from your bank is the reliable alternative.');
 
