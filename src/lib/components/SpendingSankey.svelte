@@ -52,10 +52,11 @@
   const W1 = 640;
   let NODE_W = $derived(lerp(W, W0, W1, 10, 14));
   const GAP = 14;
-  // the floor has to fit a typical category name (~11 characters) rather than
-  // the bare minimum, or ordinary names like "Groceries" break mid-word on a
-  // phone. Costs the ribbons ~13px a side, which they can spare.
-  let LABEL_GUTTER = $derived(lerp(W, W0, W1, 56, 132));
+  // the floor has to fit the longest single word a category is likely to have
+  // ("Uncategorised", 13 characters, is one the app itself creates) rather
+  // than the bare minimum, or it breaks mid-word on a phone. Costs the ribbons
+  // some width a side, which they can spare.
+  let LABEL_GUTTER = $derived(lerp(W, W0, W1, 80, 132));
   let nameFont = $derived(lerp(W, W0, W1, 10, 11.5));
   let amountFont = $derived(lerp(W, W0, W1, 9, 10.5));
   // characters that fit on one line within the gutter, at the current name
@@ -69,7 +70,7 @@
   let chartPad = $derived(lerp(outerW || W1, W0, W1, 2, 24));
 
   const money = (v) => formatMoney(v, currency);
-  const fill = (c) => c || 'var(--border-strong)';
+  const fill = (c) => c || 'var(--uncategorised)';
 
   let incomeTotal = $derived(income.reduce((s, c) => s + c.value, 0));
   let expenseTotal = $derived(expense.reduce((s, c) => s + c.value, 0));
@@ -174,11 +175,21 @@
         rest = '';
         break;
       }
-      // break at the last space that fits; a word longer than the line itself
-      // has no space to break at, so break it mid-word rather than let it run
-      // the full width of its own name and get clipped by the SVG's edge
-      let cut = rest.lastIndexOf(' ', maxLen);
-      if (cut <= 0) cut = maxLen;
+      // break at the last space that fits. A single word longer than the
+      // line has no space to break at: shorten it with an ellipsis, never
+      // split it mid-word ("Uncategor" / "ised"), and drop the rest
+      const cut = rest.lastIndexOf(' ', maxLen);
+      if (cut <= 0) {
+        const next = rest.indexOf(' ');
+        if (next === -1 || next > maxLen) {
+          lines.push(`${rest.slice(0, Math.max(1, maxLen - 1))}…`);
+          rest = '';
+          break;
+        }
+        lines.push(rest.slice(0, next));
+        rest = rest.slice(next).replace(/^\s+/, '');
+        continue;
+      }
       lines.push(rest.slice(0, cut).replace(/\s+$/, ''));
       rest = rest.slice(cut).replace(/^\s+/, '');
     }

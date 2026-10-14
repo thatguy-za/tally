@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsv, detectDelimiter, parseAmount, parseDate, guessMapping, dupeKey } from './csv.js';
+import { parseCsv, detectDelimiter, parseAmount, parseDate, isRealDate, guessMapping, dupeKey } from './csv.js';
 
 describe('detectDelimiter', () => {
   it('picks the most frequent of , ; tab |', () => {
@@ -189,5 +189,41 @@ describe('dupeKey', () => {
     expect(dupeKey('2026-01-02', 10, 'Coffee')).not.toBe(base);
     expect(dupeKey('2026-01-01', 11, 'Coffee')).not.toBe(base);
     expect(dupeKey('2026-01-01', 10, 'Tea')).not.toBe(base);
+  });
+});
+
+describe('impossible dates', () => {
+  it('parseDate refuses a date that is not on the calendar, in every format', () => {
+    expect(parseDate('99.99.2026')).toBeNull();
+    expect(parseDate('31/02/2026')).toBeNull();
+    expect(parseDate('2026-13-01')).toBeNull();
+    expect(parseDate('2026-02-30')).toBeNull();
+    expect(parseDate('31 Feb 2026')).toBeNull();
+    expect(parseDate('13/13/2026', 'mdy')).toBeNull();
+  });
+
+  it('still accepts real dates, including 29 February in a leap year', () => {
+    expect(parseDate('29/02/2028')).toBe('2028-02-29');
+    expect(parseDate('29/02/2027')).toBeNull();
+    expect(parseDate('13/10/2026')).toBe('2026-10-13');
+  });
+
+  it('isRealDate checks the format as well as the calendar', () => {
+    expect(isRealDate('2026-10-13')).toBe(true);
+    expect(isRealDate('2026-10-3')).toBe(false);
+    expect(isRealDate('2026-99-99')).toBe(false);
+    expect(isRealDate('')).toBe(false);
+  });
+});
+
+describe('guessMapping in other languages', () => {
+  it('recognises a Dutch export', () => {
+    expect(guessMapping(['Datum', 'Omschrijving', 'Bedrag', 'Saldo'])).toMatchObject({ date: '0', description: '1', amount: '2' });
+  });
+  it('recognises a German export', () => {
+    expect(guessMapping(['Buchungstag', 'Verwendungszweck', 'Betrag'])).toMatchObject({ date: '0', description: '1', amount: '2' });
+  });
+  it('recognises a Spanish export', () => {
+    expect(guessMapping(['Fecha', 'Concepto', 'Importe'])).toMatchObject({ date: '0', description: '1', amount: '2' });
   });
 });

@@ -1,4 +1,5 @@
 <script>
+  import { confirmSubmit } from '$lib/actions/confirm-submit.js';
   import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import Icon from '$lib/components/Icon.svelte';
@@ -194,7 +195,7 @@
               </form>
               {#if u.id !== data.myId}
                 <form method="POST" action="?/deleteUser" use:enhance
-                  onsubmit={(e) => { if (!confirm(`Delete ${u.username} and all their data?`)) e.preventDefault(); }}>
+                  use:confirmSubmit={{ title: `Delete ${u.username}?`, message: 'Their account and all of their data will be permanently deleted. This cannot be undone.', confirmLabel: 'Delete user', danger: true }}>
                   <input type="hidden" name="id" value={u.id} />
                   <button style="color:var(--negative)" class="hover:underline">Delete</button>
                 </form>

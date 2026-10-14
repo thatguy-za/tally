@@ -90,5 +90,6 @@ image as a check without pushing it, and `workflow_dispatch` lets you run a buil
 | `ALLOW_REGISTRATION` | `true` | Set to `false` to close signup |
 | `ORIGIN` | – | Public URL when behind a reverse proxy (or pass `X-Forwarded-Proto` / `X-Forwarded-Host` with `PROTOCOL_HEADER` / `HOST_HEADER`) |
 | `BODY_SIZE_LIMIT` | `8M` | Max request body, for large CSV imports |
+| `ADDRESS_HEADER` | – | Behind a reverse proxy, set to `X-Forwarded-For` (and `XFF_DEPTH` to the number of proxies) so repeated wrong passwords are counted per visitor. Without it every visitor looks like the proxy's address, which still limits guessing at a username but does so for everyone behind it together |
 | `ANTHROPIC_API_KEY` | – | Enables Ask Tori and AI categorisation via Claude |
 | `OPENAI_API_KEY` | – | Same, via GPT — an admin picks the provider and model in *Server settings* |

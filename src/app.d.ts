@@ -8,6 +8,7 @@ declare global {
         is_admin: number;
         onboarded_at: string | null;
       } | null;
+      hideNumbers?: boolean;
     }
     interface PageData {
       user?: App.Locals['user'];

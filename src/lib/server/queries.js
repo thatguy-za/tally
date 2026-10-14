@@ -861,7 +861,7 @@ export function periodInsights(userId, from, to, accountId = null) {
       e = {
         id: r.id,
         name: r.name,
-        color: r.color || 'var(--border-strong)',
+        color: r.color || 'var(--uncategorised)',
         periodByMonth: new Map(),
         beforeByMonth: new Map()
       };

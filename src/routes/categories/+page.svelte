@@ -1,4 +1,6 @@
 <script>
+  import { confirmSubmit } from '$lib/actions/confirm-submit.js';
+  import { modal } from '$lib/actions/modal.js';
   import { enhance } from '$app/forms';
   import Icon from '$lib/components/Icon.svelte';
   import ColorPicker from '$lib/components/ColorPicker.svelte';
@@ -174,12 +176,7 @@
                       <Icon name="edit" size={14} />
                     </button>
                     <form method="POST" action="?/deleteCategory" use:enhance
-                      onsubmit={(e) => {
-                        const msg = c.count
-                          ? `Delete "${c.name}"? ${c.count} transaction${c.count === 1 ? '' : 's'} will become uncategorised.`
-                          : `Delete "${c.name}"?`;
-                        if (!confirm(msg)) e.preventDefault();
-                      }}>
+                      use:confirmSubmit={{ title: `Delete ${c.name}?`, message: c.count ? `${c.count} transaction${c.count === 1 ? '' : 's'} will become uncategorised.` : 'This category has no transactions.', confirmLabel: 'Delete category', danger: true }}>
                       <input type="hidden" name="id" value={c.id} />
                       <button class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--negative)]"
                         data-tip="Delete" aria-label="Delete {c.name}">
@@ -236,7 +233,7 @@
 {#if suggestions}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_interactive_supports_focus -->
-<div class="overlay" role="dialog" aria-modal="true" aria-label="AI category suggestions"
+<div class="overlay" use:modal role="dialog" aria-modal="true" aria-label="AI category suggestions"
     onclick={(e) => e.target === e.currentTarget && (suggestions = null)}>
     <div class="card w-full max-w-lg rise max-h-[85vh] overflow-y-auto">
       <div class="mb-4 flex items-start justify-between gap-3">

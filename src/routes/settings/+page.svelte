@@ -1,4 +1,5 @@
 <script>
+  import { confirmSubmit } from '$lib/actions/confirm-submit.js';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { formatMoney } from '$lib/currency.js';
@@ -46,7 +47,7 @@
       Display formatting only (single currency per user). Preview: <span class="tnum">{formatMoney(1234.5, data.currency)}</span>
     </p>
     <form method="POST" action="?/currency" use:enhance class="flex flex-wrap items-center gap-3">
-      <select class="input max-w-xs" name="currency" value={data.currency}>
+      <select class="input max-w-xs" name="currency" aria-label="Currency" value={data.currency}>
         {#each data.currencies as c}<option value={c.code}>{c.label}</option>{/each}
       </select>
       <button class="btn btn-primary">Save</button>
@@ -59,10 +60,10 @@
   <div class="card">
     <h2 class="text-lg">Date format</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
-      How ambiguous numeric dates (e.g. 03/04/2026) are read when importing a CSV.
+      How ambiguous numeric dates (e.g. 03/04/2026) are read when importing a CSV or PDF statement, and the order short dates are shown in.
     </p>
     <form method="POST" action="?/dateFormat" use:enhance class="flex flex-wrap items-center gap-3">
-      <select class="input max-w-xs" name="date_format" value={data.dateFormat}>
+      <select class="input max-w-xs" name="date_format" aria-label="Date format" value={data.dateFormat}>
         {#each data.dateFormats as d}<option value={d.value}>{d.label}</option>{/each}
       </select>
       <button class="btn btn-primary">Save</button>
@@ -116,7 +117,7 @@
             </span>
             {#if data.accounts.length > 1}
               <form method="POST" action="?/deleteAccount" use:enhance
-                onsubmit={(e) => { if (a.count && !confirm(`${a.count} transactions will become unassigned. Continue?`)) e.preventDefault(); }}>
+                use:confirmSubmit={{ skip: !a.count, title: `Delete ${a.name}?`, message: `${a.count} transaction${a.count === 1 ? '' : 's'} will become unassigned.`, confirmLabel: 'Delete account', danger: true }}>
                 <input type="hidden" name="id" value={a.id} />
                 <button class="text-[var(--ink-faint)] hover:text-[var(--negative)]" title="Delete"><Icon name="trash" size={14} /></button>
               </form>
@@ -158,7 +159,7 @@
     <h2 class="text-lg">Username</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">Used to sign in. Can be anything — even an email address.</p>
     <form method="POST" action="?/username" use:enhance class="flex max-w-md flex-wrap items-center gap-3">
-      <input class="input flex-1" name="username" type="text" autocomplete="username"
+      <input class="input flex-1" name="username" type="text" aria-label="Username" autocomplete="username"
         value={data.username} required />
       <button class="btn btn-primary">Save</button>
       {#if err('username')}<span class="text-sm" style="color:var(--negative)">{err('username')}</span>{/if}
@@ -199,11 +200,8 @@
       </a>
       <form method="POST" action="?/restoreBackup" enctype="multipart/form-data" use:enhance
         class="flex flex-wrap items-center gap-2"
-        onsubmit={(e) => {
-          if (!confirm('Restore from this backup? This replaces EVERY account\'s categories, rules, budgets and transactions with what\'s in the file. This cannot be undone.'))
-            e.preventDefault();
-        }}>
-        <input class="input max-w-[220px] !py-1.5 text-[13px]" type="file" name="file" accept=".zip" required />
+        use:confirmSubmit={{ title: 'Restore from this backup?', message: 'This replaces every account’s categories, rules, budgets and transactions with what’s in the file. This cannot be undone.', confirmLabel: 'Restore', danger: true }}>
+        <input class="input max-w-[260px] !py-1.5 text-[13px]" type="file" name="file" accept=".zip" aria-label="Backup file to restore" required />
         <button class="btn" style="background:var(--negative-wash);color:var(--negative)">Restore from backup</button>
       </form>
     </div>
@@ -216,9 +214,7 @@
       Permanently delete every transaction on this account. Categories, accounts and rules are kept.
     </p>
     <form method="POST" action="?/deleteAllTransactions" use:enhance
-      onsubmit={(e) => {
-        if (!confirm('Delete ALL of your transactions? This cannot be undone.')) e.preventDefault();
-      }}>
+      use:confirmSubmit={{ title: 'Delete all transactions?', message: 'Every transaction on this account will be permanently deleted. Categories, accounts and rules are kept. This cannot be undone.', confirmLabel: 'Delete everything', danger: true }}>
       <button class="btn" style="background:var(--negative-wash);color:var(--negative)">Delete all transactions</button>
       {#if ok('danger')}<span class="ml-3 text-sm" style="color:var(--positive)">{form.msg}</span>{/if}
     </form>

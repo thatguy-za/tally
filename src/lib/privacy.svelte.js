@@ -1,15 +1,44 @@
 import { formatMoney as formatMoneyReal } from './currency.js';
+import { HIDE_COOKIE } from './privacy-cookie.js';
 
-// A purely client-side "hide my numbers" preference — someone showing the
-// app to someone else can blank every amount without logging out or losing
-// their place. Mirrors theme.svelte.js's localStorage pattern: mutated only
-// from client event handlers/effects, so it never touches SSR output (every
-// render starts from the same `false` default until initPrivacy() runs).
+// A "hide my numbers" preference — someone showing the app to someone else can
+// blank every amount without logging out or losing their place. It is kept in
+// a cookie as well as localStorage: the cookie is what lets the server render
+// the page already masked, so real amounts are never on screen even briefly.
 export const privacy = $state({ hideNumbers: false });
 
-export function initPrivacy() {
+const ONE_YEAR = 60 * 60 * 24 * 365;
+
+function persist(v) {
   try {
-    privacy.hideNumbers = localStorage.getItem('hideNumbers') === '1';
+    if (v) localStorage.setItem('hideNumbers', '1');
+    else localStorage.removeItem('hideNumbers');
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    document.cookie = `${HIDE_COOKIE}=${v ? '1' : ''}; Path=/; Max-Age=${v ? ONE_YEAR : 0}; SameSite=Lax`;
+    document.documentElement.toggleAttribute('data-hide-numbers', v);
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+/**
+ * Called as the layout starts (on the server too, so the first render is
+ * already right). `fromServer` is what the cookie said. A browser that set
+ * the preference before it was kept in a cookie has it in localStorage only,
+ * so that is adopted once and written to the cookie.
+ * @param {boolean} fromServer
+ */
+export function initPrivacy(fromServer = false) {
+  privacy.hideNumbers = fromServer;
+  if (fromServer || typeof localStorage === 'undefined') return;
+  try {
+    if (localStorage.getItem('hideNumbers') === '1') {
+      privacy.hideNumbers = true;
+      persist(true);
+    }
   } catch (e) {
     /* ignore */
   }
@@ -17,12 +46,7 @@ export function initPrivacy() {
 
 export function setHideNumbers(v) {
   privacy.hideNumbers = v;
-  try {
-    if (v) localStorage.setItem('hideNumbers', '1');
-    else localStorage.removeItem('hideNumbers');
-  } catch (e) {
-    /* ignore */
-  }
+  persist(v);
 }
 
 export function toggleHideNumbers() {
@@ -32,8 +56,7 @@ export function toggleHideNumbers() {
 /**
  * Drop-in replacement for currency.js's formatMoney — same signature, so
  * every call site just switches its import source to mask under the
- * "hide numbers" preference. Never import this on the server: it's a client
- * preference with no meaning for a request that isn't rendering to a screen.
+ * "hide numbers" preference.
  * @param {number} amount @param {string} currency
  */
 export function formatMoney(amount, currency) {

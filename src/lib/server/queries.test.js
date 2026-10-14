@@ -1136,17 +1136,17 @@ describe('deleteTransaction, bulkCategorise and bulkDelete stay within one accou
 describe('getLogoDomains', () => {
   it('guesses and caches a domain per unique description, reused across repeats', () => {
     const first = getLogoDomains(['SPAR CAPE TOWN', 'SPAR CAPE TOWN', 'NETFLIX.COM']);
-    expect(first.get('SPAR CAPE TOWN')).toBe('spar.com');
+    expect(first.get('SPAR CAPE TOWN')).toBe('spar-international.com');
     expect(first.get('NETFLIX.COM')).toBe('netflix.com');
 
     const cachedRow = db
       .prepare('SELECT domain FROM merchant_logos WHERE key = ?')
       .get('spar cape town');
-    expect(cachedRow.domain).toBe('spar.com');
+    expect(cachedRow.domain).toBe('spar-international.com');
 
     // a second call must reuse the cached row rather than re-guessing
     const second = getLogoDomains(['SPAR CAPE TOWN']);
-    expect(second.get('SPAR CAPE TOWN')).toBe('spar.com');
+    expect(second.get('SPAR CAPE TOWN')).toBe('spar-international.com');
   });
 
   it('caches a null guess too, so an ungessable description is not retried forever', () => {
@@ -1158,6 +1158,11 @@ describe('getLogoDomains', () => {
       .get('atm withdrawal');
     expect(cachedRow).toBeTruthy();
     expect(cachedRow.domain).toBeNull();
+  });
+
+  it('gives no logo, and looks nothing up, when the merchant is not clear', () => {
+    const result = getLogoDomains(['Future dated rent', 'Unknown card payment XYZ123', 'Jane Doe']);
+    expect([...result.values()]).toEqual([null, null, null]);
   });
 
   it('maps blank descriptions to null without erroring', () => {

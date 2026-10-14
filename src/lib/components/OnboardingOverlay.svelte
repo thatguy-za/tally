@@ -1,4 +1,5 @@
 <script>
+  import { modal } from '$lib/actions/modal.js';
   import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
@@ -39,7 +40,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_interactive_supports_focus -->
-<div class="overlay" role="dialog" aria-modal="true" aria-label="Connect an AI assistant"
+<div class="overlay" use:modal role="dialog" aria-modal="true" aria-label="Connect an AI assistant"
   onclick={(e) => e.target === e.currentTarget && !closing && exit()}>
   <div class="card w-full max-w-lg rise" style="max-height:85vh;overflow-y:auto">
     <div class="mb-5 flex items-start justify-between gap-3">

@@ -1,4 +1,5 @@
 <script>
+  import { confirmSubmit } from '$lib/actions/confirm-submit.js';
   import { enhance } from '$app/forms';
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
@@ -79,18 +80,19 @@
 
 {#if data.totals.count}
   {@const remaining = data.totals.target - data.totals.actual}
-  <div class="mb-4 grid gap-4 sm:grid-cols-3">
-    <div class="card">
+  <!-- one compact strip on a phone, like Insights; separate cards from sm up -->
+  <div class="mb-4 grid grid-cols-3 divide-x divide-[var(--border)] overflow-hidden rounded-[var(--radius)] border border-[var(--border)] sm:gap-4 sm:divide-x-0 sm:overflow-visible sm:rounded-none sm:border-0">
+    <div class="min-w-0 px-2.5 py-3 sm:card">
       <p class="kicker">Budgeted</p>
-      <span class="mt-2 block stat-value text-[24px]"><Money value={data.totals.target} currency={data.currency} /></span>
+      <span class="mt-2 block stat-value text-[17px] sm:text-[24px]"><Money value={data.totals.target} currency={data.currency} /></span>
     </div>
-    <div class="card">
+    <div class="min-w-0 px-2.5 py-3 sm:card">
       <p class="kicker">Spent</p>
-      <span class="mt-2 block stat-value text-[24px]"><Money value={data.totals.actual} currency={data.currency} /></span>
+      <span class="mt-2 block stat-value text-[17px] sm:text-[24px]"><Money value={data.totals.actual} currency={data.currency} /></span>
     </div>
-    <div class="card">
+    <div class="min-w-0 px-2.5 py-3 sm:card">
       <p class="kicker">Remaining</p>
-      <span class="mt-2 block stat-value text-[24px]"
+      <span class="mt-2 block stat-value text-[17px] sm:text-[24px]"
         style={remaining < 0 ? 'color:var(--ink)' : 'color:var(--positive)'}>
         <Money value={remaining} currency={data.currency} colour="none" />
       </span>
@@ -104,7 +106,7 @@
       Set a monthly target per category. Clear a field to remove its target. Spending is matched to the selected month.
     </p>
     <form method="POST" action="?/generateTargets" use:enhance
-      onsubmit={(e) => { if (!confirm('Set every expense target to its average monthly spend so far? This overwrites existing targets.')) e.preventDefault(); }}>
+      use:confirmSubmit={{ title: 'Calculate targets?', message: 'Every expense target will be set to its average monthly spend so far. This overwrites your existing targets.', confirmLabel: 'Calculate' }}>
       <button class="btn btn-ghost btn-sm whitespace-nowrap">Calculate targets</button>
     </form>
   </div>

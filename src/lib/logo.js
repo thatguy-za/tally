@@ -1,11 +1,14 @@
 /**
- * Best-effort merchant domain guessing from messy bank-export description
- * text (e.g. "SQ *SPAR CAPE TOWN", "NETFLIX.COM", "PAYPAL *SPOTIFY AB").
- * There is no reliable way to do this perfectly from text alone — this is a
- * heuristic for finding a favicon to show next to a transaction, not an
- * authoritative merchant match, and a wrong or missing guess is expected and
- * harmless (the UI just falls back to a plain dot).
+ * Finding a merchant's logo from a messy bank description (e.g. "SQ *SPAR
+ * CAPE TOWN", "NETFLIX.COM", "PAYPAL *SPOTIFY AB"). Each lookup sends the
+ * merchant's domain to a favicon service, and a wrong logo is worse than none,
+ * so a logo is only looked up when the merchant is clear:
+ *   - the description contains a web address ("NETFLIX.COM"), or
+ *   - it starts with a merchant on the known list (merchants.js).
+ * Anything else — "Future dated rent", "Unknown card payment", a person's
+ * name — gets no lookup and the UI shows a plain dot.
  */
+import { MERCHANTS } from './merchants.js';
 
 // Card-network / payment-processor noise that precedes the actual merchant
 // name in a lot of bank exports. Applied repeatedly, since these often stack
@@ -99,10 +102,14 @@ const STOPWORDS = new Set([
 const DOMAIN_RE = /\b([a-z0-9-]+\.(?:com|net|org|io|app|shop|store|co\.[a-z]{2}|[a-z]{2,3}))\b/i;
 
 /**
+ * The old guess: the first real word of any description plus ".com". It found
+ * a "merchant" in nearly everything ("Future dated rent" became futur…), so it
+ * is no longer used to look anything up. Kept only so the one-time clean-up in
+ * db.js can recognise cached rows that this produced and drop them.
  * @param {string} description
- * @returns {string|null} a lowercase domain guess, or null if none is worth trying
+ * @returns {string|null}
  */
-export function guessDomain(description) {
+export function legacyGuessDomain(description) {
   const desc = String(description || '').trim();
   if (!desc) return null;
 
@@ -126,6 +133,57 @@ export function guessDomain(description) {
     sawWord = true;
     if (name.length < 3 || STOPWORDS.has(name)) continue;
     return `${name}.com`;
+  }
+  return null;
+}
+
+// A web address written in the text. Only well-known endings count, so
+// "J.Smith" or "INV.2024" aren't read as one; the label must be 3+ letters.
+const TLDS = 'com|net|org|io|app|shop|store|co\\.uk|co\\.za|co\\.nz|com\\.au|com\\.br|co\\.in|uk|nl|de|fr|es|it|ie|be|ch|at|se|no|dk|fi|pl|cz|pt|ca|au|nz|za|in|jp|us|eu|tv|me|ai|dev|so';
+const WEB_ADDRESS = new RegExp(`(^|[^a-z0-9@.-])((?:[a-z0-9-]+\\.)*[a-z0-9-]{3,}\\.(?:${TLDS}))(?![a-z0-9-])`, 'i');
+// mailbox providers say nothing about the merchant
+const MAILBOX_PROVIDERS = new Set(['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'live.com', 'me.com', 'proton.me', 'protonmail.com']);
+
+/** The registrable part of a host: "help.uber.com" -> "uber.com", "shop.amazon.co.uk" -> "amazon.co.uk". */
+function registrable(host) {
+  const parts = host.split('.');
+  const two = parts.slice(-2).join('.');
+  if (/^(co|com)\.[a-z]{2}$/.test(two) && parts.length >= 3) return parts.slice(-3).join('.');
+  return two;
+}
+
+/**
+ * @param {string} description
+ * @returns {string|null} the merchant's domain when it is clear from the text, otherwise null
+ */
+export function guessDomain(description) {
+  const desc = String(description || '').trim();
+  if (!desc) return null;
+
+  const found = desc.match(WEB_ADDRESS);
+  if (found) {
+    const domain = registrable(found[2].toLowerCase().replace(/^www\./, ''));
+    if (!MAILBOX_PROVIDERS.has(domain) && !GENERIC_TERMS.has(domain.split('.')[0])) return domain;
+  }
+
+  let rest = desc;
+  for (let i = 0; i < 4 && NOISE_PREFIX.test(rest); i++) rest = rest.replace(NOISE_PREFIX, '');
+  const tokens = rest
+    .toLowerCase()
+    .replace(/['’`]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(' ')
+    // reference numbers and the like before the name
+    .filter((t, i, all) => !(/^\d+$/.test(t) && all.slice(0, i).every((x) => /^\d+$/.test(x))));
+  while (tokens[0] === 'the') tokens.shift();
+  if (!tokens.length || GENERIC_TERMS.has(tokens[0])) return null;
+
+  // the longest known name that the description starts with
+  for (let n = Math.min(4, tokens.length); n >= 1; n--) {
+    const domain = MERCHANTS[tokens.slice(0, n).join(' ')];
+    if (domain) return domain;
   }
   return null;
 }

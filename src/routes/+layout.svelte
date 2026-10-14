@@ -4,6 +4,7 @@
   import { onNavigate } from '$app/navigation';
   import Icon from '$lib/components/Icon.svelte';
   import Toaster from '$lib/components/Toaster.svelte';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import LoadingBar from '$lib/components/LoadingBar.svelte';
   import UserMenu from '$lib/components/UserMenu.svelte';
   import AccountSwitcher from '$lib/components/AccountSwitcher.svelte';
@@ -31,9 +32,13 @@
   // header row is too narrow for labelled links — see the hamburger below
   let mobileNavOpen = $state(false);
 
+  // during init, not in an effect, so the server's first render is already
+  // masked when the preference is on
+  // svelte-ignore state_referenced_locally -- the initial value is exactly what is wanted
+  initPrivacy(data.hideNumbers);
+
   $effect(() => {
     initTheme();
-    initPrivacy();
   });
 
   // Offered once per update, never nagging: the new worker has already taken
@@ -115,6 +120,7 @@
 
 <LoadingBar />
 <Toaster />
+<ConfirmDialog />
 {#if data.onboarding}
   <OnboardingOverlay onboarding={data.onboarding} />
 {/if}

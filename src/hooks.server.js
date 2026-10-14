@@ -3,6 +3,8 @@ import { getSessionUser, SESSION_COOKIE } from '$lib/server/auth.js';
 import { listAccounts } from '$lib/server/queries.js';
 import { ACCOUNT_COOKIE } from '$lib/server/account-cookie.js';
 
+import { HIDE_COOKIE } from '$lib/privacy-cookie.js';
+
 const PUBLIC_ROUTES = new Set(['/login', '/register']);
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
@@ -78,5 +80,23 @@ export async function handle({ event, resolve }) {
     throw redirect(303, '/insights');
   }
 
-  return resolve(event);
+  // "Hide numbers" lives in a cookie (not only localStorage) so the server
+  // can render the page already masked — otherwise every load would show the
+  // real amounts for a moment, until the browser finished starting the app
+  const hideNumbers = event.cookies.get(HIDE_COOKIE) === '1';
+  event.locals.hideNumbers = hideNumbers;
+
+  const response = await resolve(event, {
+    transformPageChunk: ({ html }) => (hideNumbers ? html.replace('<html ', '<html data-hide-numbers ') : html)
+  });
+
+  // browsers should not guess content types, frame this app inside another
+  // site, or tell other sites which page (and so which account) a request came
+  // from — merchant logos are fetched from a third party, and the default
+  // referrer policy would send them this app's address
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Referrer-Policy', 'same-origin');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  return response;
 }

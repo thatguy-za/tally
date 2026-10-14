@@ -1,4 +1,5 @@
 <script>
+  import { modal } from '$lib/actions/modal.js';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { formatMonth, currentMonth } from '$lib/currency.js';
@@ -456,7 +457,7 @@
 {#if monthModal}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_interactive_supports_focus -->
-<div class="overlay" role="dialog" aria-modal="true" aria-label="{shortMonth(monthModal.month)} spending breakdown"
+<div class="overlay" use:modal role="dialog" aria-modal="true" aria-label="{shortMonth(monthModal.month)} spending breakdown"
     onclick={(e) => e.target === e.currentTarget && (monthModal = null)}>
     <div class="card w-full max-w-2xl rise max-h-[85vh] overflow-y-auto pb-6">
       <div class="mb-4 flex items-start justify-between gap-3">
@@ -496,7 +497,7 @@
 {#if savingsModal}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_interactive_supports_focus -->
-  <div class="overlay" role="dialog" aria-modal="true" aria-label="Savings breakdown"
+  <div class="overlay" use:modal role="dialog" aria-modal="true" aria-label="Savings breakdown"
     onclick={(e) => e.target === e.currentTarget && (savingsModal = null)}>
     <div class="card w-full max-w-2xl rise max-h-[85vh] overflow-y-auto">
       <div class="mb-4 flex items-start justify-between gap-3">

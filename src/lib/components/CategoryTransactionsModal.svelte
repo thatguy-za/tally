@@ -1,4 +1,5 @@
 <script>
+  import { modal } from '$lib/actions/modal.js';
   import Icon from './Icon.svelte';
   import CategorySelect from './CategorySelect.svelte';
   import TransactionRow from './TransactionRow.svelte';
@@ -125,13 +126,13 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_interactive_supports_focus -->
-<div class="overlay" role="dialog" aria-modal="true" aria-label="{categoryName} transactions"
+<div class="overlay" use:modal role="dialog" aria-modal="true" aria-label="{categoryName} transactions"
   onclick={(e) => e.target === e.currentTarget && onClose()}>
   <div class="card w-full max-w-2xl rise max-h-[85vh] overflow-y-auto">
     <div class="mb-4 flex items-start justify-between gap-3">
       <div>
         <p class="kicker mb-1 flex items-center gap-1.5">
-          <span class="h-2.5 w-2.5 rounded-full" style="background:{color || 'var(--border-strong)'}"></span>
+          <span class="h-2.5 w-2.5 rounded-full" style="background:{color || 'var(--uncategorised)'}"></span>
           {periodLabel}
         </p>
         <h2 class="text-xl" style="font-family:var(--font-display)">{categoryName}</h2>

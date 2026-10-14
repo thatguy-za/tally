@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { parseAmount } from '$lib/server/csv.js';
+import { isRealDate } from '$lib/csv.js';
 import {
   listCategories,
   listMonths,
@@ -91,7 +92,7 @@ export const actions = {
     const notes = String(f.get('notes') || '').trim().slice(0, 280);
     const amount = num(f.get('amount'));
     const direction = String(f.get('direction') || 'out');
-    if (!date || amount == null) return fail(400, { error: 'Date and a valid amount are required.' });
+    if (!isRealDate(date) || amount == null) return fail(400, { error: 'Date and a valid amount are required.' });
     const signed = amount * (direction === 'in' ? 1 : -1);
     let categoryId = f.get('category_id') ? Number(f.get('category_id')) : null;
     if (!categoryId) categoryId = categoriseByRules(locals.user.id, locals.accountId, description);
@@ -117,7 +118,7 @@ export const actions = {
     for (const r of incoming) {
       const date = String(r.date || '').slice(0, 10);
       const amount = Number(r.amount);
-      if (!date || !Number.isFinite(amount)) continue;
+      if (!isRealDate(date) || !Number.isFinite(amount)) continue;
       const description = String(r.description || '').trim();
       const notes = String(r.notes || '').trim().slice(0, 280);
       let categoryId = r.category_id ? Number(r.category_id) : null;
@@ -145,7 +146,7 @@ export const actions = {
     const description = String(f.get('description') || '').trim();
     const notes = String(f.get('notes') || '').trim().slice(0, 280);
     const amount = parseAmount(String(f.get('amount') ?? ''));
-    if (!id || !date || amount == null) return fail(400, { error: 'Invalid values.' });
+    if (!id || !isRealDate(date) || amount == null) return fail(400, { error: 'Invalid values.' });
     updateTransaction(locals.user.id, locals.accountId, id, { date, description, notes, amount });
     return { updated: true };
   },

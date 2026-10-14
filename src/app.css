@@ -51,10 +51,13 @@
 
   --border: #e6dfce;
   --border-strong: #d8cfb8;
+  /* the colour of anything uncategorised in a chart or a dot — a mid grey that
+     reads on the page in both themes (a border tint is far too faint for a fill) */
+  --uncategorised: #8c8474;
 
   --ink: #201d17;
   --ink-soft: #575043;
-  --ink-faint: #8c8474;
+  --ink-faint: #6f6858;
 
   --accent: #1f6f52;
   --accent-strong: #17553f;
@@ -91,6 +94,7 @@
 
   --border: #34301f;
   --border-strong: #423d29;
+  --uncategorised: #8b8371;
 
   --ink: #f3efe2;
   --ink-soft: #c0b9a3;
@@ -125,6 +129,7 @@
 
     --border: #34301f;
     --border-strong: #423d29;
+    --uncategorised: #8b8371;
 
     --ink: #f3efe2;
     --ink-soft: #c0b9a3;
@@ -636,4 +641,30 @@ kbd, .kbd {
   textarea {
     font-size: 16px !important;
   }
+}
+
+/* ============================================================ hide numbers */
+/* Text amounts are replaced by dots in the markup itself; amounts that live in
+   editable fields, or are plain numbers, are blurred instead. A field being
+   edited is shown, so you can still see what you are typing. */
+[data-hide-numbers] input[inputmode='decimal']:not(:focus),
+[data-hide-numbers] .money-raw {
+  filter: blur(6px);
+}
+
+/* the browser's default "Choose file" button is a grey system control that
+   ignores the theme — give it the same look as the app's other small buttons */
+input[type='file']::file-selector-button {
+  margin-right: 0.75rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--paper-sunk);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+input[type='file']::file-selector-button:hover {
+  background: var(--surface-raised);
 }

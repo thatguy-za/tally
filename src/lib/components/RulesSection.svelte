@@ -1,4 +1,7 @@
 <script>
+  import { modal } from '$lib/actions/modal.js';
+  import { page } from '$app/stores';
+  import { shortDate as formatShortDate } from '$lib/dates.js';
   import { enhance, deserialize } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import Icon from './Icon.svelte';
@@ -68,7 +71,7 @@
     }
   }
 
-  const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const shortDate = (d) => formatShortDate(d, $page.data.user?.date_format);
 
   function toggleAccept(id) {
     const next = new Set(preview.accepted);
@@ -197,7 +200,7 @@
 {#if preview}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_interactive_supports_focus -->
-  <div class="overlay" role="dialog" aria-modal="true" aria-label="Preview re-run categorisation"
+  <div class="overlay" use:modal role="dialog" aria-modal="true" aria-label="Preview re-run categorisation"
     onclick={(e) => e.target === e.currentTarget && !applying && (preview = null)}>
     <div class="card w-full max-w-2xl rise max-h-[85vh] overflow-y-auto pb-6">
       <div class="mb-4 flex items-start justify-between gap-3">

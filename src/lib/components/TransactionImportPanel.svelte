@@ -1,4 +1,6 @@
 <script>
+  import { page } from '$app/stores';
+  import { shortDate as formatShortDate } from '$lib/dates.js';
   import { tick, onMount } from 'svelte';
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
@@ -195,7 +197,7 @@
   // mobile: one card expanded at a time, and a way to show a chosen
   // category's name for a row (id, or "new:Name" from a mapped column/AI)
   let mobileExpanded = $state(null);
-  const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const shortDate = (d) => formatShortDate(d, $page.data.user?.date_format);
   // these rows aren't saved yet, so there's no stored logo domain to read —
   // guess it from the description the same way an imported row will once it is
   function categoryColour(catValue) {
@@ -481,7 +483,7 @@
               <span class="truncate">{row.description}</span>
             </span>
             <span class="flex shrink-0 items-center gap-2">
-              <span class="tnum" style={row.amount > 0 ? 'color:var(--positive)' : ''}>{row.amount.toFixed(2)}</span>
+              <span class="tnum money-raw" style={row.amount > 0 ? 'color:var(--positive)' : ''}>{row.amount.toFixed(2)}</span>
               <CategorySelect categories={data.categories} value=""
                 onChange={(v) => categoriseAfterImport(row.id, v)}
                 onCreated={() => invalidateAll()} />
@@ -624,7 +626,7 @@
           <button type="button" class="btn btn-ghost btn-sm" onclick={cancelAiSuggest}>Cancel</button>
         </span>
       {/if}
-      <span class="tnum ml-auto text-[var(--ink-faint)]">+{stats.incoming.toFixed(2)} / −{stats.outgoing.toFixed(2)}</span>
+      <span class="tnum money-raw ml-auto text-[var(--ink-faint)]">+{stats.incoming.toFixed(2)} / −{stats.outgoing.toFixed(2)}</span>
     </div>
 
     <!-- thin format line — desktop only; the mapping selects double as this on mobile -->

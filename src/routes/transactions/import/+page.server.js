@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { parseCsv } from '$lib/csv.js';
+import { parseCsv, isRealDate } from '$lib/csv.js';
 import {
   listCategories,
   listRules,
@@ -19,7 +19,6 @@ const MAX_FILES = 20;
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
 const MAX_PDFS = 5;
 const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
@@ -125,7 +124,7 @@ export const actions = {
     for (const r of incoming) {
       const date = String(r.date || '').slice(0, 10);
       const amount = Number(r.amount);
-      if (!DATE_RE.test(date) || !Number.isFinite(amount)) { invalid++; continue; }
+      if (!isRealDate(date) || !Number.isFinite(amount)) { invalid++; continue; }
       prepared.push({
         date,
         description: String(r.description || '').trim().slice(0, 200),

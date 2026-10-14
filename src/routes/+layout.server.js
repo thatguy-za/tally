@@ -5,6 +5,7 @@ import { aiStatus, aiEnabled } from '$lib/server/ai-settings.js';
 export function load({ locals }) {
   const user = locals.user;
   if (!user) return { user };
+  const hideNumbers = !!locals.hideNumbers;
 
   const aiAvailable = aiEnabled() && getUserAiCategorise(user.id);
   const accounts = locals.accounts;
@@ -14,7 +15,7 @@ export function load({ locals }) {
   // this instance up — everyone else, and an admin who's already configured
   // one or already dismissed this, sees nothing
   const ai = aiStatus();
-  if (user.onboarded_at || !user.is_admin || ai.configured) return { user, aiAvailable, accounts, accountId };
+  if (user.onboarded_at || !user.is_admin || ai.configured) return { user, aiAvailable, accounts, accountId, hideNumbers };
 
-  return { user, aiAvailable, accounts, accountId, onboarding: { ai } };
+  return { user, aiAvailable, accounts, accountId, hideNumbers, onboarding: { ai } };
 }

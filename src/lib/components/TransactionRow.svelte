@@ -1,4 +1,6 @@
 <script>
+  import { page } from '$app/stores';
+  import { shortDate as formatShortDate } from '$lib/dates.js';
   // The one mobile transaction row, shared by the transactions list and the
   // category popup (see docs/mobile-transactions-spec.md). Presentational
   // only — it owns no persistence; every surface wires its own handlers,
@@ -45,13 +47,13 @@
     pending = false
   } = $props();
 
-  const shortDate = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const shortDate = (d) => formatShortDate(d, $page.data.user?.date_format);
 
   // resolved from `categories` + the current id, same as CategorySelect does
   // internally — never from a possibly-stale category_name/color on `t`, so
   // an optimistic category change shows immediately everywhere in the row
   let cat = $derived(categories.find((c) => String(c.id) === String(t.category_id ?? '')));
-  let catColor = $derived(cat?.color || 'var(--border-strong)');
+  let catColor = $derived(cat?.color || 'var(--uncategorised)');
   let catName = $derived(cat?.name ?? null);
 </script>
 

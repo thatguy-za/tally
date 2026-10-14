@@ -10,7 +10,7 @@
  * Where the layout can't be worked out with confidence, the amount columns are
  * handed on as they are so the review screen's column mapping can finish the job.
  */
-import { parseAmount, parseDate } from './csv.js';
+import { parseAmount, parseDate, isRealDate } from './csv.js';
 
 const MONTH = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?';
 // most specific first; each is anchored to the start of the text
@@ -92,11 +92,6 @@ export function guessYear(lines) {
   for (const [y, n] of counts) if (!best || n > best[1]) best = [y, n];
   return best ? Number(best[0]) : null;
 }
-
-const isRealDate = (iso) => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  return /^\d{4}-\d{2}-\d{2}$/.test(iso) && !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
-};
 
 /** Read a date off the start of `text`: { iso, rest } or null. */
 export function readDate(text, order, year) {

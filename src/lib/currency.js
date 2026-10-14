@@ -2,15 +2,25 @@ export const CURRENCIES = [
   { code: 'EUR', label: 'Euro (€)' },
   { code: 'USD', label: 'US Dollar ($)' },
   { code: 'GBP', label: 'British Pound (£)' },
-  { code: 'CHF', label: 'Swiss Franc' },
-  { code: 'SEK', label: 'Swedish Krona' },
-  { code: 'NOK', label: 'Norwegian Krone' },
-  { code: 'DKK', label: 'Danish Krone' },
-  { code: 'PLN', label: 'Polish Zloty' },
-  { code: 'CAD', label: 'Canadian Dollar' },
-  { code: 'AUD', label: 'Australian Dollar' },
+  { code: 'CHF', label: 'Swiss Franc (CHF)' },
+  { code: 'SEK', label: 'Swedish Krona (SEK)' },
+  { code: 'NOK', label: 'Norwegian Krone (NOK)' },
+  { code: 'DKK', label: 'Danish Krone (DKK)' },
+  { code: 'PLN', label: 'Polish Zloty (PLN)' },
+  { code: 'CZK', label: 'Czech Koruna (CZK)' },
+  { code: 'HUF', label: 'Hungarian Forint (HUF)' },
+  { code: 'CAD', label: 'Canadian Dollar (CAD)' },
+  { code: 'AUD', label: 'Australian Dollar (AUD)' },
+  { code: 'NZD', label: 'New Zealand Dollar (NZD)' },
+  { code: 'ZAR', label: 'South African Rand (ZAR)' },
   { code: 'JPY', label: 'Japanese Yen (¥)' },
-  { code: 'INR', label: 'Indian Rupee (₹)' }
+  { code: 'CNY', label: 'Chinese Yuan (CNY)' },
+  { code: 'HKD', label: 'Hong Kong Dollar (HKD)' },
+  { code: 'SGD', label: 'Singapore Dollar (SGD)' },
+  { code: 'INR', label: 'Indian Rupee (₹)' },
+  { code: 'BRL', label: 'Brazilian Real (BRL)' },
+  { code: 'MXN', label: 'Mexican Peso (MXN)' },
+  { code: 'TRY', label: 'Turkish Lira (TRY)' }
 ];
 
 /** @param {number} amount @param {string} currency */

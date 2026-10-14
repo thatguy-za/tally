@@ -1,4 +1,5 @@
 <script>
+  import { confirmSubmit } from '$lib/actions/confirm-submit.js';
   import { onMount } from 'svelte';
   import { enhance } from '$app/forms';
   import { goto, invalidateAll, replaceState } from '$app/navigation';
@@ -194,7 +195,6 @@
     setParams({ [key]: value });
   }
 
-  let activeFilterCount = $derived(Object.entries(data.filters).filter(([, v]) => v).length);
 
   // one removable chip per active filter (not `search` — its own box is
   // always visible, so a chip for it would just be a second way to see the
@@ -222,6 +222,13 @@
     return chips;
   });
 
+  // the same count as the chips shown — the search text isn't one, it has its
+  // own always-visible box, and a date range is one filter, not two
+  let activeFilterCount = $derived(filterChips.length);
+
+  // amounts read the same everywhere: two decimals, however they were stored
+  const twoDecimals = (v) => (v !== '' && v != null && Number.isFinite(Number(v)) ? Number(v).toFixed(2) : v);
+
   // the mobile filter sheet's two disclosures default open when the filter
   // they hold is already active, so reopening the sheet doesn't hide it
   let dateRangeOpen = $state(false);
@@ -234,7 +241,7 @@
   });
 
   const catColor = (id) =>
-    data.categories.find((c) => String(c.id) === String(id))?.color || 'var(--border-strong)';
+    data.categories.find((c) => String(c.id) === String(id))?.color || 'var(--uncategorised)';
   const currentCat = (t) =>
     catOverride.has(t.id) ? catOverride.get(t.id) : String(t.category_id ?? '');
 
@@ -532,7 +539,7 @@
       <button class="rounded-md bg-white/15 px-2.5 py-1 font-medium hover:bg-white/25">Apply</button>
     </form>
     <form method="POST" action="?/bulkDelete" use:enhance
-      onsubmit={(e) => { if (!confirm(`Delete ${selected.size} transactions?`)) e.preventDefault(); }}>
+      use:confirmSubmit={{ title: `Delete ${selected.size} transaction${selected.size === 1 ? '' : 's'}?`, message: 'They will be permanently deleted. This cannot be undone.', confirmLabel: 'Delete', danger: true }}>
       {#each [...selected] as id}<input type="hidden" name="id" value={id} />{/each}
       <button class="rounded-md bg-white/15 px-2.5 py-1 font-medium hover:bg-white/25">Delete</button>
     </form>
@@ -599,7 +606,7 @@
       </colgroup>
       <thead>
         <tr class="border-b border-[var(--border)] text-left">
-          <th class="py-2.5 pl-4"><input type="checkbox" checked={allChecked} onchange={toggleAll} /></th>
+          <th class="py-2.5 pl-4"><input type="checkbox" aria-label="Select all transactions" checked={allChecked} onchange={toggleAll} /></th>
           {@render sortable('date', 'Date', 'th py-2.5')}
           {@render sortable('description', 'Description', 'th py-2.5')}
           {@render sortable('category', 'Category', 'th py-2.5')}
@@ -628,10 +635,10 @@
                 toggle(t.id);
               }}>
               <td class="py-2.5 pl-4">
-                <input type="checkbox" checked={selected.has(t.id)} onchange={() => toggle(t.id)} />
+                <input type="checkbox" aria-label="Select {t.description || 'transaction'}" checked={selected.has(t.id)} onchange={() => toggle(t.id)} />
               </td>
               <td class="py-2.5 pr-3">
-                <input class="cell tnum w-[128px] transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" type="date" value={fieldVal(t, 'date')}
+                <input class="cell tnum w-[128px] transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" type="date" aria-label="Date" value={fieldVal(t, 'date')}
                   onchange={fieldOnChange(t, 'date')} />
               </td>
               <td class="py-2.5 pr-3">
@@ -642,7 +649,7 @@
                     size={24}
                     onEdit={() => (editingLogoFor = t)}
                   />
-                  <input class="cell min-w-0 flex-1 truncate font-medium transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" value={fieldVal(t, 'description')}
+                  <input class="cell min-w-0 flex-1 truncate font-medium transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" aria-label="Description" value={fieldVal(t, 'description')}
                     onchange={fieldOnChange(t, 'description')} />
                 </div>
               </td>
@@ -665,11 +672,11 @@
                 {/if}
               </td>
               <td class="py-2.5 pr-3">
-                <input class="cell min-w-0 w-full truncate transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" value={fieldVal(t, 'notes')} placeholder="—" maxlength="280"
+                <input class="cell min-w-0 w-full truncate transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" aria-label="Notes" value={fieldVal(t, 'notes')} placeholder="—" maxlength="280"
                   onchange={fieldOnChange(t, 'notes')} />
               </td>
               <td class="py-2.5 pr-4 text-right">
-                <input class="cell tnum w-full text-right transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" inputmode="decimal" value={fieldVal(t, 'amount')}
+                <input class="cell tnum w-full text-right transition-opacity {savingIds.has(t.id) ? 'opacity-50' : ''}" inputmode="decimal" aria-label="Amount" value={twoDecimals(fieldVal(t, 'amount'))}
                   style={Number(fieldVal(t, 'amount')) > 0 ? 'color:var(--positive)' : ''}
                   onchange={fieldOnChange(t, 'amount')} />
               </td>

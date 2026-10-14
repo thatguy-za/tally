@@ -113,6 +113,20 @@ const MONTHS = {
  * @returns {string|null}
  */
 export function parseDate(raw, order = 'dmy') {
+  const iso = parseDateLoose(raw, order);
+  // "31/02/2026" or a day/month the wrong way round for the chosen order
+  // parses to a well-formed but impossible date — refuse it rather than save it
+  return iso && isRealDate(iso) ? iso : null;
+}
+
+/** True for a YYYY-MM-DD that is an actual calendar day (no 2026-02-31, no month 99). */
+export function isRealDate(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) return false;
+  const d = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === iso;
+}
+
+function parseDateLoose(raw, order) {
   if (raw == null) return null;
   const s = String(raw).trim();
   if (!s) return null;
@@ -167,13 +181,16 @@ export function guessMapping(headers) {
     return '';
   };
   return {
-    date: find(['date', 'datum', 'booking', 'posted', 'transaction date']),
+    date: find(['date', 'datum', 'booking', 'posted', 'transaction date', 'fecha', 'data', 'buchungstag']),
     description: find([
       'description', 'desc', 'narrative', 'details', 'memo', 'reference',
       'payee', 'name', 'merchant', 'particulars', 'counterparty', 'beneficiary',
-      'note', 'text', 'ref'
+      'note', 'text', 'ref',
+      // the same word in the languages banks around here export in
+      'omschrijving', 'mededeling', 'naam', 'libell', 'beschreibung', 'verwendungszweck',
+      'buchungstext', 'concepto', 'descripci', 'descri', 'beskrivning', 'opis'
     ]),
-    amount: find(['amount', 'value', 'bedrag', 'montant', 'betrag']),
+    amount: find(['amount', 'value', 'bedrag', 'montant', 'betrag', 'importe', 'valor', 'belopp', 'kwota']),
     debit: find(['debit', 'withdrawal', 'paid out', 'money out', 'uit', ' af', 'outgoing']),
     credit: find(['credit', 'deposit', 'paid in', 'money in', 'bij', 'incoming']),
     category: find(['category', 'categorie', 'kategorie', 'type']),

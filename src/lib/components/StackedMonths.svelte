@@ -46,7 +46,7 @@
   // it the same way under "hide numbers" instead of leaking the real scale
   const short = (v) =>
     privacy.hideNumbers ? '••' : v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v));
-  const fill = (c) => c || 'var(--border-strong)';
+  const fill = (c) => c || 'var(--uncategorised)';
 
   // an "Other" entry stands in for its folded members' combined total,
   // which isn't a real key in `values` — everything else reads its own id
@@ -108,8 +108,6 @@
   let groupW = $derived(plotW / months.length);
   let barW = $derived(Math.max(8, Math.min(30, (groupW - 10) / 2 - 2)) * 0.85);
   let gapBars = $derived(barW >= 20 ? 8 : 4);
-  // totals above bars only when they can't collide with the neighbour's
-  let showTotals = $derived(groupW >= 110);
   let showInOut = $derived(groupW >= 80);
 
   // month only — the period picker above already states the years
@@ -154,6 +152,19 @@
       };
     })
   );
+
+  // A total sits level with its own bar and runs away from the other bar of
+  // the month (income's to the left, expense's to the right), so it can never
+  // cross a neighbouring bar. Two months' totals can still meet in the gap
+  // between them, so they are shown only when that gap fits the widest one.
+  const CHAR_W = 6.6; // ~10.5px text, per character
+  let showTotals = $derived.by(() => {
+    const widest = Math.max(
+      0,
+      ...bars.flatMap((b) => [b.income.total, b.expense.total]).filter((t) => t > 0).map((t) => money(t).length)
+    ) * CHAR_W;
+    return groupW >= 2 * widest + gapBars + 4;
+  });
 
   // hover tooltip, positioned against the wrapper
   let tip = $state(null);
@@ -216,7 +227,7 @@
               onclick={() => onSegmentClick?.(seg, b.ym, source)}></path>
           {/each}
           {#if showTotals && st.total > 0}
-            <text x={x + barW / 2} y={y(st.total) - (source === 'income' ? 20 : 7)} text-anchor="middle" font-size="10.5"
+            <text x={source === 'income' ? x + barW : x} y={y(st.total) - 7} text-anchor={source === 'income' ? 'end' : 'start'} font-size="10.5"
               font-weight="600" fill="var(--ink-soft)">{money(st.total)}</text>
           {/if}
           {#if showInOut}

@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { env } from '$env/dynamic/private';
+import { dropLegacyLogoGuesses } from './logo-migration.js';
 
 const DB_PATH = env.DATABASE_PATH || './data/tally.sqlite';
 
@@ -300,6 +301,21 @@ if (!migrated) {
      WHERE kind = 'expense' AND name = 'Savings & investments'`
   ).run();
   db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run(SAVING_MIGRATION, '1');
+}
+
+// Logos were once looked up for nearly any description and the guess cached
+// for good — drop those cached guesses once (see logo-migration.js).
+const LOGO_MIGRATION = 'logo_guess_v2';
+if (!db.prepare('SELECT value FROM app_settings WHERE key = ?').get(LOGO_MIGRATION)) {
+  db.exec('BEGIN');
+  try {
+    dropLegacyLogoGuesses(db);
+    db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run(LOGO_MIGRATION, '1');
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 const DEFAULT_CATEGORIES = [

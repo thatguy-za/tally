@@ -1,4 +1,5 @@
 <script>
+  import { modal } from '$lib/actions/modal.js';
   import Icon from './Icon.svelte';
   import ManualAddPanel from './ManualAddPanel.svelte';
   import TransactionImportPanel from './TransactionImportPanel.svelte';
@@ -21,7 +22,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_interactive_supports_focus -->
-<div class="overlay" role="dialog" aria-modal="true" aria-label="Add or import transactions"
+<div class="overlay" use:modal role="dialog" aria-modal="true" aria-label="Add or import transactions"
   onclick={(e) => e.target === e.currentTarget && onClose()}>
   <div class="card w-full rise max-h-[90vh] overflow-y-auto {tab === 'import' && compact ? 'max-w-lg' : 'max-w-4xl'}">
     <div class="mb-4 flex items-start justify-between gap-3">
@@ -31,7 +32,7 @@
           class="rounded-[var(--radius-xs)] px-3 py-1.5 text-[13px] font-medium transition-colors {tab === 'import' ? 'bg-[var(--paper)] shadow-sm' : 'text-[var(--ink-faint)]'}"
           onclick={() => (tab = 'import')}
         >
-          Import CSV
+          Import statement
         </button>
         <button
           type="button"

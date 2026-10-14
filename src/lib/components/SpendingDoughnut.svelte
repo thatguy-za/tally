@@ -9,7 +9,7 @@
    */
   let { segments, currency, title = '', onSegmentClick } = $props();
 
-  const fill = (c) => c || 'var(--border-strong)';
+  const fill = (c) => c || 'var(--uncategorised)';
   const money = (v) => formatMoney(v, currency);
 
   const R = 90; // outer radius

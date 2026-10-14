@@ -1,4 +1,5 @@
 <script>
+  import { modal } from '$lib/actions/modal.js';
   import { deserialize } from '$app/forms';
   import Icon from './Icon.svelte';
   import ColorPicker from './ColorPicker.svelte';
@@ -53,7 +54,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_interactive_supports_focus -->
-<div class="overlay" role="dialog" aria-modal="true" aria-label="Add an account"
+<div class="overlay" use:modal role="dialog" aria-modal="true" aria-label="Add an account"
   onclick={(e) => e.target === e.currentTarget && onClose()}>
   <div class="card w-full max-w-sm rise">
     <div class="mb-4 flex items-start justify-between gap-3">
