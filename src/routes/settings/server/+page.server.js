@@ -71,6 +71,8 @@ export const actions = {
     const id = Number(f.get('id'));
     if (id === locals.user.id) return fail(400, { section: 'user', error: "You can't delete yourself." });
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    // a household left with nobody in it is of no use to anyone
+    db.prepare('DELETE FROM households WHERE id NOT IN (SELECT household_id FROM household_members)').run();
     return { section: 'user', ok: true, msg: 'User and all their data deleted.' };
   },
 

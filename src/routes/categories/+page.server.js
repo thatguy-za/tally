@@ -10,6 +10,7 @@ import {
   listRules,
   getUserAiCategorise
 } from '$lib/server/queries.js';
+import { setCategoryHousehold } from '$lib/server/households.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
 import { suggestNewCategories } from '$lib/server/ai.js';
 
@@ -26,7 +27,9 @@ export function load({ locals }) {
     categories: listCategories(userId, accountId).map((c) => ({ ...c, count: countMap[c.id] || 0 })),
     rules: listRules(userId, accountId),
     aiAvailable: aiEnabled() && getUserAiCategorise(userId),
-    currency: locals.user.currency
+    currency: locals.user.currency,
+    // the Household column only exists for someone who is in one
+    household: locals.household ? { name: locals.household.name } : null
   };
 }
 
@@ -59,6 +62,15 @@ export const actions = {
       return fail(400, { section: 'category', error: 'A category with that name already exists.' });
     }
     return { section: 'category', ok: true, msg: 'Category updated' };
+  },
+
+  categoryHousehold: async ({ request, locals }) => {
+    const f = await request.formData();
+    const id = Number(f.get('id'));
+    if (!id) return fail(400, { section: 'category', error: 'Unknown category.' });
+    const r = setCategoryHousehold(locals.user.id, locals.accountId, id, f.get('shared') === 'on');
+    if (!r.ok) return fail(400, { section: 'category', error: r.error });
+    return { section: 'category', ok: true, msg: f.get('shared') === 'on' ? 'Shared with your household' : 'No longer shared' };
   },
 
   categoryKind: async ({ request, locals }) => {

@@ -124,6 +124,7 @@
             <th class="th px-3 py-2">Name</th>
             <th class="th hidden px-3 py-2 sm:table-cell">Type</th>
             <th class="th hidden px-3 py-2 text-right sm:table-cell">Transactions</th>
+            {#if data.household}<th class="th px-3 py-2 text-center" title="Show this category's spending to your household">Household</th>{/if}
             <th class="w-16"></th>
           </tr>
         </thead>
@@ -131,7 +132,7 @@
           {#each data.categories as c (c.id)}
             {#if editingId === c.id}
               <tr class="border-b border-[var(--border)] last:border-0">
-                <td colspan="4" class="p-3" style="background:var(--paper-sunk)">
+                <td colspan={data.household ? 5 : 4} class="p-3" style="background:var(--paper-sunk)">
                   <form method="POST" action="?/updateCategory" use:enhance class="grid gap-2 sm:grid-cols-6">
                     <input type="hidden" name="id" value={c.id} />
                     <div class="flex items-center gap-2 sm:col-span-2">
@@ -169,6 +170,20 @@
                 </td>
                 <td class="hidden px-3 py-2.5 text-[var(--ink-faint)] sm:table-cell">{kindLabel[c.kind] || c.kind}</td>
                 <td class="hidden px-3 py-2.5 text-right tnum text-[var(--ink-faint)] sm:table-cell">{c.count}</td>
+                {#if data.household}
+                  <td class="px-3 py-2.5 text-center">
+                    {#if c.kind === 'expense'}
+                      <!-- ticking submits straight away; unticked sends nothing, which the server reads as "not shared" -->
+                      <form method="POST" action="?/categoryHousehold" use:enhance>
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="checkbox" name="shared" checked={!!c.household} aria-label="Share {c.name} with {data.household.name}"
+                          onchange={(e) => e.currentTarget.form.requestSubmit()} />
+                      </form>
+                    {:else}
+                      <span class="text-[var(--ink-faint)]" title="Only spending categories can be shared">—</span>
+                    {/if}
+                  </td>
+                {/if}
                 <td class="px-3 py-2.5">
                   <div class="flex justify-end gap-0.5 opacity-70 transition group-hover:opacity-100">
                     <button type="button" class="tip rounded p-1 text-[var(--ink-faint)] hover:text-[var(--ink)]"
@@ -190,7 +205,7 @@
           {/each}
           {#if addingNew}
             <tr class="border-b border-[var(--border)] last:border-0">
-              <td colspan="4" class="p-3" style="background:var(--paper-sunk)">
+              <td colspan={data.household ? 5 : 4} class="p-3" style="background:var(--paper-sunk)">
                 <form method="POST" action="?/addCategory" use:enhance class="grid gap-2 sm:grid-cols-6">
                   <div class="flex items-center gap-2 sm:col-span-2">
                     <input type="hidden" name="color" value={newColor} />
@@ -214,7 +229,7 @@
             </tr>
           {:else}
             <tr class="border-b border-[var(--border)] last:border-0">
-              <td colspan="4" class="p-0">
+              <td colspan={data.household ? 5 : 4} class="p-0">
                 <button type="button" class="flex w-full items-center gap-1.5 px-3 py-2.5 text-left text-[13px] text-[var(--accent-strong)] hover:bg-[var(--paper-sunk)]"
                   onclick={() => (addingNew = true)}>
                   <Icon name="plus" size={13} /> Add category

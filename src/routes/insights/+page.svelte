@@ -14,6 +14,7 @@
   import SavingsChart from '$lib/components/SavingsChart.svelte';
   import EmptyState from '$lib/components/EmptyState.svelte';
   import Money from '$lib/components/Money.svelte';
+  import HouseholdInsights from '$lib/components/HouseholdInsights.svelte';
   let { data } = $props();
 
   let categoryModal = $state(null);
@@ -264,8 +265,8 @@
 
 <div class="mb-7 flex flex-wrap items-end justify-between gap-3">
   <div>
-    <p class="kicker mb-2">Insights · {periodLabel}</p>
-    <h1 class="text-3xl" style="font-family:var(--font-display)">Where your money went</h1>
+    <p class="kicker mb-2">{data.household ? `Household · ${data.household.name}` : 'Insights'} · {periodLabel}</p>
+    <h1 class="text-3xl" style="font-family:var(--font-display)">{data.household ? 'Where the household’s money went' : 'Where your money went'}</h1>
   </div>
   <div class="flex flex-wrap items-center gap-2">
     <div class="flex shrink-0 items-center gap-1">
@@ -294,6 +295,9 @@
   </div>
 </div>
 
+{#if data.household}
+  <HouseholdInsights {data} />
+{:else}
 {#if ins && ins.reason !== 'empty'}
   <div class="mb-4 grid {data.savings.configured ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-[var(--border)] overflow-hidden rounded-[var(--radius)] border border-[var(--border)]"
     style="background:var(--surface);box-shadow:var(--shadow-sm)">
@@ -564,6 +568,8 @@
     onClose={() => (categoryModal = null)}
     onChanged={() => invalidateAll()}
   />
+{/if}
+
 {/if}
 
 <svelte:window onkeydown={onWindowKey} />

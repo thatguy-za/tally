@@ -122,6 +122,35 @@ db.exec(`
     value TEXT
   );
 
+  -- A household links two or more people so the spending in the categories each
+  -- of them chooses to share can be seen together. It shares no accounts: a
+  -- member's categories carry a household flag (added below), and only the
+  -- transactions in flagged categories are ever visible to the others.
+  -- currency is the one the household's combined view is shown in.
+  CREATE TABLE IF NOT EXISTS households (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL DEFAULT 'Our household',
+    currency   TEXT NOT NULL DEFAULT 'EUR',
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- user_id is the primary key: a person belongs to at most one household
+  CREATE TABLE IF NOT EXISTS household_members (
+    user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+    joined_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- single-use, short-lived codes for joining
+  CREATE TABLE IF NOT EXISTS household_invites (
+    code         TEXT PRIMARY KEY,
+    household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+    created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    expires_at   TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   -- one cached AI summary per user per report scope; regenerated when the
   -- fingerprint of the underlying numbers changes, so a page view is free.
   CREATE TABLE IF NOT EXISTS insights (
@@ -302,6 +331,14 @@ if (!migrated) {
   ).run();
   db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run(SAVING_MIGRATION, '1');
 }
+
+// Existing databases: categories gain a household flag, off for everyone, so
+// nothing is shared until its owner ticks it. (Fresh databases get it here too.)
+if (!db.prepare('PRAGMA table_info(categories)').all().some((c) => c.name === 'household')) {
+  db.exec('ALTER TABLE categories ADD COLUMN household INTEGER NOT NULL DEFAULT 0');
+}
+// a household with no members left (its last user was deleted) has no use
+db.exec('DELETE FROM households WHERE id NOT IN (SELECT household_id FROM household_members)');
 
 // Logos were once looked up for nearly any description and the guess cached
 // for good — drop those cached guesses once (see logo-migration.js).

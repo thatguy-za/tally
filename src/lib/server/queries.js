@@ -1,10 +1,71 @@
 import { db, tx, seedCategories } from './db.js';
 import { guessDomain, logoKey } from '$lib/logo.js';
 
+/* ------------------------------------------------------------ household scope */
+
+/**
+ * The account id the household view runs under. Real account ids are positive,
+ * so this can never be one of them.
+ */
+export const HOUSEHOLD = -1;
+
+/**
+ * A `WITH` prefix that makes `transactions` and `categories` mean the
+ * household's shared view for one person: every member's transactions in a
+ * category its owner has ticked as household, with categories of the same name
+ * (any case) merged into one. The household queries are then the ordinary
+ * account queries run against these two names, and what a member shares is
+ * decided in exactly one place — here. Each transaction also carries
+ * `member_id`, the person it belongs to.
+ *
+ * The real tables are written `main.…` inside it so they are not read as the
+ * CTE itself (a CTE that names itself is recursive). The id is a checked
+ * integer, inlined, so the statement keeps whatever positional or named
+ * parameters it already had.
+ * @param {number} userId the person looking
+ */
+function householdCte(userId) {
+  const uid = Number(userId);
+  if (!Number.isInteger(uid)) throw new Error('Bad user id.');
+  return `WITH hh_members AS (
+      SELECT user_id FROM main.household_members
+      WHERE household_id = (SELECT household_id FROM main.household_members WHERE user_id = ${uid})
+    ),
+    hh_cats AS (
+      SELECT id, name, color FROM main.categories
+      WHERE household = 1 AND kind = 'expense' AND user_id IN (SELECT user_id FROM hh_members)
+    ),
+    hh_groups AS (SELECT lower(name) AS k, MIN(id) AS id FROM hh_cats GROUP BY lower(name)),
+    categories AS (
+      SELECT g.id, ${uid} AS user_id, ${HOUSEHOLD} AS account_id,
+             (SELECT name FROM hh_cats WHERE id = g.id) AS name, 'expense' AS kind,
+             (SELECT color FROM hh_cats WHERE id = g.id) AS color, 0 AS household
+      FROM hh_groups g
+    ),
+    transactions AS (
+      SELECT t.id, ${uid} AS user_id, t.date, t.description, t.amount, g.id AS category_id,
+             ${HOUSEHOLD} AS account_id, 0 AS dismissed_uncategorised, t.notes, t.created_at,
+             t.user_id AS member_id
+      FROM main.transactions t
+      JOIN hh_cats hc ON hc.id = t.category_id
+      JOIN hh_groups g ON g.k = lower(hc.name)
+      WHERE t.user_id IN (SELECT user_id FROM hh_members)
+    ) `;
+}
+
+/**
+ * Where to prepare a query: the database itself for a real account, or the
+ * household view for `HOUSEHOLD`. Only for reads — nothing writes through it.
+ */
+function scoped(userId, accountId) {
+  if (accountId !== HOUSEHOLD) return db;
+  return { prepare: (sql) => db.prepare(householdCte(userId) + sql) };
+}
+
 /* ------------------------------------------------------------------ categories */
 
 export function listCategories(userId, accountId) {
-  return db
+  return scoped(userId, accountId)
     .prepare('SELECT * FROM categories WHERE user_id = ? AND account_id = ? ORDER BY kind DESC, name')
     .all(userId, accountId);
 }
@@ -115,7 +176,7 @@ export function deleteAccount(userId, id) {
 
 export function listMonths(userId, accountId = null) {
   const af = accountFilter(accountId).sql.replace('t.account_id', 'account_id');
-  return db
+  return scoped(userId, accountId)
     .prepare(
       `SELECT DISTINCT substr(date, 1, 7) AS ym FROM transactions
        WHERE user_id = @userId ${af} ORDER BY ym DESC`
@@ -187,7 +248,7 @@ export function listTransactions(userId, f = {}) {
   if (f.direction === 'in') where.push('t.amount >= 0');
   else if (f.direction === 'out') where.push('t.amount < 0');
 
-  return db
+  return scoped(userId, f.accountId)
     .prepare(
       `SELECT t.*, c.name AS category_name, c.color AS category_color, c.kind AS category_kind,
               a.name AS account_name, a.color AS account_color
@@ -770,7 +831,7 @@ export function periodInsights(userId, from, to, accountId = null) {
   const savings = isSavingsAccount(userId, accountId);
   const notSpending = notSpendingSql(savings);
   const isSaving = isSavingSql(savings);
-  const totals = db
+  const totals = scoped(userId, accountId)
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
               SUM(CASE WHEN t.amount > 0 AND ${notSpending} THEN t.amount ELSE 0 END) AS incoming,
@@ -839,7 +900,7 @@ export function periodInsights(userId, from, to, accountId = null) {
   // summary built from it, inviting the blame to land on whatever category
   // happened to be listed. -1 is the same synthetic bucket the charts and
   // listTransactions already use for it.
-  const catRows = db
+  const catRows = scoped(userId, accountId)
     .prepare(
       `SELECT COALESCE(c.id, -1) AS id, COALESCE(c.name, 'Uncategorised') AS name, c.color,
               substr(t.date, 1, 7) AS ym, SUM(-t.amount) AS total
@@ -971,7 +1032,7 @@ export function periodInsights(userId, from, to, accountId = null) {
  */
 export function monthlyCategoryTotals(userId, from, to, accountId = null) {
   const af = accountFilter(accountId);
-  return db
+  return scoped(userId, accountId)
     .prepare(
       `SELECT substr(t.date, 1, 7) AS ym,
               COALESCE(c.id, -1) AS id,
@@ -1148,4 +1209,36 @@ export function resetLogoDomain(description) {
   const key = logoKey(description);
   if (!key) return;
   db.prepare('DELETE FROM merchant_logos WHERE key = ?').run(key);
+}
+
+/* ------------------------------------------------------------------ household */
+
+/**
+ * Each member's share of the household's spending over a range of months, in
+ * the household view — who paid for what, in the categories they chose to
+ * share. Members who shared nothing in the range are absent.
+ * @returns {{ id: number, username: string, total: number, count: number }[]}
+ */
+export function householdMemberTotals(userId, from, to) {
+  return scoped(userId, HOUSEHOLD)
+    .prepare(
+      `SELECT t.member_id AS id, u.username AS username, SUM(-t.amount) AS total, COUNT(*) AS count
+       FROM transactions t JOIN main.users u ON u.id = t.member_id
+       WHERE t.user_id = @userId AND t.amount < 0 AND substr(t.date, 1, 7) BETWEEN @from AND @to
+       GROUP BY t.member_id ORDER BY total DESC`
+    )
+    .all({ userId, from, to });
+}
+
+/** Names for a household view's `member_id` values. */
+export function memberNames(userId) {
+  return Object.fromEntries(
+    db
+      .prepare(
+        `SELECT u.id, u.username FROM household_members m JOIN users u ON u.id = m.user_id
+         WHERE m.household_id = (SELECT household_id FROM household_members WHERE user_id = ?)`
+      )
+      .all(userId)
+      .map((r) => [r.id, r.username])
+  );
 }

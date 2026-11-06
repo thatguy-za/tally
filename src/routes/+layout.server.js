@@ -6,6 +6,11 @@ export function load({ locals }) {
   const user = locals.user;
   if (!user) return { user };
   const hideNumbers = !!locals.hideNumbers;
+  // what the header needs of the household; the rest lives in Settings
+  const household = locals.household
+    ? { id: locals.household.id, name: locals.household.name, members: locals.household.members.length }
+    : null;
+  const view = locals.view ?? 'account';
 
   const aiAvailable = aiEnabled() && getUserAiCategorise(user.id);
   const accounts = locals.accounts;
@@ -15,7 +20,7 @@ export function load({ locals }) {
   // this instance up — everyone else, and an admin who's already configured
   // one or already dismissed this, sees nothing
   const ai = aiStatus();
-  if (user.onboarded_at || !user.is_admin || ai.configured) return { user, aiAvailable, accounts, accountId, hideNumbers };
+  if (user.onboarded_at || !user.is_admin || ai.configured) return { user, aiAvailable, accounts, accountId, hideNumbers, household, view };
 
-  return { user, aiAvailable, accounts, accountId, hideNumbers, onboarding: { ai } };
+  return { user, aiAvailable, accounts, accountId, hideNumbers, household, view, onboarding: { ai } };
 }

@@ -22,6 +22,18 @@ import {
 import { verifyPassword, hashPassword, getUserByUsername } from '$lib/server/auth.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
 import { restoreBackup } from '$lib/server/backup.js';
+import {
+  getHousehold,
+  createHousehold,
+  createInvite,
+  listInvites,
+  revokeInvite,
+  joinHousehold,
+  leaveHousehold,
+  formatCode
+} from '$lib/server/households.js';
+import { checkLogin, recordLoginFailure, recordLoginSuccess } from '$lib/server/login-throttle.js';
+import { VIEW_COOKIE } from '$lib/server/account-cookie.js';
 
 const MAX_BACKUP_SIZE = 20 * 1024 * 1024;
 
@@ -45,7 +57,9 @@ export function load({ locals }) {
     accounts: listAccounts(userId).map((a) => ({ ...a, count: acctCountMap[a.id] || 0 })),
     rules: listRules(userId, accountId),
     aiAvailable: aiEnabled(),
-    aiCategorise: getUserAiCategorise(userId)
+    aiCategorise: getUserAiCategorise(userId),
+    household: getHousehold(userId),
+    invites: listInvites(userId).map((i) => ({ code: formatCode(i.code), expiresAt: i.expiresAt }))
   };
 }
 
@@ -54,8 +68,66 @@ export const actions = {
     const f = await request.formData();
     const code = String(f.get('currency') || '');
     if (!CURRENCIES.some((c) => c.code === code)) return fail(400, { error: 'Unknown currency.' });
+    // the household's combined spending is shown in one currency
+    const household = getHousehold(locals.user.id);
+    if (household && code !== household.currency)
+      return fail(400, { section: 'currency', error: `Your household uses ${household.currency}. Leave it to use another currency.` });
     db.prepare('UPDATE users SET currency = ? WHERE id = ?').run(code, locals.user.id);
     return { section: 'currency', ok: true };
+  },
+
+  householdCreate: async ({ request, locals }) => {
+    const f = await request.formData();
+    const r = createHousehold(locals.user.id, String(f.get('name') || ''));
+    if (!r.ok) return fail(400, { section: 'household', error: r.error });
+    return { section: 'household', ok: true, msg: 'Household created' };
+  },
+
+  householdInvite: async ({ locals }) => {
+    const r = createInvite(locals.user.id);
+    if (!r.ok) return fail(400, { section: 'household', error: r.error });
+    return { section: 'household', ok: true, msg: 'Invite code ready', newCode: formatCode(r.code) };
+  },
+
+  householdRevoke: async ({ request, locals }) => {
+    const f = await request.formData();
+    revokeInvite(locals.user.id, String(f.get('code') || ''));
+    return { section: 'household', ok: true, msg: 'Invite cancelled' };
+  },
+
+  householdJoin: async (event) => {
+    const { request, locals, getClientAddress } = event;
+    const f = await request.formData();
+    const code = String(f.get('code') || '');
+    // codes are short, so guessing them is slowed the way password guessing is
+    let address = 'unknown';
+    try {
+      address = getClientAddress();
+    } catch {
+      /* no address available */
+    }
+    const key = `household-join:${locals.user.id}`;
+    const gate = checkLogin(address, key);
+    if (!gate.allowed)
+      return fail(429, { section: 'household', error: `Too many attempts. Try again in ${gate.retryAfterSec} second${gate.retryAfterSec === 1 ? '' : 's'}.` });
+
+    const r = joinHousehold(locals.user.id, code, { switchCurrency: f.get('switch_currency') === 'on' });
+    if (!r.ok) {
+      // asking about the currency is not a wrong guess
+      if (r.needsCurrency) return fail(400, { section: 'household', error: r.error, needsCurrency: r.needsCurrency, code });
+      recordLoginFailure(address, key);
+      return fail(400, { section: 'household', error: r.error, code });
+    }
+    recordLoginSuccess(address, key);
+    return { section: 'household', ok: true, msg: 'You joined the household' };
+  },
+
+  householdLeave: async ({ locals, cookies }) => {
+    const r = leaveHousehold(locals.user.id);
+    if (!r.ok) return fail(400, { section: 'household', error: r.error });
+    // the combined view has nothing to show any more
+    cookies.delete(VIEW_COOKIE, { path: '/' });
+    return { section: 'household', ok: true, msg: 'You left the household' };
   },
 
   dateFormat: async ({ request, locals }) => {

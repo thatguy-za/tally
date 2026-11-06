@@ -14,16 +14,20 @@
    * `variant: 'inline'` renders as a single row that expands a second-level
    * list of accounts in place — used at the bottom of the mobile nav menu,
    * which is itself already a dropdown and can't nest another floating one.
-   * @type {{ accounts: {id:number,name:string,color:string}[], accountId: number, variant?: 'dropdown'|'inline', onSwitched?: () => void }}
+   * With a household, its combined view is offered here too, as one more entry.
+   * @type {{ accounts: {id:number,name:string,color:string}[], accountId: number, household?: {name:string}|null, view?: 'account'|'household', variant?: 'dropdown'|'inline', onSwitched?: () => void }}
    */
-  let { accounts, accountId, variant = 'dropdown', onSwitched } = $props();
+  let { accounts, accountId, household = null, view = 'account', variant = 'dropdown', onSwitched } = $props();
 
   let open = $state(false);
   let root = $state(null);
   let switching = $state(false);
   let showAddModal = $state(false);
 
-  let current = $derived(accounts.find((a) => a.id === accountId) ?? accounts[0]);
+  let inHousehold = $derived(view === 'household' && !!household);
+  let realCurrent = $derived(accounts.find((a) => a.id === accountId) ?? accounts[0]);
+  // what the button shows: the household while its view is on, else the account
+  let current = $derived(inHousehold ? { name: household.name, color: 'var(--accent)' } : realCurrent);
 
   // composedPath (not e.target): a click that changes state can synchronously
   // replace the clicked element before this handler runs, leaving e.target
@@ -40,13 +44,13 @@
     open = !open;
   }
 
-  async function switchTo(id) {
+  async function switchTo(target) {
     switching = true;
     try {
       const res = await fetch('/account-switch', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ accountId: id })
+        body: JSON.stringify(typeof target === 'object' ? target : { accountId: target })
       });
       if (!res.ok) {
         toast("Couldn't switch accounts — try again.", { type: 'info' });
@@ -62,11 +66,17 @@
 
   async function pick(a) {
     open = false;
-    if (a.id === current?.id) {
+    if (!inHousehold && a.id === realCurrent?.id) {
       onSwitched?.();
       return;
     }
     await switchTo(a.id);
+    onSwitched?.();
+  }
+
+  async function pickHousehold() {
+    open = false;
+    if (!inHousehold) await switchTo({ view: 'household' });
     onSwitched?.();
   }
 
@@ -87,13 +97,24 @@
 {#snippet accountList(itemClass)}
   {#each accounts as a}
     <button type="button" role="menuitem"
-      class="{itemClass} {a.id === current?.id ? 'text-[var(--ink)]' : 'text-[var(--ink-soft)]'}"
+      class="{itemClass} {!inHousehold && a.id === realCurrent?.id ? 'text-[var(--ink)]' : 'text-[var(--ink-soft)]'}"
       onclick={() => pick(a)}>
       <span class="dot shrink-0" style="background:{a.color}"></span>
       <span class="min-w-0 flex-1 truncate">{a.name}</span>
-      {#if a.id === current?.id}<Icon name="check" size={13} class="shrink-0 text-[var(--accent)]" />{/if}
+      {#if !inHousehold && a.id === realCurrent?.id}<Icon name="check" size={13} class="shrink-0 text-[var(--accent)]" />{/if}
     </button>
   {/each}
+  {#if household}
+    <div class="my-1 border-t border-[var(--border)]"></div>
+    <button type="button" role="menuitem"
+      class="{itemClass} {inHousehold ? 'text-[var(--ink)]' : 'text-[var(--ink-soft)]'}"
+      onclick={pickHousehold}>
+      <Icon name="users" size={13} class="shrink-0 text-[var(--accent)]" />
+      <span class="min-w-0 flex-1 truncate">{household.name}</span>
+      <span class="shrink-0 text-[10px] uppercase tracking-wide text-[var(--ink-faint)]">Household</span>
+      {#if inHousehold}<Icon name="check" size={13} class="shrink-0 text-[var(--accent)]" />{/if}
+    </button>
+  {/if}
   <div class="my-1 border-t border-[var(--border)]"></div>
   <button type="button" role="menuitem"
     class="{itemClass} text-[var(--accent-strong)]"
@@ -131,7 +152,11 @@
       aria-expanded={open}
       disabled={switching}
     >
-      <span class="dot shrink-0" style="background:{current?.color}"></span>
+      {#if inHousehold}
+        <Icon name="users" size={13} class="shrink-0 text-[var(--accent)]" />
+      {:else}
+        <span class="dot shrink-0" style="background:{current?.color}"></span>
+      {/if}
       <span class="hidden max-w-[140px] truncate sm:inline">{current?.name}</span>
       {#if switching}
         <Icon name="repeat" size={11} class="shrink-0 animate-spin text-[var(--ink-faint)]" />

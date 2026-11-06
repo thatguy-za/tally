@@ -18,6 +18,7 @@
   import { formatMoney } from '$lib/privacy.svelte.js';
   import { parseAmount } from '$lib/csv.js';
   import { readStash, clearStash } from '$lib/share-stash.js';
+  import { shortDate } from '$lib/dates.js';
   let { data, form } = $props();
 
   // arriving from /share, where a statement shared to the app waits in the
@@ -340,8 +341,8 @@
 
 <div class="mb-7 flex flex-wrap items-end justify-between gap-3">
   <div>
-    <p class="kicker mb-2">Activity</p>
-    <h1 class="text-3xl" style="font-family:var(--font-display)">Transactions</h1>
+    <p class="kicker mb-2">{data.household ? `Household · ${data.household.name}` : 'Activity'}</p>
+    <h1 class="text-3xl" style="font-family:var(--font-display)">{data.household ? 'Household transactions' : 'Transactions'}</h1>
   </div>
   <div class="flex flex-wrap items-center gap-2">
     <button class="btn btn-ghost" onclick={() => (showFilters = !showFilters)}>
@@ -353,9 +354,12 @@
         <Icon name="x" size={11} />
       </button>
     {/each}
-    <button class="btn btn-primary" onclick={() => (showAddImport = !showAddImport)}>
-      <Icon name="plus" size={14} /> Add/Import
-    </button>
+    <!-- the household's list is read-only: nothing is added or imported into it -->
+    {#if !data.household}
+      <button class="btn btn-primary" onclick={() => (showAddImport = !showAddImport)}>
+        <Icon name="plus" size={14} /> Add/Import
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -591,6 +595,77 @@
   </th>
 {/snippet}
 
+{#if data.household}
+  <div class="card card-flush">
+    {#if data.transactions.length}
+      <div class="hidden overflow-x-auto sm:block">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-[var(--border)] text-left">
+              <th class="th py-2.5 pl-4">Date</th>
+              <th class="th py-2.5">Description</th>
+              <th class="th py-2.5">Category</th>
+              <th class="th py-2.5">Who</th>
+              <th class="th py-2.5 pr-4 text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each pagedRows as t (t.id)}
+              <tr class="border-b border-[var(--border)] last:border-0">
+                <td class="whitespace-nowrap py-2.5 pl-4 text-[var(--ink-soft)]" title={t.date}>{shortDate(t.date, data.dateFormat)}</td>
+                <td class="py-2.5 pr-3">
+                  <span class="flex min-w-0 items-center gap-2.5">
+                    <MerchantLogo domain={t.logo_domain} color={catColor(t.category_id)} size={24} />
+                    <span class="truncate font-medium">{t.description || '—'}</span>
+                  </span>
+                </td>
+                <td class="py-2.5 pr-3">
+                  <span class="flex items-center gap-1.5"><span class="dot shrink-0" style="background:{catColor(t.category_id)}"></span>{t.category_name}</span>
+                </td>
+                <td class="py-2.5 pr-3 text-[var(--ink-soft)]">{data.household.names[t.member_id] ?? '—'}</td>
+                <td class="tnum py-2.5 pr-4 text-right font-medium" style={t.amount > 0 ? 'color:var(--positive)' : ''}>{formatMoney(t.amount, data.currency)}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <div class="sm:hidden">
+        {#each pagedRows as t (t.id)}
+          <div class="flex items-center gap-3 border-b border-[var(--border)] px-3 py-3 last:border-0">
+            <MerchantLogo domain={t.logo_domain} color={catColor(t.category_id)} size={30} />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-[14px] font-medium">{t.description || '—'}</p>
+              <p class="mt-0.5 flex items-center gap-1.5 truncate text-[12px] text-[var(--ink-faint)]">
+                <span>{shortDate(t.date, data.dateFormat)}</span>·
+                <span class="dot shrink-0" style="background:{catColor(t.category_id)}"></span>
+                <span class="truncate">{t.category_name}</span>·
+                <span class="truncate">{data.household.names[t.member_id] ?? '—'}</span>
+              </p>
+            </div>
+            <span class="tnum shrink-0 text-[14px] font-semibold" style={t.amount > 0 ? 'color:var(--positive)' : ''}>{formatMoney(t.amount, data.currency)}</span>
+          </div>
+        {/each}
+      </div>
+      {#if hasMore}
+        <div class="flex items-center justify-between gap-3 border-t border-[var(--border)] px-4 py-3">
+          <span class="text-[13px] text-[var(--ink-faint)]">Showing {pagedRows.length} of {sortedRows.length}</span>
+          <button type="button" class="btn btn-ghost btn-sm" onclick={() => (shownCount += PAGE_SIZE)}>
+            Show {Math.min(PAGE_SIZE, sortedRows.length - pagedRows.length)} more
+          </button>
+        </div>
+      {/if}
+    {:else}
+      <EmptyState
+        icon="transactions"
+        title={activeFilterCount ? 'Nothing matches those filters' : 'Nothing shared yet'}
+        hint={activeFilterCount
+          ? 'Try widening the date range or clearing a filter.'
+          : 'Transactions appear here once someone in the household ticks Household on a spending category.'}
+        cta={activeFilterCount ? { href: '/transactions', label: 'Clear filters' } : undefined}
+      />
+    {/if}
+  </div>
+{:else}
 <div class="card card-flush">
   {#if data.transactions.length}
     <div class="hidden overflow-x-auto sm:block">
@@ -774,6 +849,7 @@
     />
   {/if}
 </div>
+{/if}
 
 {#if editingLogoFor}
   <LogoPicker
@@ -783,6 +859,6 @@
   />
 {/if}
 
-{#if showAddImport}
+{#if showAddImport && !data.household}
   <AddImportOverlay {data} {form} initialFiles={sharedFiles} onClose={() => (showAddImport = false)} />
 {/if}

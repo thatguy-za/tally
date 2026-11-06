@@ -128,4 +128,20 @@ describe('category/rule account-scoping migration', () => {
     const fkViolations = db.prepare('PRAGMA foreign_key_check').all();
     expect(fkViolations).toHaveLength(0);
   });
+
+  // an existing install gains households without losing or sharing anything
+  it('adds the household tables and a household flag that is off for every existing category', async () => {
+    const { db } = await import('./db.js');
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((t) => t.name);
+    for (const t of ['households', 'household_members', 'household_invites']) expect(tables).toContain(t);
+
+    const col = db.prepare('PRAGMA table_info(categories)').all().find((c) => c.name === 'household');
+    expect(col).toBeTruthy();
+    expect(db.prepare('SELECT household FROM categories').all().every((c) => c.household === 0)).toBe(true);
+
+    // nobody is in a household until they choose to be, so nothing is shared
+    expect(db.prepare('SELECT COUNT(*) AS n FROM household_members').get().n).toBe(0);
+    // the existing data is untouched
+    expect(db.prepare('SELECT amount FROM transactions WHERE id = 1').get().amount).toBe(-42.5);
+  });
 });

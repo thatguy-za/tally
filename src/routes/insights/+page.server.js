@@ -6,7 +6,9 @@ import {
   periodInsights,
   monthlyCategoryTotals,
   savingsSummary,
-  getUserAiCategorise
+  getUserAiCategorise,
+  householdMemberTotals,
+  HOUSEHOLD
 } from '$lib/server/queries.js';
 import { servedOverHttps } from '$lib/server/auth.js';
 import { PERIOD_COOKIE } from '$lib/server/period-cookie.js';
@@ -44,11 +46,22 @@ function seriesFor(rows, kind) {
   return kept;
 }
 
+/** Each member's share over the period, with members who shared nothing listed at zero. */
+function memberTotalsFor(household, userId, from, to) {
+  const spent = new Map(householdMemberTotals(userId, from, to).map((r) => [r.id, r]));
+  return household.members
+    .map((m) => ({ id: m.id, username: m.username, you: m.you, total: spent.get(m.id)?.total ?? 0, count: spent.get(m.id)?.count ?? 0 }))
+    .sort((a, b) => b.total - a.total || a.username.localeCompare(b.username));
+}
+
 /** @type {import('./$types').PageServerLoad} */
 export function load(event) {
   const { locals, url, cookies } = event;
   const userId = locals.user.id;
-  const accountId = locals.accountId;
+  // the household view runs the same queries against its own shared slice of
+  // everyone's spending (see HOUSEHOLD in queries.js), so nothing below changes
+  const household = locals.view === 'household' && locals.household;
+  const accountId = household ? HOUSEHOLD : locals.accountId;
   const months = listMonths(userId, accountId); // newest first
   const latest = months[0] || shiftMonth(new Date().toISOString().slice(0, 7), 0);
   const earliest = months[months.length - 1] || latest;
@@ -102,8 +115,10 @@ export function load(event) {
       expense,
       values
     },
-    savings: savingsSummary(userId, { from, to }, accountId),
-    aiSummary: aiEnabled() && getUserAiCategorise(userId),
-    currency: locals.user.currency
+    // savings and the AI summary are about one real account
+    savings: household ? null : savingsSummary(userId, { from, to }, accountId),
+    aiSummary: !household && aiEnabled() && getUserAiCategorise(userId),
+    currency: locals.user.currency,
+    household: household ? { name: household.name, members: household.members.length, memberTotals: memberTotalsFor(household, userId, from, to) } : null
   };
 }

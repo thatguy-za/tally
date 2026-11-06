@@ -45,12 +45,13 @@
     <h2 class="text-lg">Currency</h2>
     <p class="mb-4 mt-1 text-[13px] text-[var(--ink-faint)]">
       Display formatting only (single currency per user). Preview: <span class="tnum">{formatMoney(1234.5, data.currency)}</span>
+      {#if data.household}· Your household uses this currency, so it can’t be changed while you’re in it.{/if}
     </p>
     <form method="POST" action="?/currency" use:enhance class="flex flex-wrap items-center gap-3">
-      <select class="input max-w-xs" name="currency" aria-label="Currency" value={data.currency}>
+      <select class="input max-w-xs" name="currency" aria-label="Currency" value={data.currency} disabled={!!data.household}>
         {#each data.currencies as c}<option value={c.code}>{c.label}</option>{/each}
       </select>
-      <button class="btn btn-primary">Save</button>
+      <button class="btn btn-primary" disabled={!!data.household}>Save</button>
       {#if ok('currency')}<span class="text-sm" style="color:var(--positive)">Saved</span>{/if}
       {#if err('currency')}<span class="text-sm" style="color:var(--negative)">{err('currency')}</span>{/if}
     </form>
@@ -126,6 +127,97 @@
         </li>
       {/each}
     </ul>
+  </div>
+
+  <!-- Household -->
+  <div class="card">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h2 class="flex items-center gap-2 text-lg"><Icon name="users" size={17} class="text-[var(--accent)]" /> Household</h2>
+        <p class="mb-4 mt-1 max-w-xl text-[13px] text-[var(--ink-faint)]">
+          Link up with the people you share costs with. Nothing about your accounts is shared. You choose, category by category
+          (on the Categories page), which spending to show the household — and only the transactions in those categories are ever visible to the others.
+        </p>
+      </div>
+    </div>
+
+    {#if data.household}
+      <p class="text-[13px] text-[var(--ink-soft)]">
+        <b>{data.household.name}</b> · shown in {data.household.currency}
+      </p>
+      <ul class="mt-3 divide-y divide-[var(--border)] rounded-[var(--radius-sm)] border border-[var(--border)]">
+        {#each data.household.members as m}
+          <li class="flex items-center gap-3 px-3 py-2 text-[13px]">
+            <span class="grid h-6 w-6 place-items-center rounded-full bg-[var(--paper-sunk)] text-[11px] font-semibold uppercase text-[var(--ink-soft)]">{m.username.slice(0, 1)}</span>
+            <span class="min-w-0 flex-1 truncate">{m.username}{#if m.you}<span class="ml-1 text-[var(--ink-faint)]">(you)</span>{/if}</span>
+            <span class="text-[11px] text-[var(--ink-faint)]">joined {m.joinedAt.slice(0, 10)}</span>
+          </li>
+        {/each}
+      </ul>
+
+      <div class="mt-4">
+        <h3 class="mb-1 text-[13px] font-semibold">Invite someone</h3>
+        <p class="mb-2 text-[12px] text-[var(--ink-faint)]">
+          A code works once and lasts 7 days. They enter it under Household in their own Settings.
+        </p>
+        {#if form?.section === 'household' && form?.newCode}
+          <p class="mb-2 rounded-[var(--radius-sm)] px-3 py-2 text-sm" style="background:var(--accent-wash)">
+            New code: <b class="tnum select-all tracking-wider">{form.newCode}</b>
+          </p>
+        {/if}
+        <form method="POST" action="?/householdInvite" use:enhance class="inline">
+          <button class="btn btn-ghost btn-sm">Create an invite code</button>
+        </form>
+        {#if data.invites.length}
+          <ul class="mt-3 space-y-1.5">
+            {#each data.invites as inv}
+              <li class="flex items-center gap-3 text-[13px]">
+                <b class="tnum select-all tracking-wider">{inv.code}</b>
+                <span class="text-[11px] text-[var(--ink-faint)]">until {inv.expiresAt.slice(0, 10)}</span>
+                <form method="POST" action="?/householdRevoke" use:enhance class="ml-auto">
+                  <input type="hidden" name="code" value={inv.code} />
+                  <button class="text-[12px] text-[var(--ink-faint)] hover:text-[var(--negative)] hover:underline">Cancel</button>
+                </form>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+
+      <div class="mt-5 border-t border-[var(--border)] pt-4">
+        <form method="POST" action="?/householdLeave" use:enhance
+          use:confirmSubmit={{ title: 'Leave the household?', message: 'What you shared stops being visible to the others straight away, and your sharing ticks are cleared. Your own accounts and transactions are not touched.', confirmLabel: 'Leave household', danger: true }}>
+          <button class="btn" style="background:var(--negative-wash);color:var(--negative)">Leave household</button>
+        </form>
+      </div>
+    {:else}
+      <div class="grid gap-5 sm:grid-cols-2">
+        <form method="POST" action="?/householdCreate" use:enhance class="space-y-2">
+          <h3 class="text-[13px] font-semibold">Start a household</h3>
+          <label class="label" for="hh-name">Name</label>
+          <input class="input" id="hh-name" name="name" placeholder="Our household" maxlength="60" />
+          <button class="btn btn-primary">Create household</button>
+        </form>
+
+        <form method="POST" action="?/householdJoin" use:enhance class="space-y-2">
+          <h3 class="text-[13px] font-semibold">Join one</h3>
+          <label class="label" for="hh-code">Invite code</label>
+          <input class="input tnum uppercase tracking-wider" id="hh-code" name="code" placeholder="ABCD-EFGH" autocomplete="off" required
+            value={form?.section === 'household' ? form?.code ?? '' : ''} />
+          {#if form?.section === 'household' && form?.needsCurrency}
+            <div class="rounded-[var(--radius-sm)] px-3 py-2 text-[13px]" style="background:var(--warning-wash)">
+              This household uses <b>{form.needsCurrency.to}</b>; yours is <b>{form.needsCurrency.from}</b>.
+              Joining switches how your amounts are shown to {form.needsCurrency.to} — the amounts themselves don’t change.
+              <label class="mt-2 flex items-center gap-2">
+                <input type="checkbox" name="switch_currency" /> Switch my currency to {form.needsCurrency.to} and join
+              </label>
+            </div>
+          {/if}
+          <button class="btn btn-primary">Join household</button>
+        </form>
+      </div>
+    {/if}
+    {#if err('household')}<p class="mt-3 text-sm" style="color:var(--negative)">{err('household')}</p>{/if}
   </div>
 
   <!-- Auto-categorisation rules -->

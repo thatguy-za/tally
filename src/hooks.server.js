@@ -1,11 +1,13 @@
 import { redirect } from '@sveltejs/kit';
 import { getSessionUser, SESSION_COOKIE } from '$lib/server/auth.js';
 import { listAccounts } from '$lib/server/queries.js';
-import { ACCOUNT_COOKIE } from '$lib/server/account-cookie.js';
+import { ACCOUNT_COOKIE, VIEW_COOKIE } from '$lib/server/account-cookie.js';
+import { getHousehold } from '$lib/server/households.js';
 
 import { HIDE_COOKIE } from '$lib/privacy-cookie.js';
 
 const PUBLIC_ROUTES = new Set(['/login', '/register']);
+const HOUSEHOLD_HIDDEN = ['/budgets', '/categories', '/chat', '/transactions/import'];
 const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**
@@ -68,6 +70,13 @@ export async function handle({ event, resolve }) {
     const active = accounts.find((a) => String(a.id) === requested) || accounts[0] || null;
     event.locals.accounts = accounts;
     event.locals.accountId = active?.id ?? null;
+
+    // The household's combined view is a read-only "account" of its own. It
+    // never replaces accountId — every other page keeps working on a real
+    // account — it only changes what Insights and Transactions show.
+    const household = getHousehold(event.locals.user.id);
+    event.locals.household = household;
+    event.locals.view = household && event.cookies.get(VIEW_COOKIE) === 'household' ? 'household' : 'account';
   }
 
   const path = event.url.pathname;
@@ -77,6 +86,11 @@ export async function handle({ event, resolve }) {
     throw redirect(303, '/login');
   }
   if (event.locals.user && isPublic) {
+    throw redirect(303, '/insights');
+  }
+  // Budgets, categories, imports and Ask Tori are about one real account, and
+  // the household view has none; send them to the view that does exist.
+  if (event.locals.view === 'household' && event.request.method === 'GET' && HOUSEHOLD_HIDDEN.some((p) => path === p || path.startsWith(p + '/'))) {
     throw redirect(303, '/insights');
   }
 

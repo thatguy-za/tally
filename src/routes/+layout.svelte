@@ -18,13 +18,22 @@
   import { splashScreens } from '$lib/splash.js';
   let { data, children } = $props();
 
-  let nav = $derived([
-    { href: '/insights', label: 'Insights', icon: 'reports' },
-    { href: '/transactions', label: 'Transactions', icon: 'transactions' },
-    { href: '/budgets', label: 'Budgets', icon: 'budgets' },
-    { href: '/categories', label: 'Categories', icon: 'tag' },
-    ...(data.aiAvailable ? [{ href: '/chat', label: 'Ask Tori', icon: 'sparkle' }] : [])
-  ]);
+  // the household view is only Insights and Transactions: budgets, categories
+  // and Ask Tori are each about one real account
+  let nav = $derived(
+    data.view === 'household'
+      ? [
+          { href: '/insights', label: 'Insights', icon: 'reports' },
+          { href: '/transactions', label: 'Transactions', icon: 'transactions' }
+        ]
+      : [
+          { href: '/insights', label: 'Insights', icon: 'reports' },
+          { href: '/transactions', label: 'Transactions', icon: 'transactions' },
+          { href: '/budgets', label: 'Budgets', icon: 'budgets' },
+          { href: '/categories', label: 'Categories', icon: 'tag' },
+          ...(data.aiAvailable ? [{ href: '/chat', label: 'Ask Tori', icon: 'sparkle' }] : [])
+        ]
+  );
 
   let current = $derived($page.url.pathname);
 
@@ -164,7 +173,7 @@
 
         {#if data.accounts}
           <div class="hidden sm:block">
-            <AccountSwitcher accounts={data.accounts} accountId={data.accountId} />
+            <AccountSwitcher accounts={data.accounts} accountId={data.accountId} household={data.household} view={data.view} />
           </div>
         {/if}
 
@@ -199,6 +208,8 @@
             <AccountSwitcher
               accounts={data.accounts}
               accountId={data.accountId}
+              household={data.household}
+              view={data.view}
               variant="inline"
               onSwitched={() => (mobileNavOpen = false)}
             />

@@ -18,7 +18,9 @@ import {
   setUncategorisedDismissed,
   setLogoDomain,
   resetLogoDomain,
-  getUserAiCategorise
+  getUserAiCategorise,
+  memberNames,
+  HOUSEHOLD
 } from '$lib/server/queries.js';
 import { aiEnabled } from '$lib/server/ai-settings.js';
 
@@ -33,6 +35,10 @@ const ids = (form) =>
 export function load({ locals, url }) {
   const userId = locals.user.id;
   const q = url.searchParams;
+  // the household view is the same list over everyone's shared categories (see
+  // HOUSEHOLD in queries.js); it is read-only, so nothing below can change it
+  const household = locals.view === 'household' && locals.household;
+  const accountId = household ? HOUSEHOLD : locals.accountId;
 
   const filters = {
     month: q.get('month') || '',
@@ -51,7 +57,7 @@ export function load({ locals, url }) {
     dateTo: filters.dateTo || undefined,
     categoryId:
       filters.category === 'none' ? 'none' : filters.category ? Number(filters.category) : undefined,
-    accountId: locals.accountId,
+    accountId,
     search: filters.search || undefined,
     amountMin: filters.amountMin ? Number(filters.amountMin) : undefined,
     amountMax: filters.amountMax ? Number(filters.amountMax) : undefined,
@@ -73,14 +79,15 @@ export function load({ locals, url }) {
   return {
     transactions,
     sum,
-    categories: listCategories(userId, locals.accountId),
-    months: listMonths(userId, locals.accountId),
+    categories: listCategories(userId, accountId),
+    months: listMonths(userId, accountId),
     filters,
     currency: locals.user.currency,
     // for the combined add/import overlay's CSV-import tab
-    rules: listRules(userId, locals.accountId),
-    aiAvailable: aiEnabled() && getUserAiCategorise(userId),
-    dateFormat: locals.user.date_format
+    rules: household ? [] : listRules(userId, locals.accountId),
+    aiAvailable: !household && aiEnabled() && getUserAiCategorise(userId),
+    dateFormat: locals.user.date_format,
+    household: household ? { name: household.name, names: memberNames(userId) } : null
   };
 }
 
