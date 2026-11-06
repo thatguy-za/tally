@@ -8,7 +8,20 @@
   import RulesSection from '$lib/components/RulesSection.svelte';
   import AddAccountModal from '$lib/components/AddAccountModal.svelte';
   import { toast } from '$lib/toast.svelte.js';
+  import { copyText } from '$lib/clipboard.js';
+  import { daysUntil } from '$lib/dates.js';
   let { data, form } = $props();
+
+  // which code was just copied, so its button can say so for a moment
+  let copied = $state('');
+  async function copyCode(code) {
+    if (await copyText(code)) {
+      copied = code;
+      setTimeout(() => { if (copied === code) copied = ''; }, 2000);
+    } else {
+      toast('Couldn’t copy — select the code and copy it by hand.', { type: 'info' });
+    }
+  }
 
   let showAddAccount = $state(false);
   const ok = (s) => form?.section === s && form?.ok;
@@ -155,32 +168,45 @@
         {/each}
       </ul>
 
-      <div class="mt-4">
-        <h3 class="mb-1 text-[13px] font-semibold">Invite someone</h3>
-        <p class="mb-2 text-[12px] text-[var(--ink-faint)]">
-          A code works once and lasts 7 days. They enter it under Household in their own Settings.
+      <div class="mt-5">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-[13px] font-semibold">Invite someone</h3>
+          <form method="POST" action="?/householdInvite" use:enhance>
+            <button class="btn btn-ghost btn-sm"><Icon name="plus" size={12} /> New code</button>
+          </form>
+        </div>
+        <p class="mb-3 mt-1 text-[12px] text-[var(--ink-faint)]">
+          Send them a code. It works once and lasts 7 days. They enter it under Household in their own Settings.
         </p>
-        {#if form?.section === 'household' && form?.newCode}
-          <p class="mb-2 rounded-[var(--radius-sm)] px-3 py-2 text-sm" style="background:var(--accent-wash)">
-            New code: <b class="tnum select-all tracking-wider">{form.newCode}</b>
-          </p>
-        {/if}
-        <form method="POST" action="?/householdInvite" use:enhance class="inline">
-          <button class="btn btn-ghost btn-sm">Create an invite code</button>
-        </form>
         {#if data.invites.length}
-          <ul class="mt-3 space-y-1.5">
-            {#each data.invites as inv}
-              <li class="flex items-center gap-3 text-[13px]">
-                <b class="tnum select-all tracking-wider">{inv.code}</b>
-                <span class="text-[11px] text-[var(--ink-faint)]">until {inv.expiresAt.slice(0, 10)}</span>
-                <form method="POST" action="?/householdRevoke" use:enhance class="ml-auto">
-                  <input type="hidden" name="code" value={inv.code} />
-                  <button class="text-[12px] text-[var(--ink-faint)] hover:text-[var(--negative)] hover:underline">Cancel</button>
-                </form>
+          <ul class="divide-y divide-[var(--border)] rounded-[var(--radius-sm)] border border-[var(--border)]">
+            {#each data.invites as inv (inv.code)}
+              {@const left = daysUntil(inv.expiresAt)}
+              <li class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+                <b class="tnum select-all text-[15px] tracking-[0.12em]">{inv.code}</b>
+                {#if form?.section === 'household' && form?.newCode === inv.code}
+                  <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide" style="background:var(--accent-wash);color:var(--accent-strong)">New</span>
+                {/if}
+                <span class="text-[12px] text-[var(--ink-faint)]">
+                  {left <= 0 ? 'expires today' : `${left} day${left === 1 ? '' : 's'} left`}
+                </span>
+                <span class="ml-auto flex items-center gap-1">
+                  <button type="button" class="btn btn-ghost btn-sm" onclick={() => copyCode(inv.code)} aria-label="Copy code {inv.code}">
+                    <Icon name={copied === inv.code ? 'check' : 'copy'} size={13} />
+                    {copied === inv.code ? 'Copied' : 'Copy'}
+                  </button>
+                  <form method="POST" action="?/householdRevoke" use:enhance>
+                    <input type="hidden" name="code" value={inv.code} />
+                    <button class="rounded px-2 py-1 text-[12px] text-[var(--ink-faint)] hover:text-[var(--negative)]" aria-label="Cancel code {inv.code}">Cancel</button>
+                  </form>
+                </span>
               </li>
             {/each}
           </ul>
+        {:else}
+          <p class="rounded-[var(--radius-sm)] border border-dashed border-[var(--border-strong)] px-3 py-3 text-[13px] text-[var(--ink-faint)]">
+            No codes yet. Choose “New code” to invite someone.
+          </p>
         {/if}
       </div>
 

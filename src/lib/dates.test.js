@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shortDate } from './dates.js';
+import { shortDate, daysUntil } from './dates.js';
 
 describe('shortDate', () => {
   it('puts the day first or the month first, as chosen', () => {
@@ -25,5 +25,18 @@ describe('shortDate', () => {
     expect(shortDate('')).toBe('');
     expect(shortDate(null)).toBe('');
     expect(shortDate('2026-99-99')).toBe('2026-99-99');
+  });
+});
+
+describe('daysUntil', () => {
+  const now = Date.parse('2026-11-06T12:00:00Z');
+  it('counts whole days left, rounding up', () => {
+    expect(daysUntil('2026-11-13T12:00:00Z', now)).toBe(7);
+    expect(daysUntil('2026-11-13T11:00:00Z', now)).toBe(7);
+    expect(daysUntil('2026-11-07T13:00:00Z', now)).toBe(2);
+  });
+  it('is never negative, and copes with nonsense', () => {
+    expect(daysUntil('2026-11-01T00:00:00Z', now)).toBe(0);
+    expect(daysUntil('not a date', now)).toBe(0);
   });
 });

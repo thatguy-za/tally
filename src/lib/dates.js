@@ -16,3 +16,14 @@ export function shortDate(iso, order = 'dmy') {
   const day = Number(m[3]);
   return order === 'dmy' ? `${day} ${month}` : `${month} ${day}`;
 }
+
+/**
+ * Whole days from `now` until an ISO timestamp, rounded up and never negative
+ * ("expires in 7 days" for a code with 6.2 days left).
+ * @param {string} iso
+ * @param {number} [now]
+ */
+export function daysUntil(iso, now = Date.now()) {
+  const ms = Date.parse(iso) - now;
+  return Number.isFinite(ms) ? Math.max(0, Math.ceil(ms / 864e5)) : 0;
+}
